@@ -1,0 +1,453 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────
+
+model User {
+  id              String      @id @default(cuid())
+  phoneHash       String      @unique
+  phoneVerified   Boolean     @default(false)
+  phonePrefix     String?
+  email           String?     @unique
+  emailVerified   Boolean     @default(false)
+  walletAddress   String?     @unique
+  walletBoundAt   DateTime?
+  displayName     String
+  username        String      @unique
+  avatarUrl       String?
+  bio             String?
+  country         String?
+  website         String?
+  isCreator       Boolean     @default(false)
+  isSeller        Boolean     @default(false)
+  sellerApproved  Boolean     @default(false)
+  sellerModeOn    Boolean     @default(false)
+  trustScore      Int         @default(50)
+  riskScore       Int         @default(0)
+  status          UserStatus  @default(ACTIVE)
+  role            UserRole    @default(MEMBER)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  subscription    Subscription?
+  creatorStake    CreatorStake?
+  sentMessages    Message[]       @relation("SentMessages")
+  receivedMessages Message[]      @relation("ReceivedMessages")
+  postedJobs      Job[]           @relation("ClientJobs")
+  freelanceJobs   Job[]           @relation("FreelancerJobs")
+  proposals       Proposal[]
+  content         Content[]
+  readStakes      ReadStake[]
+  sessions        Session[]
+  riskFlags       RiskFlag[]
+
+  @@index([phoneHash])
+  @@index([walletAddress])
+  @@index([riskScore])
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum UserRole {
+  MEMBER
+  ADMIN
+  SUPER_ADMIN
+}
+
+// ─────────────────────────────────────────
+// SESSION
+// ─────────────────────────────────────────
+
+model Session {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  token       String    @unique
+  deviceInfo  String?
+  ipAddress   String?
+  lastSeen    DateTime  @default(now())
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+// ─────────────────────────────────────────
+// SUBSCRIPTION
+// ─────────────────────────────────────────
+
+model Subscription {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id])
+  amountCC        Float     @default(20)
+  poolAllocationCC Float    @default(15)
+  stakeBalanceCC  Float     @default(5)
+  status          SubStatus @default(ACTIVE)
+  damlContractId  String?
+  renewsAt        DateTime
+  cancelledAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+enum SubStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+// ─────────────────────────────────────────
+// CREATOR STAKE
+// ─────────────────────────────────────────
+
+model CreatorStake {
+  id              String      @id @default(cuid())
+  userId          String      @unique
+  user            User        @relation(fields: [userId], references: [id])
+  amountCC        Float       @default(100)
+  lockedAt        DateTime    @default(now())
+  unlockAt        DateTime
+  damlContractId  String?
+  status          StakeStatus @default(LOCKED)
+  createdAt       DateTime    @default(now())
+
+  @@index([userId])
+  @@index([status])
+}
+
+enum StakeStatus {
+  LOCKED
+  UNLOCKED
+  SLASHED
+}
+
+// ─────────────────────────────────────────
+// CONTENT
+// ─────────────────────────────────────────
+
+model Content {
+  id              String        @id @default(cuid())
+  creatorId       String
+  creator         User          @relation(fields: [creatorId], references: [id])
+  title           String
+  bodyIpfsHash    String
+  type            ContentType   @default(FREE)
+  priceCC         Float         @default(0)
+  status          ContentStatus @default(PENDING)
+  aiScore         Float         @default(0)
+  readCount       Int           @default(0)
+  avgRating       Float         @default(0)
+  delistReason    String?
+  adminNote       String?
+  publishedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  readStakes      ReadStake[]
+
+  @@index([creatorId])
+  @@index([status])
+  @@index([type])
+}
+
+enum ContentType {
+  FREE
+  PREMIUM
+}
+
+enum ContentStatus {
+  PENDING
+  LIVE
+  REJECTED
+  DELISTED
+}
+
+// ─────────────────────────────────────────
+// READ STAKE
+// ─────────────────────────────────────────
+
+model ReadStake {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+  contentId       String
+  content         Content         @relation(fields: [contentId], references: [id])
+  amountCC        Float           @default(5)
+  stakedAt        DateTime        @default(now())
+  unstakedAt      DateTime?
+  minReadTime     Int             @default(600)
+  timerStartedAt  DateTime?
+  status          ReadStakeStatus @default(STAKED)
+  damlContractId  String?
+
+  @@unique([userId, contentId])
+  @@index([userId])
+  @@index([contentId])
+}
+
+enum ReadStakeStatus {
+  STAKED
+  UNSTAKED
+  FORFEITED
+}
+
+// ─────────────────────────────────────────
+// JOB
+// ─────────────────────────────────────────
+
+model Job {
+  id              String    @id @default(cuid())
+  clientId        String
+  client          User      @relation("ClientJobs", fields: [clientId], references: [id])
+  freelancerId    String?
+  freelancer      User?     @relation("FreelancerJobs", fields: [freelancerId], references: [id])
+  title           String
+  description     String
+  category        String
+  skills          String[]
+  amountCC        Float
+  deadlineDays    Int
+  status          JobStatus @default(OPEN)
+  damlContractId  String?
+  escrowLocked    Boolean   @default(false)
+  platformFee     Float     @default(0.05)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  milestones      Milestone[]
+  proposals       Proposal[]
+  messages        Message[]
+  dispute         Dispute?
+
+  @@index([clientId])
+  @@index([freelancerId])
+  @@index([status])
+}
+
+enum JobStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  DELIVERED
+  COMPLETED
+  DISPUTED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────
+// MILESTONE
+// ─────────────────────────────────────────
+
+model Milestone {
+  id          String          @id @default(cuid())
+  jobId       String
+  job         Job             @relation(fields: [jobId], references: [id])
+  title       String
+  description String?
+  amountCC    Float
+  order       Int
+  status      MilestoneStatus @default(PENDING)
+  deliveredAt DateTime?
+  approvedAt  DateTime?
+  createdAt   DateTime        @default(now())
+
+  @@index([jobId])
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  DELIVERED
+  APPROVED
+  DISPUTED
+}
+
+// ─────────────────────────────────────────
+// PROPOSAL
+// ─────────────────────────────────────────
+
+model Proposal {
+  id              String          @id @default(cuid())
+  jobId           String
+  job             Job             @relation(fields: [jobId], references: [id])
+  freelancerId    String
+  freelancer      User            @relation(fields: [freelancerId], references: [id])
+  coverLetter     String
+  approach        String?
+  rateCC          Float
+  deliveryDays    Int
+  depositCC       Float           @default(0.5)
+  depositPaid     Boolean         @default(false)
+  status          ProposalStatus  @default(PENDING)
+  createdAt       DateTime        @default(now())
+
+  @@unique([jobId, freelancerId])
+  @@index([jobId])
+  @@index([freelancerId])
+}
+
+enum ProposalStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+// ─────────────────────────────────────────
+// DISPUTE
+// ─────────────────────────────────────────
+
+model Dispute {
+  id            String        @id @default(cuid())
+  jobId         String        @unique
+  job           Job           @relation(fields: [jobId], references: [id])
+  raisedById    String
+  respondentId  String
+  reason        String
+  clientClaim   String?
+  freelancerClaim String?
+  resolution    String?
+  clientPct     Float?
+  freelancerPct Float?
+  status        DisputeStatus @default(OPEN)
+  resolvedAt    DateTime?
+  createdAt     DateTime      @default(now())
+
+  evidence      DisputeEvidence[]
+
+  @@index([jobId])
+  @@index([status])
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+}
+
+model DisputeEvidence {
+  id          String   @id @default(cuid())
+  disputeId   String
+  dispute     Dispute  @relation(fields: [disputeId], references: [id])
+  submittedBy String
+  fileUrl     String
+  fileType    String
+  createdAt   DateTime @default(now())
+
+  @@index([disputeId])
+}
+
+// ─────────────────────────────────────────
+// MESSAGE
+// ─────────────────────────────────────────
+
+model Message {
+  id          String      @id @default(cuid())
+  senderId    String
+  sender      User        @relation("SentMessages", fields: [senderId], references: [id])
+  receiverId  String
+  receiver    User        @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  jobId       String?
+  job         Job?        @relation(fields: [jobId], references: [id])
+  content     String
+  fileUrl     String?
+  fileType    String?
+  read        Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([jobId])
+}
+
+// ─────────────────────────────────────────
+// PLATFORM CONFIG
+// ─────────────────────────────────────────
+
+model PlatformConfig {
+  id                    String   @id @default(cuid())
+  subscriptionAmountCC  Float    @default(20)
+  poolAllocationCC      Float    @default(15)
+  stakeBalanceCC        Float    @default(5)
+  platformFeeSub        Float    @default(0.30)
+  platformFeeFreelance  Float    @default(0.05)
+  readStakeAmountCC     Float    @default(5)
+  minReadTimeSeconds    Int      @default(600)
+  gracePeriodHours      Int      @default(2)
+  creatorStakeCC        Float    @default(100)
+  creatorLockDays       Int      @default(14)
+  maxContentPerMonth    Int      @default(5)
+  dailyCheckinCC        Float    @default(0.05)
+  proposalDepositCC     Float    @default(0.5)
+  minTreasuryReserveCC  Float    @default(10000)
+  incentivePhaseActive  Boolean  @default(true)
+  updatedAt             DateTime @updatedAt
+  updatedBy             String?
+}
+
+// ─────────────────────────────────────────
+// RISK FLAG
+// ─────────────────────────────────────────
+
+model RiskFlag {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  signal      String
+  severity    Int
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────
+// NOTIFICATION
+// ─────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  type      String
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([read])
+}
+
+// ─────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  adminId     String
+  action      String
+  target      String?
+  before      Json?
+  after       Json?
+  createdAt   DateTime @default(now())
+
+  @@index([adminId])
+}
