@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import {
   Wallet,
   TrendingUp,
@@ -13,6 +14,7 @@ import {
   ArrowUpRight,
   ChevronLeft,
 } from 'lucide-react';
+import { AnalysisPageSkeleton } from '@/components/ui/skeleton';
 
 // ─── Shared Primitives ────────────────────────────────────────────────────────
 
@@ -173,6 +175,12 @@ interface AnalysisPageProps {
 }
 
 export default function AnalysisPage({ onBack }: AnalysisPageProps) {
+  const [loading, setLoading] = useState(true);
+
+  // Skeleton loading: clears after mount; swap setTimeout for API finally() when real data arrives
+  useEffect(() => { const t = setTimeout(() => setLoading(false), 800); return () => clearTimeout(t); }, []);
+  if (loading) return <AnalysisPageSkeleton />;
+
   const subscribeItems: FeedItem[] = [
     {
       icon: <PenTool size={20} strokeWidth={1.5} />,

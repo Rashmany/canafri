@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { DashboardPageSkeleton } from '@/components/ui/skeleton';
 import {
   Sparkles,
   MessageSquare,
@@ -921,9 +922,13 @@ interface DashboardPageProps {
 }
 
 export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: DashboardPageProps) {
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'free' | 'premium' | 'bookmarks' | 'favorites'>('free');
   const [selectedPost, setSelectedPost] = useState<Post>(SAMPLE_POSTS[0]);
   const [mobileView, setMobileView] = useState<'feed' | 'detail'>('feed');
+
+  // Skeleton loading: clears after mount; swap setTimeout for API finally() when real data arrives
+  useEffect(() => { const t = setTimeout(() => setLoading(false), 800); return () => clearTimeout(t); }, []);
 
   // Sync activeTab with activePage prop changes
   useEffect(() => {
@@ -967,6 +972,8 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
   const [commentsList, setCommentsList] = useState<CommentItem[]>(INITIAL_COMMENTS);
 
   const { toast } = useToast();
+
+  if (loading) return <DashboardPageSkeleton />;
 
   const handlePostClick = (post: Post) => {
     setSelectedPost(post);
@@ -1029,7 +1036,7 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
             {activeTab === 'bookmarks' ? (
               <div className="flex h-14 items-center justify-between px-5">
                 <div className="flex flex-col gap-0.5">
-                  <h2 className="font-sans text-[13px] font-bold text-foreground">Bookmarks</h2>
+                  <h2 className="font-sans text-[13px] font-bold text-foreground">Saved</h2>
                   <span className="font-sans text-[10px] text-muted">Your saved articles & research</span>
                 </div>
               </div>

@@ -36,7 +36,7 @@ export default function JobBookmarkedPage({
           </button>
           <div>
             <h1 className="text-[#010101] dark:text-white text-lg font-semibold leading-7">
-              Bookmarked Jobs
+              Saved Jobs
             </h1>
             <p className="text-muted text-[11px] leading-4">
               Your saved listings & opportunities

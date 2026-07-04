@@ -14,6 +14,10 @@ import FindJobPage from '@/components/pages/find-job-page';
 import PostJobPage from '@/components/pages/post-job-page';
 import BecomeSellerPage from '@/components/pages/become-seller-page';
 import JobBookmarkedPage from '@/components/pages/job-bookmarked-page';
+import ProposalsPage from '@/components/pages/proposals-page';
+import GigsPage from '@/components/pages/gigs-page';
+import BuyerRequestsPage from '@/components/pages/buyer-requests-page';
+import OrdersPage from '@/components/pages/orders-page';
 
 
 /**
@@ -92,6 +96,14 @@ export default function Home() {
               savedJobIds={savedJobIds}
               onToggleSaveJob={handleToggleSaveJob}
             />
+          ) : activePage === 'Proposals' ? (
+            <ProposalsPage onBack={() => handleNavigate('Dashboard')} />
+          ) : activePage === 'Gigs' ? (
+            <GigsPage onBack={() => handleNavigate('Dashboard')} />
+          ) : activePage === 'Buyer Request' ? (
+            <BuyerRequestsPage onBack={() => handleNavigate('Dashboard')} />
+          ) : activePage === 'Orders' ? (
+            <OrdersPage />
           ) : activePage === 'Bookmarks:Jobs' ? (
             <JobBookmarkedPage
               onBack={() => handleNavigate('Bookmarks')}

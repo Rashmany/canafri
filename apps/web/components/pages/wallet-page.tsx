@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowDownToLine, ArrowUpFromLine, Bell, Check, Lock, X } from 'lucide-react';
+import { WalletPageSkeleton } from '@/components/ui/skeleton';
 
 // ─── Assets ──────────────────────────────────────────────────────────────────
 
@@ -510,8 +511,13 @@ interface WalletPageProps {
 }
 
 export default function WalletPage({ onBack }: WalletPageProps) {
+  const [loading, setLoading] = useState(true);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [mobileView, setMobileView] = useState<"wallet" | "detail">("wallet");
+
+  // Skeleton loading: clears after mount; swap setTimeout for API finally() when real data arrives
+  useEffect(() => { const t = setTimeout(() => setLoading(false), 800); return () => clearTimeout(t); }, []);
+  if (loading) return <WalletPageSkeleton />;
 
   const handleSelectTx = (tx: Transaction) => {
     setSelectedTx(tx);

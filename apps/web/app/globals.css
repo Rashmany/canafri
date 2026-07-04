@@ -14,68 +14,68 @@
 
 :root {
   /* Backgrounds */
-  --bg-page:          #FDFDFD;
-  --bg-sidebar:       #F5F8FB;
-  --bg-card:          #FAFAFD;
-  --bg-card-border:   #D8D8D8;
+  --bg-page: #FDFDFD;
+  --bg-sidebar: #F5F8FB;
+  --bg-card: #FAFAFD;
+  --bg-card-border: #D8D8D8;
 
   /* Text */
-  --text-primary:     #010101;
-  --text-muted:       #5E5E5E;
+  --text-primary: #010101;
+  --text-muted: #5E5E5E;
 
   /* Borders */
-  --border:           #DADADA;
+  --border: #DADADA;
 
   /* Sidebar interaction */
-  --sidebar-hover:    #B6B5C4;
+  --sidebar-hover: #B6B5C4;
 
   /* Primary / Accent */
-  --primary:          #8C5CFF;
-  --primary-hover:    #AC8EF3;
-  --primary-text:     #010101;
+  --primary: #8C5CFF;
+  --primary-hover: #AC8EF3;
+  --primary-text: #010101;
 
   /* Reflect colours */
-  --reflect-1:        #291D46;
-  --reflect-2:        #304437;
+  --reflect-1: #291D46;
+  --reflect-2: #304437;
 
   /* Charts */
-  --chart-1:          #4ADE80;
-  --chart-2:          #8C5CFF;
-  --chart-3:          #FCA5A5;
-  --chart-4:          #5993F4;
-  --chart-5:          #BFBCF5;
-  --chart-6:          #DAC95A;
-  --chart-7:          #A0A0A0;
+  --chart-1: #4ADE80;
+  --chart-2: #8C5CFF;
+  --chart-3: #FCA5A5;
+  --chart-4: #5993F4;
+  --chart-5: #BFBCF5;
+  --chart-6: #DAC95A;
+  --chart-7: #A0A0A0;
 }
 
 /* ── Dark mode overrides ── */
 .dark {
-  --bg-page:          #080808;
-  --bg-sidebar:       #101010;
-  --bg-card:          #0B0B0B;
-  --bg-card-border:   #121212;
+  --bg-page: #080808;
+  --bg-sidebar: #101010;
+  --bg-card: #0B0B0B;
+  --bg-card-border: #121212;
 
-  --text-primary:     #FFFFFF;
-  --text-muted:       #A0A0A0;
+  --text-primary: #FFFFFF;
+  --text-muted: #A0A0A0;
 
-  --border:           #242424;
+  --border: #242424;
 
-  --sidebar-hover:    #2A2C33;
+  --sidebar-hover: #2A2C33;
 
-  --primary:          #8C5CFF;
-  --primary-hover:    #AC8EF3;
-  --primary-text:     #FFFFFF;
+  --primary: #8C5CFF;
+  --primary-hover: #AC8EF3;
+  --primary-text: #FFFFFF;
 }
 
 @theme inline {
-  --color-background:   var(--bg-page);
-  --color-foreground:   var(--text-primary);
-  --color-sidebar:      var(--bg-sidebar);
-  --color-card:         var(--bg-card);
-  --color-border:       var(--border);
-  --color-primary:      var(--primary);
+  --color-background: var(--bg-page);
+  --color-foreground: var(--text-primary);
+  --color-sidebar: var(--bg-sidebar);
+  --color-card: var(--bg-card);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
-  --color-muted:        var(--text-muted);
+  --color-muted: var(--text-muted);
 
   /* Inter as the primary font */
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
@@ -87,23 +87,29 @@
 
 html {
   font-family: var(--font-sans);
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
 }
 
 html::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, Opera */
+  display: none;
+  /* Chrome, Safari, Opera */
 }
 
 body {
   background-color: var(--bg-page);
   color: var(--text-primary);
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
 }
 
 body::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, Opera */
+  display: none;
+  /* Chrome, Safari, Opera */
 }
 
 /* Typography scale (rem) */
@@ -122,13 +128,30 @@ body::-webkit-scrollbar {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
 .no-scrollbar {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
 }
 
 /* ── Global Text Opacity (85%, excluding muted text) ── */
-h1, h2, h3, h4, h5, h6, p, span, a, input, textarea, button, label, select, option {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+span,
+a,
+input,
+textarea,
+button,
+label,
+select,
+option {
   &:not(.text-muted):not([class*="text-foreground/"]):not([class*="text-white/"]):not(.text-white):not(.text-foreground) {
     opacity: 0.85 !important;
   }
@@ -136,13 +159,25 @@ h1, h2, h3, h4, h5, h6, p, span, a, input, textarea, button, label, select, opti
 
 /* ── Toast Animations ── */
 @keyframes toast-in {
-  from { opacity: 0; transform: translateX(110%) scale(0.95); }
-  to   { opacity: 1; transform: translateX(0)   scale(1); }
+  from {
+    opacity: 0;
+    transform: translateX(110%) scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
 }
 
 @keyframes toast-bar {
-  from { width: 100%; }
-  to   { width: 0%; }
+  from {
+    width: 100%;
+  }
+
+  to {
+    width: 0%;
+  }
 }
 
 .animate-toast-in {
@@ -153,5 +188,437 @@ h1, h2, h3, h4, h5, h6, p, span, a, input, textarea, button, label, select, opti
   animation: toast-bar linear forwards;
 }
 
+/* ═════════════════════════════════════════════════════════════════
+   CanaFri UI Animation System
+   ─────────────────────────────────────────────────────────────────
+   ADDITIVE ONLY — no existing rules are modified.
+   All animations default to transform + opacity to avoid
+   layout recalculations and stay performant on low-end devices.
+   ═════════════════════════════════════════════════════════════════ */
 
+/* ── 1. Global animation custom properties ─────────────────────── */
 
+:root {
+  --anim-duration:       300ms;
+  --anim-duration-fast:  150ms;
+  --anim-duration-med:   200ms;
+  --anim-duration-slow:  350ms;
+  --anim-easing:         cubic-bezier(0, 0, 0.2, 1); /* ease-out */
+  --anim-easing-spring:  cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── 2. Reduced-motion: disable all animations globally ─────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration:        0.01ms !important;
+    animation-iteration-count: 1      !important;
+    transition-duration:       0.01ms !important;
+    scroll-behavior:           auto   !important;
+  }
+}
+
+/* ── 3. Keyframe catalogue ──────────────────────────────────────── */
+
+/* — Fade — */
+@keyframes anim-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes anim-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* — Modals & popup cards: fade + scale (300ms) — */
+@keyframes anim-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes anim-modal-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+}
+
+/* — Bottom sheets: slide up (300ms) — */
+@keyframes anim-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes anim-slide-down {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+/* — Dropdowns: fade + slide from top (250ms) — */
+@keyframes anim-dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* — Tailwind animate-in compat: slide from various origins — */
+@keyframes anim-slide-in-from-top-2 {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes anim-slide-in-from-bottom-4 {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes anim-slide-in-from-bottom-8 {
+  from {
+    opacity: 0;
+    transform: translateY(2rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* — Zoom in (confirmation cards) — */
+@keyframes anim-zoom-in-95 {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* — Success state: scale + fade (300ms) — */
+@keyframes anim-scale-up {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* — Error state: horizontal shake (300ms) — */
+@keyframes anim-shake {
+  0%,  100% { transform: translateX(0); }
+  15%        { transform: translateX(-5px); }
+  30%        { transform: translateX(5px); }
+  45%        { transform: translateX(-4px); }
+  60%        { transform: translateX(4px); }
+  75%        { transform: translateX(-2px); }
+  90%        { transform: translateX(2px); }
+}
+
+/* — Page transition: fade + slight slide (350ms) — */
+@keyframes anim-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* — Accordion: content reveal (250ms, height handled via max-height trick) — */
+@keyframes anim-accordion-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── 4. Utility classes ─────────────────────────────────────────── */
+
+/* Backdrop / overlay fade */
+.animate-fade-in {
+  animation: anim-fade-in var(--anim-duration) var(--anim-easing) both;
+}
+.animate-fade-out {
+  animation: anim-fade-out var(--anim-duration) var(--anim-easing) both;
+}
+
+/* Modals & popup cards */
+.animate-modal-in {
+  animation: anim-modal-in var(--anim-duration) var(--anim-easing) both;
+}
+.animate-modal-out {
+  animation: anim-modal-out var(--anim-duration) var(--anim-easing) both;
+}
+
+/* Bottom sheets */
+.animate-slide-up {
+  animation: anim-slide-up var(--anim-duration) var(--anim-easing) both;
+}
+.animate-slide-down {
+  animation: anim-slide-down var(--anim-duration) var(--anim-easing) both;
+}
+
+/* Dropdown menus */
+.animate-dropdown-in {
+  animation: anim-dropdown-in 250ms var(--anim-easing) both;
+}
+
+/* Success + error states */
+.animate-scale-up {
+  animation: anim-scale-up var(--anim-duration) var(--anim-easing) both;
+}
+.animate-shake {
+  animation: anim-shake var(--anim-duration) var(--anim-easing) both;
+}
+
+/* Page transitions */
+.animate-page-in {
+  animation: anim-page-in var(--anim-duration-slow) var(--anim-easing) both;
+}
+
+/* Accordion content */
+.animate-accordion-open {
+  animation: anim-accordion-open 250ms var(--anim-easing) both;
+}
+
+/* Zoom confirmation cards */
+.animate-zoom-in-95 {
+  animation: anim-zoom-in-95 200ms var(--anim-easing) both;
+}
+
+/* ── 5. Tailwind animate-in plugin compat shims (Tailwind v4) ───── */
+/*
+ * Several components use .animate-in .fade-in .slide-in-from-* .zoom-in-95
+ * from the tailwindcss-animate plugin which is NOT installed.
+ * These shims make those class combinations work without touching any TSX.
+ *
+ * Usage pattern in components:  className="animate-in fade-in duration-200"
+ * How it works: .animate-in sets animation-name to 'none' as default,
+ * then modifier classes override animation-name to the correct keyframe.
+ */
+
+.animate-in {
+  animation-fill-mode: both;
+  animation-timing-function: var(--anim-easing);
+  animation-duration: var(--anim-duration);
+}
+
+/* Modifier: fade */
+.animate-in.fade-in {
+  animation-name: anim-fade-in;
+}
+
+/* Modifier: zoom */
+.animate-in.zoom-in-95 {
+  animation-name: anim-zoom-in-95;
+}
+
+/* Modifier: slide origins */
+.animate-in.slide-in-from-top-2 {
+  animation-name: anim-slide-in-from-top-2;
+}
+.animate-in.slide-in-from-bottom-4 {
+  animation-name: anim-slide-in-from-bottom-4;
+}
+.animate-in.slide-in-from-bottom-8 {
+  animation-name: anim-slide-in-from-bottom-8;
+}
+
+/* Duration overrides when combined with .animate-in */
+.animate-in.duration-100 { animation-duration: 100ms; }
+.animate-in.duration-200 { animation-duration: 200ms; }
+.animate-in.duration-300 { animation-duration: 300ms; }
+
+/* ── 6. Component micro-utilities ───────────────────────────────── */
+
+/* Buttons: subtle scale on press (150ms) */
+.btn-press {
+  transition: transform var(--anim-duration-fast) var(--anim-easing);
+}
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+/* Hover cards: elevation + shadow increase (200ms) */
+.card-hover {
+  transition:
+    box-shadow var(--anim-duration-med) var(--anim-easing),
+    transform   var(--anim-duration-med) var(--anim-easing);
+  will-change: transform, box-shadow;
+}
+.card-hover:hover {
+  transform:  translateY(-1px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.10), 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.dark .card-hover:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.20);
+}
+
+/* Toggle switches: smooth slide (200ms) — compatible with existing sidebar toggles */
+.toggle-track {
+  transition: background-color var(--anim-duration-med) var(--anim-easing);
+}
+.toggle-thumb {
+  transition: left var(--anim-duration-med) var(--anim-easing);
+}
+
+/* Notifications / toasts: fade + slide up (250ms)
+   Note: existing animate-toast-in covers the main toast — this is for
+   any future notification components */
+.animate-notify-in {
+  animation: anim-slide-in-from-bottom-4 250ms var(--anim-easing) both;
+}
+
+/* ── 7. Future component contract ───────────────────────────────── */
+/*
+ * Any new component added to this project must use these utility
+ * classes to stay consistent with the animation system:
+ *
+ *   Modals / popup cards   →  .animate-modal-in on the card element
+ *   Bottom sheets          →  .animate-slide-up
+ *   Dropdowns              →  .animate-dropdown-in  (or .animate-in .fade-in .slide-in-from-top-2)
+ *   Page enter             →  .animate-page-in
+ *   Success confirmation   →  .animate-scale-up
+ *   Error shake            →  .animate-shake
+ *   Button press feedback  →  .btn-press
+ *   Hover cards            →  .card-hover
+ */
+
+/* ═════════════════════════════════════════════════════════════════
+   CanaFri Skeleton Loading System
+   ─────────────────────────────────────────────────────────────────
+   ADDITIVE ONLY — shimmer left-to-right, 1.5 s, infinite.
+   Uses transform + opacity only for GPU-composited performance.
+   ═════════════════════════════════════════════════════════════════ */
+
+/* ── Shimmer keyframe (left → right sweep) ──────────────────────── */
+
+@keyframes skeleton-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ── Base skeleton class ─────────────────────────────────────────── */
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: rgba(128, 128, 128, 0.10);
+  border-radius: 0.5rem;
+}
+
+.dark .skeleton {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Shimmer sweep pseudo-element */
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.18) 50%,
+    transparent 100%
+  );
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+.dark .skeleton::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    transparent 100%
+  );
+}
+
+/* ── Shape presets ───────────────────────────────────────────────── */
+
+/* Rounded pill — for text lines */
+.skeleton-text {
+  height: 0.75rem;
+  border-radius: 9999px;
+}
+
+/* Full circle — for avatars */
+.skeleton-avatar {
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+/* Rounded rect — for buttons / badges */
+.skeleton-btn {
+  height: 2.25rem;
+  border-radius: 0.75rem;
+}
+
+/* Card container — matches bg-card style */
+.skeleton-card {
+  border-radius: 1rem;
+  background-color: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+}
+
+/* ── Content fade-in after skeleton clears ───────────────────────── */
+
+.skeleton-content-enter {
+  animation: anim-fade-in 200ms var(--anim-easing) both;
+}
+
+/* ── Reduced motion: instant skeleton ────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+    opacity: 0;
+  }
+}

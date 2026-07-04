@@ -73,11 +73,10 @@ const TOKEN = {
 /** Primary navigation — shown on desktop, tablet and in the mobile drawer */
 const PRIMARY_NAV: NavItemConfig[] = [
   { label: 'Dashboard',    icon: LayoutDashboard },
-  { label: 'Bookmarks',    icon: Bookmark },
+  { label: 'Saved',        icon: Bookmark },
   { label: 'Favorites',    icon: Heart },
   { label: 'Wallet',       icon: Wallet },
-  { label: 'Manage Orders', icon: ClipboardList },
-  { label: 'Find Job',     icon: Briefcase },
+  { label: 'Selling',      icon: Briefcase },
   { label: 'Post a Job',   icon: PlusSquare },
   { label: 'Become a seller', icon: UserPlus },
   { label: 'Messages',     icon: MessageSquare, badge: 5 },
@@ -90,10 +89,9 @@ const PRIMARY_NAV: NavItemConfig[] = [
  * so they are excluded here to avoid duplication.
  */
 const MOBILE_DRAWER_NAV: NavItemConfig[] = [
-  { label: 'Bookmarks',    icon: Bookmark },
+  { label: 'Saved',        icon: Bookmark },
   { label: 'Favorites',    icon: Heart },
-  { label: 'Manage Orders', icon: ClipboardList },
-  { label: 'Find Job',     icon: Briefcase },
+  { label: 'Selling',      icon: Briefcase },
   { label: 'Post a Job',   icon: PlusSquare },
   { label: 'Become a seller', icon: UserPlus },
   { label: 'Analysis',     icon: BarChart3 },
@@ -180,50 +178,41 @@ function SellerModeTogglePill({ enabled, onToggle }: SellerModeToggleProps) {
   );
 }
 
-// ─── Bookmark nav item with optional freelancer dropdown ─────────────────────
+// BookmarkNavItem removed - replaced by direct Saved NavItem rendering.
 
-interface BookmarkNavItemProps {
+// ─── Selling nav item with sub-items dropdown ────────────────────────────────
+
+interface SellingNavItemProps {
   activePage: string;
   setActivePage: (page: string) => void;
-  sellerMode: boolean;
-  isFreelancer: boolean;
   showLabel?: boolean;
   onClose?: () => void;
 }
 
-function BookmarkNavItem({ activePage, setActivePage, sellerMode, isFreelancer, showLabel = true, onClose }: BookmarkNavItemProps) {
+function SellingNavItem({ activePage, setActivePage, showLabel = true, onClose }: SellingNavItemProps) {
   const [open, setOpen] = useState(false);
 
-  const isDropdown = isFreelancer && sellerMode;
-  const isActive = activePage === 'Bookmarks' || activePage === 'Bookmarks:Content' || activePage === 'Bookmarks:Jobs';
+  const subItems = [
+    { label: 'Find a Job', page: 'Find Job' },
+    { label: 'Proposals', page: 'Proposals' },
+    { label: 'Gigs', page: 'Gigs' },
+    { label: 'Buyer Request', page: 'Buyer Request' },
+    { label: 'Orders', page: 'Orders' },
+  ];
+
+  const isActive = subItems.some(item => activePage === item.page) || activePage === 'Selling';
 
   const handleNavigate = (page: string) => {
     setActivePage(page);
-    setOpen(false);
     onClose?.();
   };
-
-  if (!isDropdown) {
-    return (
-      <NavItem
-        label="Bookmarks"
-        icon={Bookmark}
-        active={activePage === 'Bookmarks'}
-        showLabel={showLabel}
-        onClick={() => {
-          setActivePage('Bookmarks');
-          onClose?.();
-        }}
-      />
-    );
-  }
 
   return (
     <div className="relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title={!showLabel ? 'Bookmarks' : undefined}
+        title={!showLabel ? 'Selling' : undefined}
         className={[
           'flex h-[3rem] w-full items-center gap-[0.625rem] rounded-[0.75rem]',
           'cursor-pointer transition-colors duration-300 ease-out text-left',
@@ -232,7 +221,7 @@ function BookmarkNavItem({ activePage, setActivePage, sellerMode, isFreelancer, 
         ].join(' ')}
       >
         <span className="relative shrink-0 opacity-80">
-          <Bookmark size={20} strokeWidth={1.5} className="text-foreground" />
+          <Briefcase size={20} strokeWidth={1.5} className="text-foreground" />
         </span>
         {showLabel && (
           <>
@@ -240,7 +229,7 @@ function BookmarkNavItem({ activePage, setActivePage, sellerMode, isFreelancer, 
               'flex-1 whitespace-nowrap font-sans text-[0.8125rem] font-normal leading-[1.125rem] text-foreground transition-opacity duration-300 ease-out',
               isActive ? 'opacity-100' : 'opacity-80',
             ].join(' ')}>
-              Bookmarks
+              Selling
             </span>
             <span className={[
               'text-foreground/50 transition-transform duration-200',
@@ -257,10 +246,7 @@ function BookmarkNavItem({ activePage, setActivePage, sellerMode, isFreelancer, 
       {/* Dropdown */}
       {open && showLabel && (
         <div className="ml-6 mt-1 flex flex-col gap-[2px]">
-          {[
-            { label: 'Content', page: 'Bookmarks:Content' },
-            { label: 'Jobs', page: 'Bookmarks:Jobs' },
-          ].map(({ label, page }) => (
+          {subItems.map(({ label, page }) => (
             <button
               key={page}
               type="button"
@@ -553,16 +539,36 @@ function DesktopSidebar({
       {/* Everything else scrolls */}
       <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-[1.875rem] mt-[1.875rem]">
         <nav className="flex w-full flex-col gap-[0.3125rem]">
-          {PRIMARY_NAV.map((item) =>
-            item.label === 'Bookmarks' ? (
-              <BookmarkNavItem
-                key="Bookmarks"
-                activePage={activePage}
-                setActivePage={setActivePage}
-                sellerMode={sellerMode}
-                isFreelancer={isFreelancer}
-              />
-            ) : (
+          {PRIMARY_NAV.map((item) => {
+            if (item.label === 'Saved') {
+              const label = sellerMode ? 'Saved Jobs' : 'Saved';
+              const targetPage = sellerMode ? 'Bookmarks:Jobs' : 'Bookmarks';
+              const isActive = sellerMode
+                ? activePage === 'Bookmarks:Jobs'
+                : (activePage === 'Bookmarks' || activePage === 'Bookmarks:Content');
+              return (
+                <NavItem
+                  key="Saved"
+                  label={label}
+                  icon={item.icon}
+                  active={isActive}
+                  onClick={() => setActivePage(targetPage)}
+                />
+              );
+            }
+            if (item.label === 'Selling') {
+              if (!sellerMode) return null;
+              return (
+                <SellingNavItem
+                  key="Selling"
+                  activePage={activePage}
+                  setActivePage={setActivePage}
+                />
+              );
+            }
+            // Hide 'Become a seller' once already in seller mode
+            if (item.label === 'Become a seller' && sellerMode) return null;
+            return (
               <NavItem
                 key={item.label}
                 label={item.label}
@@ -571,8 +577,8 @@ function DesktopSidebar({
                 active={activePage === item.label}
                 onClick={() => setActivePage(item.label)}
               />
-            )
-          )}
+            );
+          })}
         </nav>
 
         <div className="flex-1" />
@@ -640,17 +646,38 @@ function TabletSidebar({
       {/* Everything else scrolls */}
       <div className="flex-1 overflow-y-auto no-scrollbar mt-[1.875rem] flex flex-col">
         <div className="flex w-full shrink-0 flex-col gap-[0.3125rem]">
-          {PRIMARY_NAV.map((item) =>
-            item.label === 'Bookmarks' ? (
-              <BookmarkNavItem
-                key="Bookmarks"
-                activePage={activePage}
-                setActivePage={setActivePage}
-                sellerMode={sellerMode}
-                isFreelancer={isFreelancer}
-                showLabel={expanded}
-              />
-            ) : (
+          {PRIMARY_NAV.map((item) => {
+            if (item.label === 'Saved') {
+              const label = sellerMode ? 'Saved Jobs' : 'Saved';
+              const targetPage = sellerMode ? 'Bookmarks:Jobs' : 'Bookmarks';
+              const isActive = sellerMode
+                ? activePage === 'Bookmarks:Jobs'
+                : (activePage === 'Bookmarks' || activePage === 'Bookmarks:Content');
+              return (
+                <NavItem
+                  key="Saved"
+                  label={label}
+                  icon={item.icon}
+                  active={isActive}
+                  showLabel={expanded}
+                  onClick={() => setActivePage(targetPage)}
+                />
+              );
+            }
+            if (item.label === 'Selling') {
+              if (!sellerMode) return null;
+              return (
+                <SellingNavItem
+                  key="Selling"
+                  activePage={activePage}
+                  setActivePage={setActivePage}
+                  showLabel={expanded}
+                />
+              );
+            }
+            // Hide 'Become a seller' once already in seller mode
+            if (item.label === 'Become a seller' && sellerMode) return null;
+            return (
               <NavItem
                 key={item.label}
                 label={item.label}
@@ -660,8 +687,8 @@ function TabletSidebar({
                 showLabel={expanded}
                 onClick={() => setActivePage(item.label)}
               />
-            )
-          )}
+            );
+          })}
         </div>
 
         <div className="flex-1" />
@@ -774,17 +801,37 @@ function MobileSidebar({
         {/* Nav + logout */}
         <div className="mt-[1.5rem] flex flex-1 flex-col gap-6 overflow-y-auto">
           <nav className="flex w-full flex-col gap-[0.3125rem]">
-            {MOBILE_DRAWER_NAV.map((item) =>
-              item.label === 'Bookmarks' ? (
-                <BookmarkNavItem
-                  key="Bookmarks"
-                  activePage={activePage}
-                  setActivePage={setActivePage}
-                  sellerMode={sellerMode}
-                  isFreelancer={isFreelancer}
-                  onClose={onClose}
-                />
-              ) : (
+            {MOBILE_DRAWER_NAV.map((item) => {
+              if (item.label === 'Saved') {
+                const label = sellerMode ? 'Saved Jobs' : 'Saved';
+                const targetPage = sellerMode ? 'Bookmarks:Jobs' : 'Bookmarks';
+                const isActive = sellerMode
+                  ? activePage === 'Bookmarks:Jobs'
+                  : (activePage === 'Bookmarks' || activePage === 'Bookmarks:Content');
+                return (
+                  <NavItem
+                    key="Saved"
+                    label={label}
+                    icon={item.icon}
+                    active={isActive}
+                    onClick={() => { setActivePage(targetPage); onClose(); }}
+                  />
+                );
+              }
+              if (item.label === 'Selling') {
+                if (!sellerMode) return null;
+                return (
+                  <SellingNavItem
+                    key="Selling"
+                    activePage={activePage}
+                    setActivePage={setActivePage}
+                    onClose={onClose}
+                  />
+                );
+              }
+              // Hide 'Become a seller' once already in seller mode
+              if (item.label === 'Become a seller' && sellerMode) return null;
+              return (
                 <NavItem
                   key={item.label}
                   label={item.label}
@@ -793,8 +840,8 @@ function MobileSidebar({
                   active={activePage === item.label}
                   onClick={() => { setActivePage(item.label); onClose(); }}
                 />
-              )
-            )}
+              );
+            })}
           </nav>
 
           <div className="flex-1" />

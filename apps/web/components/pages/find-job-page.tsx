@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import ApplyJobPage from '@/components/pages/apply-job-page';
+import { FindJobPageSkeleton } from '@/components/ui/skeleton';
 
 // ─── Types & Mock Data ────────────────────────────────────────────────────────
 
@@ -798,6 +799,7 @@ interface FindJobPageProps {
 }
 
 export default function FindJobPage({ onBack, onMobileViewChange, savedJobIds: externalSavedJobIds, onToggleSaveJob: externalToggleSaveJob }: FindJobPageProps) {
+  const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState<Job | null>(JOBS[0]);
   const [mobileView, setMobileView] = useState<"list" | "detail">("list");
   const [applyingJob, setApplyingJob] = useState<Job | null>(null);
@@ -833,6 +835,10 @@ export default function FindJobPage({ onBack, onMobileViewChange, savedJobIds: e
   };
 
   // ── Apply form: full-page overlay within the SPA ──
+  // Skeleton loading: clears after mount; swap setTimeout for API finally() when real data arrives
+  useEffect(() => { const t = setTimeout(() => setLoading(false), 800); return () => clearTimeout(t); }, []);
+  if (loading) return <FindJobPageSkeleton />;
+
   if (applyingJob) {
     return <ApplyJobPage job={applyingJob} onBack={handleBackFromApply} />;
   }
