@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FileText, Share2, Mail, Star, Archive, Ban, Trash2 } from "lucide-react";
+import { MessagesPageSkeleton } from '@/components/ui/skeleton';
 
 const AVATAR_URL =
   "https://api.builder.io/api/v1/image/assets/TEMP/d41c8641e39adfbbaa60ab5faeec252a85b98a20?width=70";
@@ -449,8 +450,13 @@ interface MessagesPageProps {
 }
 
 export default function MessagesPage({ onBack, onMobileViewChange }: MessagesPageProps) {
+  const [loading, setLoading] = useState(true);
   const [selectedConv, setSelectedConv] = useState<number | null>(1);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
+
+  // Skeleton loading: clears after mount; swap setTimeout for API finally() when real data arrives
+  useEffect(() => { const t = setTimeout(() => setLoading(false), 800); return () => clearTimeout(t); }, []);
+  if (loading) return <MessagesPageSkeleton />;
 
   const handleSelect = (id: number) => {
     setSelectedConv(id);
