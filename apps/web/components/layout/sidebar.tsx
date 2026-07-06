@@ -76,8 +76,8 @@ const PRIMARY_NAV: NavItemConfig[] = [
   { label: 'Saved',        icon: Bookmark },
   { label: 'Favorites',    icon: Heart },
   { label: 'Wallet',       icon: Wallet },
+  { label: 'Jobs',         icon: ClipboardList },
   { label: 'Selling',      icon: Briefcase },
-  { label: 'Post a Job',   icon: PlusSquare },
   { label: 'Become a seller', icon: UserPlus },
   { label: 'Messages',     icon: MessageSquare, badge: 5 },
   { label: 'Analysis',     icon: BarChart3 },
@@ -91,8 +91,8 @@ const PRIMARY_NAV: NavItemConfig[] = [
 const MOBILE_DRAWER_NAV: NavItemConfig[] = [
   { label: 'Saved',        icon: Bookmark },
   { label: 'Favorites',    icon: Heart },
+  { label: 'Jobs',         icon: ClipboardList },
   { label: 'Selling',      icon: Briefcase },
-  { label: 'Post a Job',   icon: PlusSquare },
   { label: 'Become a seller', icon: UserPlus },
   { label: 'Analysis',     icon: BarChart3 },
 ];
@@ -271,7 +271,93 @@ function SellingNavItem({ activePage, setActivePage, showLabel = true, onClose }
   );
 }
 
-// ─── Nav item ─────────────────────────────────────────────────────────────────
+// ─── Jobs nav item with sub-items dropdown (Buyer Mode) ──────────────────────
+
+interface JobsNavItemProps {
+  activePage: string;
+  setActivePage: (page: string) => void;
+  showLabel?: boolean;
+  onClose?: () => void;
+}
+
+function JobsNavItem({ activePage, setActivePage, showLabel = true, onClose }: JobsNavItemProps) {
+  const [open, setOpen] = useState(false);
+
+  const subItems = [
+    { label: 'Post a Job',    page: 'Post a Job' },
+    { label: 'My Posted Jobs', page: 'My Posted Jobs' },
+  ];
+
+  const isActive = subItems.some(item => activePage === item.page) || activePage === 'Jobs';
+
+  const handleNavigate = (page: string) => {
+    setActivePage(page);
+    onClose?.();
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title={!showLabel ? 'Jobs' : undefined}
+        className={[
+          'flex h-[3rem] w-full items-center gap-[0.625rem] rounded-[0.75rem]',
+          'cursor-pointer transition-colors duration-300 ease-out text-left',
+          showLabel ? 'px-[1.5rem]' : 'justify-center px-0',
+          isActive ? 'bg-foreground/10' : 'hover:bg-border/50 dark:hover:bg-border/50',
+        ].join(' ')}
+      >
+        <span className="relative shrink-0 opacity-80">
+          <ClipboardList size={20} strokeWidth={1.5} className="text-foreground" />
+        </span>
+        {showLabel && (
+          <>
+            <span className={[
+              'flex-1 whitespace-nowrap font-sans text-[0.8125rem] font-normal leading-[1.125rem] text-foreground transition-opacity duration-300 ease-out',
+              isActive ? 'opacity-100' : 'opacity-80',
+            ].join(' ')}>
+              Jobs
+            </span>
+            <span className={[
+              'text-foreground/50 transition-transform duration-200',
+              open ? 'rotate-180' : '',
+            ].join(' ')}>
+              <svg className="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </span>
+          </>
+        )}
+      </button>
+
+      {/* Dropdown */}
+      {open && showLabel && (
+        <div className="ml-6 mt-1 flex flex-col gap-[2px]">
+          {subItems.map(({ label, page }) => (
+            <button
+              key={page}
+              type="button"
+              onClick={() => handleNavigate(page)}
+              className={[
+                'flex h-[2.5rem] w-full items-center gap-[0.5rem] rounded-[0.75rem] px-[1.25rem]',
+                'cursor-pointer transition-colors duration-200 text-left',
+                activePage === page ? 'bg-foreground/10' : 'hover:bg-border/50',
+              ].join(' ')}
+            >
+              <span className={[
+                'font-sans text-[0.75rem] font-normal leading-[1.125rem]',
+                activePage === page ? 'text-foreground opacity-100' : 'text-foreground opacity-70',
+              ].join(' ')}>
+                {label}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface NavItemProps {
   label: string;
@@ -566,6 +652,16 @@ function DesktopSidebar({
                 />
               );
             }
+            if (item.label === 'Jobs') {
+              if (sellerMode) return null;
+              return (
+                <JobsNavItem
+                  key="Jobs"
+                  activePage={activePage}
+                  setActivePage={setActivePage}
+                />
+              );
+            }
             // Hide 'Become a seller' once already in seller mode
             if (item.label === 'Become a seller' && sellerMode) return null;
             return (
@@ -669,6 +765,17 @@ function TabletSidebar({
               return (
                 <SellingNavItem
                   key="Selling"
+                  activePage={activePage}
+                  setActivePage={setActivePage}
+                  showLabel={expanded}
+                />
+              );
+            }
+            if (item.label === 'Jobs') {
+              if (sellerMode) return null;
+              return (
+                <JobsNavItem
+                  key="Jobs"
                   activePage={activePage}
                   setActivePage={setActivePage}
                   showLabel={expanded}
@@ -823,6 +930,17 @@ function MobileSidebar({
                 return (
                   <SellingNavItem
                     key="Selling"
+                    activePage={activePage}
+                    setActivePage={setActivePage}
+                    onClose={onClose}
+                  />
+                );
+              }
+              if (item.label === 'Jobs') {
+                if (sellerMode) return null;
+                return (
+                  <JobsNavItem
+                    key="Jobs"
                     activePage={activePage}
                     setActivePage={setActivePage}
                     onClose={onClose}

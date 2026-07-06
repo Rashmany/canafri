@@ -18,6 +18,10 @@ import ProposalsPage from '@/components/pages/proposals-page';
 import GigsPage from '@/components/pages/gigs-page';
 import BuyerRequestsPage from '@/components/pages/buyer-requests-page';
 import OrdersPage from '@/components/pages/orders-page';
+import OrderDetailPage from '@/components/pages/order-detail-page';
+import SubmitProjectPage from '@/components/pages/submit-project-page';
+import ResolutionPage from '@/components/pages/resolution-page';
+import BuyerJobsPage from '@/components/pages/buyer-jobs-page';
 
 
 /**
@@ -103,7 +107,19 @@ export default function Home() {
           ) : activePage === 'Buyer Request' ? (
             <BuyerRequestsPage onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Orders' ? (
-            <OrdersPage />
+            <OrdersPage onOrderClick={() => handleNavigate('OrderDetail')} />
+          ) : activePage === 'OrderDetail' ? (
+            <OrderDetailPage onBack={() => handleNavigate('Orders')} onDeliverClick={() => handleNavigate('SubmitProject')} onResolveClick={() => handleNavigate('Resolution')} />
+          ) : activePage === 'SubmitProject' ? (
+            <SubmitProjectPage onBack={() => handleNavigate('OrderDetail')} />
+          ) : activePage === 'Resolution' ? (
+            <ResolutionPage onBack={() => handleNavigate('OrderDetail')} />
+          ) : activePage === 'My Posted Jobs' ? (
+            <BuyerJobsPage 
+              onBack={() => handleNavigate('Dashboard')} 
+              onCreateJobClick={() => handleNavigate('Post a Job')} 
+              onJobClick={() => handleNavigate('OrderDetail')} 
+            />
           ) : activePage === 'Bookmarks:Jobs' ? (
             <JobBookmarkedPage
               onBack={() => handleNavigate('Bookmarks')}
