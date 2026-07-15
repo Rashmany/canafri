@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { AnalysisPageSkeleton } from '@/components/ui/skeleton';
 import StakeModal from '@/components/ui/stake-modal';
+import Footer from '@/components/layout/footer';
 import SubscribeModal from '@/components/ui/subscribe-modal';
 import { cn } from '@/lib/utils';
 
@@ -777,6 +778,9 @@ export default function AnalysisPage({ sellerMode = false, onBack }: AnalysisPag
           </div>
         )}
 
+      </div>
+      <div className="hidden md:block">
+        <Footer />
       </div>
     </div>
   );

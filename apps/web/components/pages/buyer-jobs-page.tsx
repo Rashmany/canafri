@@ -2,6 +2,7 @@
 import { useState, useRef, useCallback } from "react";
 import { FileText, ChevronLeft, ChevronRight, Plus, Pencil, X, Copy, PauseCircle, XCircle, BarChart2, Flag, Check, CheckCircle2, RefreshCw, Download, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Footer from '@/components/layout/footer';
 
 const getStatusStyles = (status: string) => {
   switch (status.toLowerCase()) {
@@ -1337,6 +1338,9 @@ export default function BuyerJobsPage({ onBack, onJobClick, onCreateJobClick, on
           </div>
         )}
 
+      </div>
+      <div className="hidden md:block">
+        <Footer />
       </div>
     </div>
   );

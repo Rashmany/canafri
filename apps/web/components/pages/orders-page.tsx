@@ -2,6 +2,7 @@
 import { useState, useRef, useCallback } from "react";
 import { FileText, ChevronLeft, ChevronRight, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Footer from '@/components/layout/footer';
 
 const getStatusStyles = (status: string) => {
   switch (status.toLowerCase()) {
@@ -427,8 +428,11 @@ export default function OrdersPage({ onOrderClick, onDisputeApproveClick }: { on
             </div>
           </div>
 
-        </div>
       </div>
+      <div className="hidden md:block">
+        <Footer />
+      </div>
+    </div>
     </div>
   );
 }

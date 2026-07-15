@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, Plus, Image as ImageIcon, Eye, ShoppingBag, TrendingUp, MoreHorizontal } from 'lucide-react';
 import { FindJobPageSkeleton } from '@/components/ui/skeleton';
+import Footer from '@/components/layout/footer';
 
 interface Gig {
   id: number;
@@ -163,6 +164,9 @@ export default function GigsPage({ onBack }: GigsPageProps) {
             </div>
           )}
         </div>
+      </div>
+      <div className="hidden md:block">
+        <Footer />
       </div>
     </div>
   );

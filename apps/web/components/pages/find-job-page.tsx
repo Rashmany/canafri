@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import ApplyJobPage from '@/components/pages/apply-job-page';
 import { FindJobPageSkeleton } from '@/components/ui/skeleton';
+import Footer from '@/components/layout/footer';
 
 // ─── Types & Mock Data ────────────────────────────────────────────────────────
 
@@ -893,11 +894,11 @@ export default function FindJobPage({ onBack, onMobileViewChange, savedJobIds: e
   }
 
   return (
-    <div className="h-full w-full flex overflow-hidden">
-      <div className="flex flex-1 h-full">
+    <div className="h-full w-full bg-background flex flex-col overflow-y-auto no-scrollbar">
+      <div className="flex flex-1 w-full max-w-[1400px] mx-auto">
         {/* Left: Job List */}
         <div
-          className={`flex-col w-full lg:w-[380px] lg:flex-shrink-0 h-full border-r border-[#D8D8D8] dark:border-[#121212] ${
+          className={`flex-col w-full lg:w-[380px] lg:flex-shrink-0 lg:h-auto lg:overflow-visible h-full overflow-hidden border-r border-[#D8D8D8] dark:border-[#121212] ${
             mobileView === "detail" ? "hidden lg:flex" : "flex"
           }`}
         >
@@ -913,12 +914,16 @@ export default function FindJobPage({ onBack, onMobileViewChange, savedJobIds: e
 
         {/* Right: Job details */}
         <div
-          className={`flex-col flex-1 min-w-0 h-full ${
+          className={`flex-col flex-1 min-w-0 h-full lg:h-auto lg:overflow-visible ${
             mobileView === "list" ? "hidden lg:flex" : "flex"
           }`}
         >
           <JobDetailPanel job={selectedJob} onClose={handleCloseDetail} onApply={handleApply} />
         </div>
+      </div>
+
+      <div className="hidden md:block w-full">
+        <Footer />
       </div>
     </div>
   );

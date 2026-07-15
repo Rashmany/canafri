@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { SearchDropdown } from '@/components/ui/search-dropdown';
+import Footer from '@/components/layout/footer';
 import {
   mockSearchAll,
   type SearchUser,
@@ -622,6 +623,9 @@ export default function SearchPage({ query, onBack }: SearchPageProps) {
             </div>
           )}
         </section>
+      </div>
+      <div className="hidden md:block">
+        <Footer />
       </div>
     </div>
   );

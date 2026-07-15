@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { DashboardPageSkeleton } from '@/components/ui/skeleton';
+import Footer from '@/components/layout/footer';
 import {
   Sparkles,
   MessageSquare,
@@ -1590,13 +1591,13 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
   });
 
   return (
-    <div className="h-full w-full bg-background flex overflow-hidden">
-      <div className="flex flex-1 gap-6 px-0 py-0 h-full max-w-[1400px] mx-auto">
+    <div className="h-full w-full bg-background flex flex-col overflow-y-auto no-scrollbar">
+      <div className="flex flex-1 gap-6 px-0 py-0 max-w-[1400px] mx-auto w-full">
         
         {/* Left Panel: Feed List */}
         <div
           className={[
-            'flex flex-col flex-1 bg-background overflow-hidden h-full relative',
+            'flex flex-col flex-1 bg-background relative md:h-auto md:overflow-visible h-full overflow-hidden',
             mobileView === 'detail' ? 'hidden md:flex' : 'flex',
           ].join(' ')}
         >
@@ -1729,7 +1730,7 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
         {/* Right Panel: Detail Article Reader */}
         <div
           className={[
-            'flex flex-col flex-1 bg-background overflow-hidden h-full',
+            'flex flex-col flex-1 bg-background h-full overflow-hidden md:h-auto md:overflow-visible',
             mobileView === 'feed' ? 'hidden md:flex' : 'flex',
           ].join(' ')}
         >
@@ -1766,6 +1767,10 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
           )}
         </div>
 
+      </div>
+
+      <div className="hidden md:block w-full mt-8">
+        <Footer />
       </div>
 
       {/* Share dialog modal overlay */}

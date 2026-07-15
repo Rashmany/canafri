@@ -7,6 +7,7 @@ import ChangePasswordModal from '@/components/ui/change-password-modal';
 import TwoFactorAuthModal from '@/components/ui/two-factor-auth-modal';
 import { useToast } from '@/components/ui/toast';
 import { useTheme } from '@/components/theme-provider';
+import Footer from '@/components/layout/footer';
 import {
   ChevronRight,
   User,
@@ -1957,26 +1958,32 @@ export default function SettingsPage({ onBack, sellerMode = false }: PageProps) 
         />
       )}
 
-      <div className="flex h-full w-full overflow-hidden bg-background lg:gap-6 lg:p-6">
-        {/* ── Left menu (always visible on desktop, hidden on mobile if detail is open) ── */}
-        <div
-          className={[
-            'flex-col overflow-hidden bg-background w-full',
-            mobileShowDetail ? 'hidden lg:flex' : 'flex',
-            'lg:flex-1 lg:border-r lg:border-border',
-          ].join(' ')}
-        >
-          <SettingsMenu selected={selected} onSelect={handleSelect} />
+      <div className="h-full w-full bg-background flex flex-col overflow-y-auto no-scrollbar">
+        <div className="flex flex-1 w-full max-w-[1400px] mx-auto lg:gap-6 lg:p-6">
+          {/* ── Left menu (always visible on desktop, hidden on mobile if detail is open) ── */}
+          <div
+            className={[
+              'flex-col overflow-hidden bg-background w-full lg:h-auto lg:overflow-visible',
+              mobileShowDetail ? 'hidden lg:flex' : 'flex',
+              'lg:flex-1 lg:border-r lg:border-border',
+            ].join(' ')}
+          >
+            <SettingsMenu selected={selected} onSelect={handleSelect} />
+          </div>
+
+          {/* ── Right detail panel ── */}
+          <div
+            className={[
+              'flex-1 min-w-0 overflow-hidden lg:h-auto lg:overflow-visible',
+              mobileShowDetail ? 'flex flex-col' : 'hidden lg:flex lg:flex-col',
+            ].join(' ')}
+          >
+            {renderContentPanel()}
+          </div>
         </div>
 
-        {/* ── Right detail panel ── */}
-        <div
-          className={[
-            'flex-1 min-w-0 overflow-hidden',
-            mobileShowDetail ? 'flex flex-col' : 'hidden lg:flex lg:flex-col',
-          ].join(' ')}
-        >
-          {renderContentPanel()}
+        <div className="hidden md:block w-full">
+          <Footer />
         </div>
       </div>
     </>

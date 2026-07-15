@@ -23,6 +23,7 @@ import { useToast } from '@/components/ui/toast';
 import { Post, PostCard } from './dashboard-page';
 import ProfileOverviewCard from './profile-overview-card';
 import WorkHistoryCard from './work-history-card';
+import Footer from '@/components/layout/footer';
 
 // --- Constants for Buyer Profile ----------------------------------------------
 
@@ -166,7 +167,7 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
 
     return (
       <div className="flex flex-col overflow-y-auto bg-background h-full animate-in fade-in duration-200 px-4 py-6 gap-6 md:px-8">
-        
+
         {/* Header section (Figma 1118:17514) */}
         <div className="overflow-x-auto no-scrollbar w-full shrink-0">
           <div className="bg-card border border-card-border rounded-[16px] px-[24px] py-[30px] flex flex-row gap-[47px] items-center relative min-w-[850px]">
@@ -556,7 +557,9 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
         {activeSubTab === 'history' && (
           <WorkHistoryCard />
         )}
-
+        <div className="hidden md:block">
+          <Footer />
+        </div>
       </div>
     );
   }
@@ -650,6 +653,9 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
             />
           ))}
         </div>
+      </div>
+      <div className="hidden md:block">
+        <Footer />
       </div>
     </div>
   );

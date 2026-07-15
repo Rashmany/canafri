@@ -6,6 +6,7 @@ import { WalletPageSkeleton } from '@/components/ui/skeleton';
 import StakeModal from '@/components/ui/stake-modal';
 import SubscribeModal from '@/components/ui/subscribe-modal';
 import { useToast } from '@/components/ui/toast';
+import Footer from '@/components/layout/footer';
 
 // ─── Assets ──────────────────────────────────────────────────────────────────
 
@@ -1214,17 +1215,20 @@ export default function WalletPage({ onBack }: WalletPageProps) {
   };
 
   return (
-    <div className="h-full w-full flex overflow-hidden">
-      <div className="flex flex-1 gap-6 px-4 sm:px-8 h-full">
+    <div className="h-full w-full bg-background flex flex-col overflow-y-auto no-scrollbar">
+      <div className="flex flex-1 gap-6 px-4 sm:px-8 max-w-[1400px] mx-auto w-full">
         {/* Left: Wallet */}
-        <div className={`flex flex-col flex-1 min-w-0 h-full ${mobileView === "detail" ? "hidden lg:flex" : "flex"}`}>
+        <div className={`flex flex-col flex-1 min-w-0 h-full lg:h-auto lg:overflow-visible ${mobileView === "detail" ? "hidden lg:flex" : "flex"}`}>
           <WalletPanel onBack={onBack} onSelectTx={handleSelectTx} />
         </div>
 
         {/* Right: Transaction detail */}
-        <div className={`flex flex-col flex-1 min-w-0 h-full ${mobileView === "wallet" ? "hidden lg:flex" : "flex"}`}>
+        <div className={`flex flex-col flex-1 min-w-0 h-full lg:h-auto lg:overflow-visible ${mobileView === "wallet" ? "hidden lg:flex" : "flex"}`}>
           <SentPanel tx={selectedTx} onClose={handleClose} />
         </div>
+      </div>
+      <div className="hidden md:block w-full">
+        <Footer />
       </div>
     </div>
   );

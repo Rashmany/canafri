@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronUp, ChevronDown, Eye, Clock, FileText } from 'lucide-react';
 import { FindJobPageSkeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import Footer from '@/components/layout/footer';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -305,6 +306,9 @@ export default function ProposalsPage({ onBack }: ProposalsPageProps) {
             </p>
           </div>
         )}
+      </div>
+      <div className="hidden md:block">
+        <Footer />
       </div>
     </div>
   );
