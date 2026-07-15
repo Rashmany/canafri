@@ -1,7 +1,8 @@
 'use client';
 import { useState, useRef, useCallback } from "react";
-import { FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { FileText, ChevronLeft, ChevronRight, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Footer from '@/components/layout/footer';
 
 const getStatusStyles = (status: string) => {
   switch (status.toLowerCase()) {
@@ -36,14 +37,14 @@ const stats: StatCard[] = [
 ];
 
 const tabs = [
-  { label: "New",       count: 1 },
-  { label: "Active",    count: 1 },
-  { label: "Late",      count: 1 },
-  { label: "Delivered", count: 1 },
-  { label: "Completed", count: 1 },
-  { label: "Cancel",    count: 1 },
-  { label: "Starred",   count: 1 },
-  { label: "Priority",  count: 1 },
+  { label: "New",              count: 1 },
+  { label: "Active",           count: 1 },
+  { label: "Late",             count: 1 },
+  { label: "Delivered",        count: 1 },
+  { label: "Completed",        count: 1 },
+  { label: "Cancel",           count: 1 },
+  { label: "Starred",          count: 1 },
+  { label: "Dispute/Approve",  count: 1 },
 ];
 
 interface Order {
@@ -53,15 +54,15 @@ interface Order {
   subtitle: string;
   date: string;
   price: string;
-  status: "in progress" | "pending";
+  status: "in progress" | "pending" | "delivered";
   avatarClassName: string;
   initials: string;
 }
 
 const orders: Order[] = [
-  { name: "John Trek", handle: "@johntrek", title: "Create landing page,", subtitle: "Web development", date: "Mar. 26", price: "$26", status: "in progress", avatarClassName: "bg-emerald-600", initials: "JT" },
-  { name: "John Trek", handle: "@johntrek", title: "Create landing page,", subtitle: "Web development", date: "Mar. 26", price: "$26", status: "in progress", avatarClassName: "bg-sky-600",    initials: "JT" },
-  { name: "John Trek", handle: "@johntrek", title: "Create landing page,", subtitle: "Web development", date: "Mar. 26", price: "$26", status: "pending",     avatarClassName: "bg-orange-500",  initials: "JT" },
+  { name: "John Trek", handle: "@johntrek", title: "Create landing page,", subtitle: "Web development", date: "Mar. 26", price: "$26", status: "in progress", avatarClassName: "bg-[#291D46]", initials: "JT" },
+  { name: "John Trek", handle: "@johntrek", title: "Create landing page,", subtitle: "Web development", date: "Mar. 26", price: "$26", status: "delivered",    avatarClassName: "bg-[#291D46]", initials: "JT" },
+  { name: "John Trek", handle: "@johntrek", title: "Create landing page,", subtitle: "Web development", date: "Mar. 26", price: "$26", status: "pending",     avatarClassName: "bg-[#291D46]", initials: "JT" },
 ];
 
 /* ─── Tab Button ─────────────────────────────────────────────────────────────*/
@@ -263,8 +264,8 @@ function SearchToolbar() {
   );
 }
 
-/* ─── Page ─────────────────────────────────────────────────────────────────── */
-export default function OrdersPage({ onOrderClick }: { onOrderClick?: () => void }) {
+/* ─── Page ────────────────────────────────────────────────────────────────────────────────────── */
+export default function OrdersPage({ onOrderClick, onDisputeApproveClick }: { onOrderClick?: () => void; onDisputeApproveClick?: () => void }) {
   const [activeTab, setActiveTab] = useState("New");
 
   return (
@@ -348,13 +349,13 @@ export default function OrdersPage({ onOrderClick }: { onOrderClick?: () => void
             {/* Horizontally scrollable table wrapper (handles mobile overflow) */}
             <div className="overflow-x-auto no-scrollbar">
               {/* Column headers — visible on all sizes */}
-              <div className="grid grid-cols-[minmax(9rem,2fr)_minmax(8rem,2fr)_minmax(5rem,1fr)_minmax(5rem,1fr)_minmax(3rem,0.6fr)_minmax(6rem,1.2fr)] items-center gap-4 border-b border-[#D8D8D8] dark:border-[#121212] px-6 py-3 min-w-[36rem]">
+              <div className="grid grid-cols-[minmax(9rem,2fr)_minmax(8rem,2fr)_minmax(5rem,1fr)_minmax(5rem,1fr)_minmax(3rem,0.6fr)_minmax(8rem,1.6fr)] items-center gap-4 border-b border-[#D8D8D8] dark:border-[#121212] px-6 py-3 min-w-[38rem]">
                 <span className="text-[0.75rem] font-medium text-foreground/80">Buyer</span>
                 <span className="text-[0.75rem] font-medium text-foreground/80">Role</span>
                 <span className="text-[0.75rem] font-medium text-foreground/80">Date</span>
                 <span className="text-[0.75rem] font-medium text-foreground/80">Budget</span>
                 <span className="text-[0.75rem] font-medium text-foreground/80 text-center">Note</span>
-                <span className="text-[0.75rem] font-medium text-foreground/80 text-right">Status</span>
+                <span className="text-[0.75rem] font-medium text-foreground/80 text-right">Status / Action</span>
               </div>
 
               {/* Table rows — same column layout on all screen sizes, scaled down text on mobile */}
@@ -362,10 +363,13 @@ export default function OrdersPage({ onOrderClick }: { onOrderClick?: () => void
                 {orders.map((order, index) => (
                   <div
                     key={index}
-                    onClick={onOrderClick}
-                    className="grid grid-cols-[minmax(9rem,2fr)_minmax(8rem,2fr)_minmax(5rem,1fr)_minmax(5rem,1fr)_minmax(3rem,0.6fr)_minmax(6rem,1.2fr)] items-center gap-4 px-6 py-4 min-w-[36rem] cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.02] active:bg-black/[0.04] dark:active:bg-white/[0.04] transition-colors duration-200"
+                    onClick={order.status !== 'delivered' ? onOrderClick : undefined}
+                    className={cn(
+                      "grid grid-cols-[minmax(9rem,2fr)_minmax(8rem,2fr)_minmax(5rem,1fr)_minmax(5rem,1fr)_minmax(3rem,0.6fr)_minmax(8rem,1.6fr)] items-center gap-4 px-6 py-4 min-w-[38rem] transition-colors duration-200",
+                      order.status !== 'delivered' && "cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.02] active:bg-black/[0.04] dark:active:bg-white/[0.04]"
+                    )}
                   >
-                    {/* Buyer Info: avatar + name + @handle */}
+                    {/* Buyer Info */}
                     <div className="flex items-center gap-2.5">
                       <div className={cn(
                         "flex h-[2.25rem] w-[2.25rem] md:h-[2.8125rem] md:w-[2.8125rem] shrink-0 items-center justify-center rounded-full text-[0.75rem] md:text-[0.875rem] font-semibold text-white",
@@ -396,14 +400,27 @@ export default function OrdersPage({ onOrderClick }: { onOrderClick?: () => void
                       <FileText className="h-[1.125rem] w-[1.125rem] md:h-[1.3125rem] md:w-[1.3125rem] text-muted/80" />
                     </div>
 
-                    {/* Status badge */}
+                    {/* Status / Action */}
                     <div className="flex justify-end">
-                      <span className={cn(
-                        "inline-flex items-center justify-center rounded-full px-2.5 md:px-3 py-1 text-[0.5625rem] md:text-[0.625rem] font-medium capitalize whitespace-nowrap",
-                        getStatusStyles(order.status)
-                      )}>
-                        {order.status}
-                      </span>
+                      {order.status === 'delivered' ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onDisputeApproveClick) onDisputeApproveClick();
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.5625rem] md:text-[0.625rem] font-semibold bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors cursor-pointer whitespace-nowrap"
+                        >
+                          <ShieldCheck className="size-3" />
+                          Dispute/Approve
+                        </button>
+                      ) : (
+                        <span className={cn(
+                          "inline-flex items-center justify-center rounded-full px-2.5 md:px-3 py-1 text-[0.5625rem] md:text-[0.625rem] font-medium capitalize whitespace-nowrap",
+                          getStatusStyles(order.status)
+                        )}>
+                          {order.status}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -411,8 +428,11 @@ export default function OrdersPage({ onOrderClick }: { onOrderClick?: () => void
             </div>
           </div>
 
-        </div>
       </div>
+      <div className="hidden md:block">
+        <Footer />
+      </div>
+    </div>
     </div>
   );
 }

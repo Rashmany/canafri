@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Search, Bell } from 'lucide-react';
+import { Search, Bell, X } from 'lucide-react';
 import { Logo } from '@/components/ui/logo';
 import { AvatarOnline } from '@/components/ui/avatar-online';
+import { SearchDropdown } from '@/components/ui/search-dropdown';
+import { addToSearchHistory } from '@/lib/search-service';
 
 // NOTE: AvatarOnline is defined in '@/components/ui/avatar-online' and shared
 // with the Sidebar. It is intentionally NOT re-exported from here.
@@ -31,6 +33,7 @@ interface TopNavProps {
   onMenuOpen?: () => void;
   /** Active page label — determines centre content on mobile */
   activePage?: string;
+  onSearchNavigate?: (query: string) => void;
 }
 
 // ─── Mock notification data ───────────────────────────────────────────────────
@@ -48,26 +51,97 @@ const DEFAULT_AVATAR = '/images/default-avatar.png';
 // ─── Search bar ───────────────────────────────────────────────────────────────
 
 /**
- * Pill-shaped search input used on the desktop/tablet top nav.
+ * Pill-shaped search input with interactive search history and live suggestions.
  */
-function SearchBar({ className = '' }: { className?: string }) {
+function SearchBar({
+  className = '',
+  onSearchNavigate,
+}: {
+  className?: string;
+  onSearchNavigate?: (query: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [focused, setFocused] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    function handleOutsideClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setFocused(false);
+      }
+    }
+    if (focused) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [focused]);
+
+  const handleSearch = (searchQuery: string) => {
+    const q = searchQuery.trim();
+    if (!q) return;
+    addToSearchHistory(q);
+    setQuery(q);
+    setFocused(false);
+    inputRef.current?.blur();
+    onSearchNavigate?.(q);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch(query);
+    } else if (e.key === 'Escape') {
+      setFocused(false);
+      inputRef.current?.blur();
+    }
+  };
+
   return (
-    <div className={`h-[2.1875rem] rounded-[3.125rem] bg-sidebar border border-border/40 ${className}`}>
-      <div className="flex size-full items-center gap-[0.875rem] px-[1.3125rem]">
-        <Search
-          size={15}
-          strokeWidth={2}
-          className="shrink-0 text-foreground/60"
-          aria-hidden="true"
-        />
-        <input
-          id="topnav-search"
-          type="search"
-          placeholder="Search..."
-          aria-label="Search CanaFri"
-          className="w-full border-none bg-transparent font-sans text-[0.75rem] font-normal text-foreground/70 outline-none placeholder:text-foreground/50"
-        />
+    <div ref={containerRef} className={`relative ${className}`}>
+      <div className="h-[2.1875rem] rounded-[3.125rem] bg-sidebar border border-border/40 transition-all focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20">
+        <div className="flex size-full items-center gap-[0.875rem] px-[1.3125rem]">
+          <Search
+            size={15}
+            strokeWidth={2}
+            className="shrink-0 text-foreground/60"
+            aria-hidden="true"
+          />
+          <input
+            ref={inputRef}
+            id="topnav-search"
+            type="search"
+            placeholder="Search creators, freelancers, services, articles, jobs..."
+            aria-label="Search CanaFri"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => setFocused(true)}
+            onKeyDown={handleKeyDown}
+            className="w-full border-none bg-transparent font-sans text-[0.75rem] font-normal text-foreground/70 outline-none placeholder:text-foreground/50"
+          />
+          {query && (
+            <button
+              onClick={() => {
+                setQuery('');
+                inputRef.current?.focus();
+              }}
+              className="text-foreground/40 hover:text-foreground/75 cursor-pointer shrink-0"
+              type="button"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </div>
+
+      {focused && (
+        <SearchDropdown
+          query={query}
+          onQueryChange={setQuery}
+          onSearch={handleSearch}
+          onClose={() => setFocused(false)}
+        />
+      )}
     </div>
   );
 }
@@ -195,6 +269,7 @@ export default function TopNav({
   user = { name: 'Josh Trek' },
   onMenuOpen,
   activePage = 'Dashboard',
+  onSearchNavigate,
 }: TopNavProps) {
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -217,17 +292,28 @@ export default function TopNav({
   return (
     <header className={`flex h-[4.5rem] w-full shrink-0 items-center bg-background px-[1.5rem] md:px-[2.3125rem] ${activePage === 'Dashboard' ? '' : 'border-b border-border'}`}>
 
-      {/* ── Mobile layout (<md) — avatar | logo/page title | bell ── */}
-      <div className="grid w-full grid-cols-3 items-center md:hidden">
+      {/* ── Mobile layout (<md) — avatar+search | logo/page title | bell ── */}
+      <div className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-3 md:hidden">
 
         {/* Left: avatar — tapping opens the mobile sidebar drawer */}
-        <div className="flex justify-start">
+        <div className="flex items-center gap-2">
           <AvatarOnline
             src={resolvedAvatar}
             alt={user.name}
             online
             onClick={onMenuOpen}
           />
+          {/* Search icon: only on Dashboard (other pages have content-specific actions) */}
+          {activePage === 'Dashboard' && (
+            <button
+              type="button"
+              onClick={() => onSearchNavigate?.('')}
+              aria-label="Search"
+              className="flex items-center justify-center w-8 h-8 rounded-full text-foreground/60 hover:text-foreground hover:bg-foreground/5 transition-colors cursor-pointer"
+            >
+              <Search size={19} strokeWidth={1.75} />
+            </button>
+          )}
         </div>
 
         {/* Centre: logo on Dashboard, page name elsewhere */}
@@ -258,7 +344,7 @@ export default function TopNav({
 
       {/* ── Tablet / Desktop layout (md+) — search left, bell right ── */}
       <div className="hidden w-full items-center justify-between gap-4 md:flex">
-        <SearchBar className="w-56 shrink-0 lg:w-72" />
+        <SearchBar className="w-56 shrink-0 lg:w-72" onSearchNavigate={onSearchNavigate} />
 
         <div ref={notifRef} className="relative">
           <NotificationBell

@@ -18,6 +18,7 @@ interface Job {
 interface ApplyJobPageProps {
   job: Job | null;
   onBack: () => void;
+  jobQuestions?: string[];
 }
 
 // ─── Sub-components (layout-identical to provided code) ───────────────────────
@@ -170,10 +171,17 @@ function TipsSidebar({ onSubmit, onSave }: { onSubmit: () => void; onSave: () =>
   );
 }
 
-export default function ApplyJobPage({ job, onBack }: ApplyJobPageProps) {
+export default function ApplyJobPage({ job, onBack, jobQuestions }: ApplyJobPageProps) {
+  const defaultQuestions = [
+    "Describe your recent experience with similar projects.",
+    "What framework have you worked with?",
+    "Include a link to your GitHub profile and/or website.",
+  ];
+  const questions = jobQuestions && jobQuestions.length > 0 ? jobQuestions : defaultQuestions;
+
   const [coverLetter, setCoverLetter] = useState("");
   const [approach, setApproach] = useState("");
-  const [questions, setQuestions] = useState("");
+  const [questionAnswers, setQuestionAnswers] = useState<string[]>(() => questions.map(() => ""));
   const [rate, setRate] = useState("1200");
   const [rateUnit, setRateUnit] = useState("CC");
   const [delivery, setDelivery] = useState("30");
@@ -185,6 +193,14 @@ export default function ApplyJobPage({ job, onBack }: ApplyJobPageProps) {
   const [showSuccess, setShowSuccess] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAnswerChange = (index: number, value: string) => {
+    setQuestionAnswers((prev) => {
+      const updated = [...prev];
+      updated[index] = value;
+      return updated;
+    });
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
@@ -219,6 +235,12 @@ export default function ApplyJobPage({ job, onBack }: ApplyJobPageProps) {
       alert("Your Approach is compulsory. Please describe how you will complete the project.");
       return;
     }
+    // Validate all job questions are answered
+    const unanswered = questionAnswers.findIndex((a) => !a.trim());
+    if (unanswered !== -1) {
+      alert(`Please answer question ${unanswered + 1}: "${questions[unanswered]}"`);
+      return;
+    }
     if (!rate.trim()) {
       alert("Your Rate is compulsory. Please enter your rate.");
       return;
@@ -226,6 +248,47 @@ export default function ApplyJobPage({ job, onBack }: ApplyJobPageProps) {
     if (!delivery.trim()) {
       alert("Estimated Delivery is compulsory. Please enter the estimated delivery time.");
       return;
+    }
+
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("canafri_submitted_proposals");
+      let proposalsList = [];
+      if (stored) {
+        try {
+          proposalsList = JSON.parse(stored);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      const profileName = (() => {
+        const storedProfile = localStorage.getItem("canafri_user_profile");
+        if (storedProfile) {
+          try {
+            return JSON.parse(storedProfile).fullName;
+          } catch (e) {}
+        }
+        return "Josh Trek";
+      })();
+
+      const newProposal = {
+        id: Date.now(),
+        jobId: job?.id || 0,
+        jobTitle: job?.title || "Web Project",
+        clientName: "Amara C.",
+        freelancerName: profileName,
+        bidAmount: `${rate} ${rateUnit}`,
+        deliveryDays: `${delivery} ${deliveryUnit}`,
+        coverLetter: coverLetter,
+        approach: approach,
+        questions: questions,
+        answers: questionAnswers,
+        status: "submitted",
+        date: "Just now"
+      };
+
+      proposalsList.unshift(newProposal);
+      localStorage.setItem("canafri_submitted_proposals", JSON.stringify(proposalsList));
     }
 
     setShowSuccess(true);
@@ -298,13 +361,24 @@ export default function ApplyJobPage({ job, onBack }: ApplyJobPageProps) {
                 onChange={setApproach}
                 maxLength={300}
               />
-              <FormField
-                label="Any questions for the client? (Optional)"
-                placeholder="Ask anything that will help you deliver better work..."
-                value={questions}
-                onChange={setQuestions}
-                maxLength={300}
-              />
+            </FormCard>
+
+            {/* Job Questions card */}
+            <FormCard title="Job Questions">
+              <p className="text-[10px] font-normal leading-[13px] text-muted -mt-1">
+                The client requires answers to the following screening questions. All answers are required.
+              </p>
+              {questions.map((q, i) => (
+                <FormField
+                  key={i}
+                  label={`${i + 1}. ${q}`}
+                  required
+                  placeholder="Write your answer here..."
+                  value={questionAnswers[i] ?? ""}
+                  onChange={(v) => handleAnswerChange(i, v)}
+                  maxLength={400}
+                />
+              ))}
             </FormCard>
 
             {/* Your Terms card */}

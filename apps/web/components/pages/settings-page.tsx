@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import PersonalInfoModal from '@/components/ui/personal-info-modal';
 import { ChangeEmailModal, ChangePhoneModal } from '@/components/ui/contact-modals';
 import ChangePasswordModal from '@/components/ui/change-password-modal';
 import TwoFactorAuthModal from '@/components/ui/two-factor-auth-modal';
 import { useToast } from '@/components/ui/toast';
 import { useTheme } from '@/components/theme-provider';
+import Footer from '@/components/layout/footer';
 import {
   ChevronRight,
   User,
@@ -20,6 +21,10 @@ import {
   ChevronLeft,
   Download,
   Check,
+  UploadCloud,
+  Trash2,
+  File as FileIcon,
+  CheckCircle2,
 } from 'lucide-react';
 import FrameComponent2 from '@/components/ui/frame-component21';
 
@@ -38,6 +43,7 @@ interface SettingsSection {
 
 interface PageProps {
   onBack?: () => void;
+  sellerMode?: boolean;
 }
 
 // ─── Menu Configuration ───────────────────────────────────────────────────────
@@ -282,6 +288,8 @@ interface SecuritySettingsPanelProps {
   onTwoFactorOpen: () => void;
   onActiveSessionsOpen: () => void;
   onDeleteAccountOpen: () => void;
+  onVerifyIdentityOpen: () => void;
+  sellerMode?: boolean;
 }
 
 function SecuritySettingsPanel({
@@ -290,11 +298,14 @@ function SecuritySettingsPanel({
   onTwoFactorOpen,
   onActiveSessionsOpen,
   onDeleteAccountOpen,
+  onVerifyIdentityOpen,
+  sellerMode = false,
 }: SecuritySettingsPanelProps) {
   const securityItems = [
     { profile: 'Password', onClick: onPasswordOpen },
     { profile: 'Two-factor auth', onClick: onTwoFactorOpen },
     { profile: 'Active sessions', onClick: onActiveSessionsOpen },
+    ...(sellerMode ? [{ profile: 'Verify your identity', onClick: onVerifyIdentityOpen }] : []),
     { profile: 'Delete account', onClick: onDeleteAccountOpen, color: '#ff4d4d' },
   ];
 
@@ -334,6 +345,284 @@ function SecuritySettingsPanel({
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+// ─── Verify Identity Panel (Moved from freelancer registration) ───────────────
+
+interface SettingsUploadedFile {
+  name: string;
+  size: string;
+}
+
+interface VerifyIdentityPanelProps {
+  onBack: () => void;
+}
+
+function VerifyIdentityPanel({ onBack }: VerifyIdentityPanelProps) {
+  const { toast } = useToast();
+  const [idType, setIdType] = useState('');
+  const [idTypeOpen, setIdTypeOpen] = useState(false);
+  const [frontFile, setFrontFile] = useState<SettingsUploadedFile | null>(null);
+  const [backFile, setBackFile] = useState<SettingsUploadedFile | null>(null);
+  const [selfieFile, setSelfieFile] = useState<SettingsUploadedFile | null>(null);
+  const [addressFile, setAddressFile] = useState<SettingsUploadedFile | null>(null);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [idTypeSearchQuery, setIdTypeSearchQuery] = useState('');
+
+  const [userCountry] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('canafri_user_profile');
+      if (stored) {
+        try {
+          const profile = JSON.parse(stored);
+          return profile.country || 'United States';
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+    return 'United States';
+  });
+
+  const ID_TYPE_OPTIONS = [
+    'National ID Card',
+    'International Passport',
+    "Driver's License",
+    'Residence Permit',
+    'Voter\'s Card',
+  ];
+
+  const handleVerifySubmit = () => {
+    if (!idType) {
+      toast('Please select ID type.', 'error');
+      return;
+    }
+    if (!frontFile) {
+      toast('Please upload the front side of your government ID.', 'error');
+      return;
+    }
+    if (!selfieFile) {
+      toast('Please upload selfie verification.', 'error');
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('canafri_user_profile');
+      let profile = stored ? JSON.parse(stored) : {};
+      profile.isVerified = false;
+      profile.verificationStatus = 'pending';
+      profile.idType = idType;
+      localStorage.setItem('canafri_user_profile', JSON.stringify(profile));
+    }
+
+    setIsSubmitted(true);
+    toast('Identity documents submitted for review!', 'success');
+  };
+
+  if (isSubmitted) {
+    return (
+      <div className="relative flex h-full w-full flex-col items-center justify-center bg-background py-[2.125rem] px-6 text-center animate-in fade-in duration-200">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500 mb-4">
+          <CheckCircle2 size={36} />
+        </div>
+        <h2 className="text-[16px] font-bold text-foreground mb-2">Verification Under Review</h2>
+        <p className="text-[12px] text-muted max-w-sm mb-6 leading-relaxed">
+          Your identity verification documents are successfully uploaded. Our security team will review it within <strong>24 to 48 hours</strong>.
+        </p>
+        <button
+          type="button"
+          onClick={onBack}
+          className="rounded-xl bg-primary px-6 py-[10px] h-[38px] flex items-center justify-center text-[13px] font-semibold text-white hover:bg-primary/95 transition-colors cursor-pointer"
+        >
+          Back to Security Settings
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative flex h-full w-full flex-col items-start overflow-hidden bg-background py-[2.125rem] px-0 gap-6 animate-in fade-in duration-200">
+      {/* Header */}
+      <div className="flex items-center gap-4 py-0 pl-4 pr-0">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex size-8 items-center justify-center rounded-full bg-card hover:bg-foreground/5 transition-colors lg:hidden"
+          aria-label="Back"
+        >
+          <ChevronLeft size={20} className="text-foreground" />
+        </button>
+        <div className="flex flex-col gap-[0.375rem]">
+          <p className="font-sans font-medium text-foreground/85">Verify Your Identity</p>
+          <p className="font-sans text-[10px] text-muted">Upload government ID to get a verified trust badge</p>
+        </div>
+      </div>
+
+      <div className="h-px w-full bg-border shrink-0" />
+
+      {/* Main scrollable body */}
+      <div className="flex flex-col w-full gap-6 px-4 flex-1 overflow-y-auto no-scrollbar pb-8">
+        
+        {/* Country Selector (Read-Only) */}
+        <div className="flex flex-col gap-[5px] w-full">
+          <label className="block text-[13px] font-medium leading-[18px] text-foreground/80">
+            Country / Region
+          </label>
+          <div className="flex h-[38px] w-full items-center rounded-[5px] border border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 text-[11px] text-foreground/75 select-none opacity-80">
+            <span>{userCountry}</span>
+          </div>
+          <p className="text-[10px] text-muted leading-relaxed">
+            * Documents are only allowed from the country you selected during registration ({userCountry}).
+          </p>
+        </div>
+
+        {/* ID Type dropdown */}
+        <div className="flex flex-col gap-[5px] relative w-full">
+          <label className="block text-[13px] font-medium leading-[18px] text-foreground/80">
+            ID Type <span className="text-destructive">*</span>
+          </label>
+          <button
+            type="button"
+            onClick={() => setIdTypeOpen((o) => !o)}
+            className="flex h-[38px] w-full items-center justify-between rounded-[5px] border border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 text-left text-[11px] text-foreground outline-none focus:border-primary transition-colors cursor-pointer"
+          >
+            <span className={idType ? 'text-foreground' : 'text-muted'}>
+              {idType || 'Select ID type'}
+            </span>
+            <ChevronRight size={14} className={`shrink-0 text-muted transition-transform duration-200 ${idTypeOpen ? 'rotate-90' : ''}`} />
+          </button>
+          {idTypeOpen && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => { setIdTypeOpen(false); setIdTypeSearchQuery(''); }} />
+              <div className="absolute left-0 top-[42px] z-40 w-full rounded-lg border border-border bg-card shadow-xl py-1 max-h-[220px] overflow-y-auto flex flex-col">
+                <div className="px-2 py-1.5 border-b border-border sticky top-0 bg-card z-10">
+                  <input
+                    type="text"
+                    placeholder="Search ID type..."
+                    value={idTypeSearchQuery}
+                    onChange={(e) => setIdTypeSearchQuery(e.target.value)}
+                    className="w-full h-[28px] rounded-[4px] border border-border bg-background px-2 text-[10px] text-foreground outline-none focus:border-primary transition-colors"
+                    autoFocus
+                  />
+                </div>
+                <div className="overflow-y-auto">
+                  {ID_TYPE_OPTIONS.filter((opt) =>
+                    opt.toLowerCase().includes(idTypeSearchQuery.toLowerCase())
+                  ).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => {
+                        setIdType(opt);
+                        setIdTypeOpen(false);
+                        setIdTypeSearchQuery('');
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-[11px] text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/5 cursor-pointer ${
+                        idType === opt ? 'text-primary font-semibold' : 'text-foreground'
+                      }`}
+                    >
+                      <span>{opt}</span>
+                      {idType === opt && <Check className="h-3 w-3 text-primary shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Government ID — Front */}
+        <div className="flex flex-col gap-2 w-full">
+          <label className="block text-[13px] font-medium text-foreground/80">Government ID (Front Side) <span className="text-destructive">*</span></label>
+          <SettingsFileDropzone onSelect={setFrontFile} />
+          {frontFile && <SettingsUploadedFileRow file={frontFile} onRemove={() => setFrontFile(null)} />}
+        </div>
+
+        {/* Government ID — Back */}
+        <div className="flex flex-col gap-2 w-full">
+          <label className="block text-[13px] font-medium text-foreground/80">Government ID (Back Side)</label>
+          <SettingsFileDropzone onSelect={setBackFile} />
+          {backFile && <SettingsUploadedFileRow file={backFile} onRemove={() => setBackFile(null)} />}
+        </div>
+
+        {/* Selfie Verification */}
+        <div className="flex flex-col gap-2 w-full">
+          <label className="block text-[13px] font-medium text-foreground/80">Selfie holding your ID <span className="text-destructive">*</span></label>
+          <SettingsFileDropzone onSelect={setSelfieFile} />
+          {selfieFile && <SettingsUploadedFileRow file={selfieFile} onRemove={() => setSelfieFile(null)} />}
+        </div>
+
+        {/* Utility Bill / Bank Statement Address Proof */}
+        <div className="flex flex-col gap-2 w-full">
+          <label className="block text-[13px] font-medium text-foreground/80">Address Proof (Utility Bill / Statement)</label>
+          <SettingsFileDropzone onSelect={setAddressFile} />
+          {addressFile && <SettingsUploadedFileRow file={addressFile} onRemove={() => setAddressFile(null)} />}
+        </div>
+
+        {/* Action Button */}
+        <button
+          type="button"
+          onClick={handleVerifySubmit}
+          className="w-full rounded-xl bg-primary py-3 text-[13px] font-semibold text-white hover:bg-primary/90 transition-colors cursor-pointer mt-4"
+        >
+          Submit Verification Documents
+        </button>
+
+      </div>
+    </div>
+  );
+}
+
+// Helpers for Settings ID Verification File Uploads
+function SettingsFileDropzone({ onSelect }: { onSelect: (file: SettingsUploadedFile) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <button
+      type="button"
+      onClick={() => ref.current?.click()}
+      className="flex w-full items-center gap-3 rounded-lg border border-dashed border-border bg-card p-4 hover:border-primary transition-colors text-left cursor-pointer"
+    >
+      <input
+        ref={ref}
+        type="file"
+        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          onSelect({
+            name: file.name,
+            size: `${(file.size / (1024 * 1024)).toFixed(1)}MB`,
+          });
+        }}
+      />
+      <UploadCloud className="h-5 w-5 text-primary/60" />
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[11px] font-semibold text-foreground">Click to upload document</span>
+        <span className="text-[9px] text-muted">PDF, DOC, JPG, PNG &bull; Max 5MB</span>
+      </div>
+    </button>
+  );
+}
+
+function SettingsUploadedFileRow({ file, onRemove }: { file: SettingsUploadedFile; onRemove: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 animate-in fade-in duration-200">
+      <div className="flex items-center gap-2 min-w-0">
+        <FileIcon className="h-5 w-5 text-primary/60 shrink-0" />
+        <div className="min-w-0">
+          <p className="truncate text-[11px] font-medium text-foreground">{file.name}</p>
+          <p className="text-[9px] text-muted">{file.size}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2.5">
+        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+        <button type="button" onClick={onRemove} className="text-muted hover:text-red-500 transition-colors cursor-pointer">
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -1424,7 +1713,7 @@ function PlaceholderPanel({ title, onBack }: { title: string; onBack: () => void
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function SettingsPage({ onBack }: PageProps) {
+export default function SettingsPage({ onBack, sellerMode = false }: PageProps) {
   const { toast } = useToast();
   const [selected, setSelected] = useState('profile-settings');
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
@@ -1432,6 +1721,7 @@ export default function SettingsPage({ onBack }: PageProps) {
   const [contactDetailsSelected, setContactDetailsSelected] = useState(false);
   const [activeSessionsSelected, setActiveSessionsSelected] = useState(false);
   const [deleteAccountSelected, setDeleteAccountSelected] = useState(false);
+  const [verifyIdentitySelected, setVerifyIdentitySelected] = useState(false);
   const [changeEmailOpen, setChangeEmailOpen] = useState(false);
   const [changePhoneOpen, setChangePhoneOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
@@ -1442,6 +1732,7 @@ export default function SettingsPage({ onBack }: PageProps) {
     setContactDetailsSelected(false);
     setActiveSessionsSelected(false);
     setDeleteAccountSelected(false);
+    setVerifyIdentitySelected(false);
     setMobileShowDetail(true);
   };
 
@@ -1452,6 +1743,8 @@ export default function SettingsPage({ onBack }: PageProps) {
       setActiveSessionsSelected(false);
     } else if (deleteAccountSelected) {
       setDeleteAccountSelected(false);
+    } else if (verifyIdentitySelected) {
+      setVerifyIdentitySelected(false);
     } else {
       setMobileShowDetail(false);
     }
@@ -1480,7 +1773,7 @@ export default function SettingsPage({ onBack }: PageProps) {
       );
     }
 
-    if (selected === 'security' && !activeSessionsSelected && !deleteAccountSelected) {
+    if (selected === 'security' && !activeSessionsSelected && !deleteAccountSelected && !verifyIdentitySelected) {
       return (
         <SecuritySettingsPanel
           onBack={handleBack}
@@ -1488,6 +1781,16 @@ export default function SettingsPage({ onBack }: PageProps) {
           onTwoFactorOpen={() => setTwoFactorOpen(true)}
           onActiveSessionsOpen={() => setActiveSessionsSelected(true)}
           onDeleteAccountOpen={() => setDeleteAccountSelected(true)}
+          onVerifyIdentityOpen={() => setVerifyIdentitySelected(true)}
+          sellerMode={sellerMode}
+        />
+      );
+    }
+
+    if (selected === 'security' && verifyIdentitySelected) {
+      return (
+        <VerifyIdentityPanel
+          onBack={handleBack}
         />
       );
     }
@@ -1655,26 +1958,32 @@ export default function SettingsPage({ onBack }: PageProps) {
         />
       )}
 
-      <div className="flex h-full w-full overflow-hidden bg-background lg:gap-6 lg:p-6">
-        {/* ── Left menu (always visible on desktop, hidden on mobile if detail is open) ── */}
-        <div
-          className={[
-            'flex-col overflow-hidden bg-background w-full',
-            mobileShowDetail ? 'hidden lg:flex' : 'flex',
-            'lg:flex-1 lg:border-r lg:border-border',
-          ].join(' ')}
-        >
-          <SettingsMenu selected={selected} onSelect={handleSelect} />
+      <div className="h-full w-full bg-background flex flex-col overflow-y-auto no-scrollbar">
+        <div className="flex flex-1 w-full max-w-[1400px] mx-auto lg:gap-6 lg:p-6">
+          {/* ── Left menu (always visible on desktop, hidden on mobile if detail is open) ── */}
+          <div
+            className={[
+              'flex-col overflow-hidden bg-background w-full lg:h-auto lg:overflow-visible',
+              mobileShowDetail ? 'hidden lg:flex' : 'flex',
+              'lg:flex-1 lg:border-r lg:border-border',
+            ].join(' ')}
+          >
+            <SettingsMenu selected={selected} onSelect={handleSelect} />
+          </div>
+
+          {/* ── Right detail panel ── */}
+          <div
+            className={[
+              'flex-1 min-w-0 overflow-hidden lg:h-auto lg:overflow-visible',
+              mobileShowDetail ? 'flex flex-col' : 'hidden lg:flex lg:flex-col',
+            ].join(' ')}
+          >
+            {renderContentPanel()}
+          </div>
         </div>
 
-        {/* ── Right detail panel ── */}
-        <div
-          className={[
-            'flex-1 min-w-0 overflow-hidden',
-            mobileShowDetail ? 'flex flex-col' : 'hidden lg:flex lg:flex-col',
-          ].join(' ')}
-        >
-          {renderContentPanel()}
+        <div className="hidden md:block w-full">
+          <Footer />
         </div>
       </div>
     </>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Check, UploadCloud, File as FileIcon, Trash2, CheckCircle2, ChevronLeft } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 
@@ -145,7 +145,6 @@ const PHONE_PREFIX_OPTIONS: CountryPhoneOption[] = [
   { code: 'AU', prefix: '+61', name: 'Australia', FlagComponent: AustraliaFlag },
 ];
 
-
 function UploadIcon() {
   return (
     <svg
@@ -156,7 +155,7 @@ function UploadIcon() {
       xmlns="http://www.w3.org/2000/svg"
     >
       <path
-        d="M7.35145 14.4192C6.47295 14.4192 5.82445 14.4037 5.22745 14.3887C4.72045 14.3767 4.25045 14.3652 3.70595 14.3652C2.85139 14.3643 2.0321 14.0245 1.42779 13.4202C0.823478 12.816 0.483504 11.9968 0.482446 11.1422C0.480421 10.6177 0.607365 10.1007 0.852104 9.6368C1.09684 9.17286 1.45187 8.7762 1.88595 8.48173C1.81366 8.13 1.77731 7.77182 1.77745 7.41273C1.77745 4.49173 4.15395 2.11523 7.07545 2.11523C9.03145 2.11523 10.8229 3.19723 11.7414 4.90223C12.0407 4.59575 12.3984 4.35246 12.7934 4.18679C13.1884 4.02111 13.6126 3.93642 14.0409 3.93773C15.2264 3.93816 16.3197 4.60257 16.8699 5.65127C17.4201 6.69996 17.3407 7.96583 16.6664 8.93623C17.3237 9.11348 17.9006 9.51505 18.3009 10.0749C18.7012 10.6347 18.901 11.3183 18.866 12.0104C18.7999 13.3793 17.6988 14.4826 16.3302 14.5512C15.4892 14.594 14.6482 14.5988 13.8071 14.5652C13.7401 14.5651 13.6759 14.5383 13.6284 14.4908C13.5809 14.4433 13.5541 14.3791 13.554 14.3121C13.5539 14.2451 13.5805 14.1808 13.6279 14.1332C13.6753 14.0855 13.7394 14.0586 13.8064 14.0582C14.6393 14.0913 15.4722 14.0867 16.3051 14.0441C17.4238 13.9873 18.3163 13.095 18.3703 11.9762C18.4184 10.9995 17.8433 10.1029 16.9302 9.73523C16.8601 9.70688 16.8028 9.65358 16.7693 9.58561C16.7357 9.51764 16.7282 9.43977 16.7482 9.36673C16.9601 8.58873 16.7811 7.74923 16.2679 7.12823C15.7547 6.50723 14.9731 6.19123 14.1722 6.27123C13.3712 6.35123 12.6699 6.81923 12.3039 7.52123C12.2684 7.58973 12.207 7.64073 12.1334 7.66333C12.0598 7.68593 11.9803 7.67823 11.9124 7.64173C11.0914 7.20273 10.1349 7.06173 9.21545 7.24473C8.29595 7.42773 7.47095 7.92173 6.88895 8.64073C6.84445 8.69573 6.78195 8.73273 6.71295 8.74473C6.64395 8.75673 6.57295 8.74273 6.51345 8.70573C6.17895 8.49273 5.79745 8.37173 5.40395 8.35573C5.01045 8.33973 4.61945 8.42973 4.27095 8.61573C3.92245 8.80173 3.63145 9.07673 3.42845 9.41373C3.22545 9.75073 3.11845 10.1367 3.11895 10.5307C3.11895 10.6157 3.09895 10.9517 3.09895 11.1422C3.09881 11.6469 3.30032 12.1308 3.65847 12.4876C4.01661 12.8445 4.50146 13.0442 5.00595 13.0422C5.55195 13.0422 5.82945 13.0522 6.23795 13.0652C6.83895 13.0782 7.48395 13.0942 8.35795 13.0942C8.42438 13.0943 8.48807 13.1208 8.53501 13.1678C8.58194 13.2148 8.60826 13.2785 8.6082 13.345C8.60813 13.4114 8.58167 13.4751 8.53465 13.522C8.48762 13.569 8.42388 13.5953 8.35745 13.5952C7.48345 13.5952 6.83795 13.5792 6.23595 13.5662C5.83195 13.5532 5.55295 13.5432 5.00595 13.5432C4.37037 13.5456 3.7604 13.2928 3.3089 12.8424C2.8574 12.392 2.60344 11.7825 2.60295 11.1469C2.60295 10.9619 2.62295 10.6249 2.62295 10.5309C2.62245 10.0469 2.75695 9.57273 3.01095 9.16173C3.26495 8.75073 3.62745 8.41473 4.05895 8.19073C4.49045 7.96673 4.97495 7.86273 5.46095 7.88873C5.75145 7.90323 6.03495 7.97073 6.29995 8.08873C6.92945 7.33073 7.79895 6.81473 8.76295 6.62173C9.56995 6.45973 10.4039 6.53073 11.1679 6.82373C11.6569 6.05573 12.5099 5.57573 13.4339 5.48373C13.8369 5.44373 14.2419 5.48273 14.6279 5.59873C14.0979 4.59573 13.0249 3.94273 11.8579 3.93773C9.03195 3.93773 6.72995 6.21973 6.71195 9.04573C6.71023 9.11174 6.68278 9.17473 6.63548 9.22133C6.58817 9.26793 6.52463 9.29455 6.45845 9.29523C6.39228 9.29591 6.32821 9.27061 6.27993 9.22497C6.23165 9.17934 6.20293 9.11692 6.19995 9.05073C6.22595 6.52373 8.10995 4.39773 10.5789 3.96473C10.0819 3.27173 9.42395 2.70673 8.66295 2.31273C7.90195 1.91873 7.05895 1.70573 6.19995 1.69373C3.67345 1.69373 1.61995 3.72673 1.61995 6.23873C1.61995 6.61673 1.66445 6.99473 1.75245 7.36173C1.76456 7.41353 1.75986 7.46788 1.7391 7.51696C1.71833 7.56603 1.68261 7.60729 1.63695 7.63473C1.23395 7.87573 0.900452 8.21673 0.667952 8.62573C0.435452 9.03473 0.312452 9.49473 0.312452 9.96273C0.313378 10.6848 0.600622 11.377 1.11119 11.8876C1.62176 12.3981 2.31394 12.6853 3.03595 12.6862C3.58895 12.6862 4.25895 12.6962 4.76395 12.7092C5.35895 12.7222 5.99995 12.7382 6.87745 12.7382C6.94388 12.7383 7.00757 12.7648 7.0545 12.8118C7.10143 12.8588 7.12776 12.9225 7.1277 12.989C7.12763 13.0554 7.10117 13.1191 7.05415 13.166C7.00712 13.213 6.94338 13.2393 6.87695 13.2392C5.99595 13.2392 5.35195 13.2232 4.75395 13.2102C4.24895 13.1972 3.57895 13.1872 3.03595 13.1872C2.17936 13.1869 1.35805 12.8471 0.753423 12.2426C0.148798 11.638 -0.19139 10.8168 -0.191406 9.96023C-0.191406 9.39273 -0.0454065 8.83473 0.244594 8.34073C0.413594 8.04573 0.626594 7.78373 0.877594 7.56173C0.805594 7.21073 0.769594 6.85173 0.769594 6.49273C0.769594 4.37273 2.06159 2.55873 3.89359 1.78173C4.57259 1.49373 5.31359 1.34673 6.07059 1.34673C8.19659 1.34573 10.1196 2.46073 11.1426 4.27773C11.4556 4.01873 11.8136 3.82173 12.1956 3.69773C11.4676 2.56473 10.3756 1.70473 9.09559 1.27273C7.81559 0.840729 6.42359 0.862729 5.15759 1.33373C2.79759 2.22373 1.18359 4.55473 1.18359 7.10973C1.18359 7.47873 1.22659 7.84673 1.31059 8.20473C0.895588 8.45873 0.541588 8.80773 0.282588 9.22373C0.0235876 9.63973 -0.112412 10.1167 -0.112412 10.6017C-0.108412 12.0897 0.948588 13.3537 2.39759 13.6207C2.64559 13.6667 2.89859 13.6897 3.15359 13.6897C3.69459 13.6897 4.15559 13.6997 4.64459 13.7127C5.23659 13.7257 5.88259 13.7417 6.76659 13.7417C6.83287 13.7418 6.89637 13.7682 6.9432 13.8151C6.99004 13.862 7.01629 13.9256 7.01623 13.992C7.01616 14.0584 6.9898 14.122 6.94287 14.169C6.89594 14.216 6.8324 14.2423 6.76612 14.2423L7.35145 14.4192Z"
+        d="M7.35145 14.4192C6.47295 14.4192 5.82445 14.4037 5.22745 14.3887C4.72045 14.3767 4.25045 14.3652 3.70595 14.3652C2.85139 14.3643 2.0321 14.0245 1.42779 13.4202C0.823478 12.816 0.483504 11.9968 0.482446 11.1422C0.480421 10.6177 0.607365 10.1007 0.852104 9.6368C1.09684 9.17286 1.45187 8.7762 1.88595 8.48173C1.81366 8.13 1.77731 7.77182 1.77745 7.41273C1.77745 4.49173 4.15395 2.11523 7.07545 2.11523C9.03145 2.11523 10.8229 3.19723 11.7414 4.90223C12.0407 4.59575 12.3984 4.35246 12.7934 4.18679C13.1884 4.02111 13.6126 3.93642 14.0409 3.93773C15.2264 3.93816 16.3197 4.60257 16.8699 5.65127C17.4201 6.69996 17.3407 7.96583 16.6664 8.93623C17.3237 9.11348 17.9006 9.51505 18.3009 10.0749C18.7012 10.6347 18.901 11.3183 18.866 12.0104C18.7999 13.3793 17.6988 14.4826 16.3302 14.5512C15.4892 14.594 14.6482 14.5988 13.8071 14.5652C13.7401 14.5651 13.6759 14.5383 13.6284 14.4908C13.5809 14.4433 13.5541 14.3791 13.554 14.3121C13.5539 14.2451 13.5805 14.1808 13.6279 14.1332C13.6753 14.0855 13.7394 14.0586 13.8064 14.0582C14.6393 14.0913 15.4722 14.0867 16.3051 14.0441C17.4238 13.9873 18.3163 13.095 18.3703 11.9762C18.4184 10.9995 17.8433 10.1029 16.9302 9.73523C16.8601 9.70688 16.8028 9.65358 16.7693 9.58561C16.7357 9.51764 16.7282 9.43977 16.7482 9.36673C16.9601 8.58873 16.7811 7.74923 16.2679 7.12823C15.7547 6.50723 14.9731 6.19123 14.1722 6.27123C13.3712 6.35123 12.6699 6.81923 12.3039 7.52123C12.2684 7.58973 12.207 7.64073 12.1334 7.66333C12.0598 7.68593 11.9803 7.67823 11.9124 7.64173C11.0914 7.20273 10.1349 7.06173 9.21545 7.24473C8.29595 7.42773 7.47095 7.92173 6.88895 8.64073C6.84445 8.69573 6.78195 8.73273 6.71295 8.74473C6.64395 8.75673 6.57295 8.74273 6.51345 8.70573C6.17895 8.49273 5.79745 8.37173 5.40395 8.35573C5.01045 8.33973 4.61945 8.42973 4.27095 8.61573C3.92245 8.80173 3.63145 9.07673 3.42845 9.41373C3.22545 9.75073 3.11845 10.1367 3.11895 10.5307C3.11895 10.6157 3.09895 10.9517 3.09895 11.1422C3.09881 11.6469 3.30032 12.1308 3.65847 12.4876C4.01661 12.8445 4.50146 13.0442 5.00595 13.0422C5.55195 13.0422 5.82945 13.0522 6.23795 13.0652C6.83895 13.0782 7.48395 13.0942 8.35795 13.0942C8.42438 13.0943 8.48807 13.1208 8.53501 13.1678C8.58194 13.2148 8.60826 13.2785 8.6082 13.345C8.60813 13.4114 8.58167 13.4751 8.53465 13.522C8.48762 13.569 8.42388 13.5953 8.35745 13.5952C7.48345 13.5952 6.83795 13.5792 6.23595 13.5662C5.83195 13.5532 5.55295 13.5432 5.00595 13.5432C4.37037 13.5456 3.7604 13.2928 3.3089 12.8424C2.8574 12.392 2.60344 11.7825 2.60295 11.1469C2.60295 10.9619 2.62295 10.6249 2.62295 10.5309C2.62245 10.0469 2.75695 9.57273 3.01095 9.16173C3.26495 8.75073 3.62745 8.41473 4.05895 8.19073C4.49045 7.96673 4.97495 7.86273 5.46095 7.88873C5.75145 7.90323 6.03495 7.97073 6.29995 8.08873C6.92945 7.33073 7.79895 6.81473 8.76295 6.62173C9.56995 6.45973 10.4039 6.53073 11.1679 6.82373C11.6569 6.05573 12.5099 5.57573 13.4339 5.48373C13.8369 5.44373 14.2419 5.48273 14.6279 5.59873C14.0979 4.59573 13.0249 3.94273 11.8579 3.93773C9.03195 3.93773 6.72995 6.21973 6.71195 9.04573C6.71023 9.11174 6.68278 9.17473 6.63548 9.22133C6.58817 9.26793 6.52463 9.29455 6.45845 9.29523C6.39228 9.29591 6.32821 9.27061 6.27993 9.22497C6.23165 9.17934 6.20293 9.11692 6.19995 9.05073C6.22595 6.52373 8.10995 4.39773 10.5789 3.96473C10.5519 3.27173 9.42395 2.70673 8.66295 2.31273C7.90195 1.91873 7.05895 1.70573 6.19995 1.69373C3.67345 1.69373 1.61995 3.72673 1.61995 6.23873C1.61995 6.61673 1.66445 6.99473 1.75245 7.36173C1.76456 7.41353 1.75986 7.46788 1.7391 7.51696C1.71833 7.56603 1.68261 7.60729 1.63695 7.63473C1.23395 7.87573 0.900452 8.21673 0.667952 8.62573C0.435452 9.03473 0.312452 9.49473 0.312452 9.96273C0.313378 10.6848 0.600622 11.377 1.11119 11.8876C1.62176 12.3981 2.31394 12.6853 3.03595 12.6862C3.58895 12.6862 4.25895 12.6962 4.76395 12.7092C5.35895 12.7222 5.99995 12.7382 6.87745 12.7382C6.94388 12.7383 7.00757 12.7648 7.0545 12.8118C7.10143 12.8588 7.12776 12.9225 7.1277 12.989C7.12763 13.0554 7.10117 13.1191 7.05415 13.166C7.00712 13.213 6.94338 13.2393 6.87695 13.2392C5.99595 13.2392 5.35195 13.2232 4.75395 13.2102C4.24895 13.1972 3.57895 13.1872 3.03595 13.1872C2.17936 13.1869 1.35805 12.8471 0.753423 12.2426C0.148798 11.638 -0.19139 10.8168 -0.191406 9.96023C-0.191406 9.39273 -0.0454065 8.83473 0.244594 8.34073C0.413594 8.04573 0.626594 7.78373 0.877594 7.56173C0.805594 7.21073 0.769594 6.85173 0.769594 6.49273C0.769594 4.37273 2.06159 2.55873 3.89359 1.78173C4.57259 1.49373 5.31359 1.34673 6.07059 1.34673C8.19659 1.34573 10.1196 2.46073 11.1426 4.27773C11.4556 4.01873 11.8136 3.82173 12.1956 3.69773C11.4676 2.56473 10.3756 1.70473 9.09559 1.27273C7.81559 0.840729 6.42359 0.862729 5.15759 1.33373C2.79759 2.22373 1.18359 4.55473 1.18359 7.10973C1.18359 7.47873 1.22659 7.84673 1.31059 8.20473C0.895588 8.45873 0.541588 8.80773 0.282588 9.22373C0.0235876 9.63973 -0.112412 10.1167 -0.112412 10.6017C-0.108412 12.0897 0.948588 13.3537 2.39759 13.6207C2.64559 13.6667 2.89859 13.6897 3.15359 13.6897C3.69459 13.6897 4.15559 13.6997 4.64459 13.7127C5.23659 13.7257 5.88259 13.7417 6.76659 13.7417C6.83287 13.7418 6.89637 13.7682 6.9432 13.8151C6.99004 13.862 7.01629 13.9256 7.01623 13.992C7.01616 14.0584 6.9898 14.122 6.94287 14.169C6.89594 14.216 6.8324 14.2423 6.76612 14.2423L7.35145 14.4192Z"
         fill="currentColor"
         className="text-primary"
       />
@@ -241,7 +240,7 @@ const LinkChainIcon = () => (
       fill="currentColor"
     />
     <path
-      d="M18.1068 11.8373C17.9311 11.6611 17.6926 11.5619 17.4438 11.5615C17.1949 11.5612 16.9562 11.6597 16.7799 11.8354C16.6037 12.0111 16.5046 12.2496 16.5042 12.4984C16.5039 12.7473 16.6024 12.9861 16.7781 13.1623C18.2331 14.6223 18.1943 17.261 16.3993 19.0623L10.3406 25.1448C8.54682 26.9448 5.92432 26.9823 4.47307 25.5248C3.01807 24.0648 3.05807 21.4248 4.85182 19.6248L7.88182 16.5835C7.96874 16.4963 8.03763 16.3928 8.08454 16.2789C8.13145 16.165 8.15548 16.043 8.15525 15.9199C8.15502 15.7967 8.13053 15.6748 8.08319 15.5611C8.03584 15.4474 7.96657 15.3442 7.87932 15.2573C7.79208 15.1703 7.68856 15.1015 7.5747 15.0546C7.46083 15.0076 7.33883 14.9836 7.21568 14.9838C7.09253 14.9841 6.97063 15.0086 6.85694 15.0559C6.74324 15.1032 6.63999 15.1725 6.55307 15.2598L3.52307 18.301C1.13432 20.701 0.834324 24.5285 3.14432 26.8485C5.45682 29.171 9.27807 28.8673 11.6693 26.4685L17.7281 20.3848C20.1168 17.9873 20.4168 14.156 18.1068 11.8373Z"
+      d="M18.1068 11.8373C17.9311 11.6611 17.6926 11.5619 17.4438 11.5615C17.1949 11.5612 16.9562 11.6597 16.7799 11.8354C16.6037 12.0111 16.5046 12.2496 16.5042 12.4984C16.5039 12.7473 16.6024 12.9861 16.7781 13.1623C18.2331 14.6223 18.1943 17.261 16.3993 19.0623L10.3406 25.1448C8.54682 26.9448 5.92432 26.9823 4.47307 25.5248C3.01807 24.0648 3.05807 21.4248 4.85182 19.6248L7.88182 16.5835C7.96874 16.4963 8.03763 16.3928 8.08454 16.2789C8.13145 16.165 8.15548 16.043 8.15525 15.9199C8.15502 15.7967 8.15525 15.6748 8.08319 15.5611C8.03584 15.4474 7.96657 15.3442 7.87932 15.2573C7.79208 15.1703 7.68856 15.1015 7.5747 15.0546C7.46083 15.0076 7.33883 14.9836 7.21568 14.9838C7.09253 14.9841 6.97063 15.0086 6.85694 15.0559C6.74324 15.1032 6.63999 15.1725 6.55307 15.2598L3.52307 18.301C1.13432 20.701 0.834324 24.5285 3.14432 26.8485C5.45682 29.171 9.27807 28.8673 11.6693 26.4685L17.7281 20.3848C20.1168 17.9873 20.4168 14.156 18.1068 11.8373Z"
       fill="currentColor"
     />
   </svg>
@@ -281,7 +280,6 @@ const ArrowIcon = ({ direction = "right" }: { direction?: "left" | "right" }) =>
 );
 
 // ─── Stepper ──────────────────────────────────────────────────────────────────
-
 
 // ─── Review Step Icons ────────────────────────────────────────────────────────
 
@@ -326,7 +324,6 @@ function ChecklistStepper() {
     <div className="flex flex-col">
       {CHECKLIST_STEPS.map((step, i) => (
         <div key={step.n}>
-          {/* Step row: circle + label aligned side-by-side */}
           <div className="flex items-center gap-3">
             <div
               className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold ${
@@ -345,7 +342,6 @@ function ChecklistStepper() {
               {step.label}
             </span>
           </div>
-          {/* Connector line — sits directly under the circle center */}
           {i < CHECKLIST_STEPS.length - 1 && (
             <div className="ml-[11px] h-6 w-0.5 bg-border" />
           )}
@@ -358,87 +354,8 @@ function ChecklistStepper() {
 const STEPS = [
   { n: 1, label: 'Profile' },
   { n: 2, label: 'Skills' },
-  { n: 3, label: 'ID Verify' },
-  { n: 4, label: 'Review' },
+  { n: 3, label: 'Review' },
 ];
-
-// ─── Verification Helpers ──────────────────────────────────────────────────────
-
-function FileDropzone({
-  title,
-  helper,
-  onSelect,
-}: {
-  title: string;
-  helper: string;
-  onSelect: (file: UploadedFile) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    onSelect({
-      name: file.name,
-      size: `${Math.max(1, Math.round(file.size / (1024 * 1024)))}MB`,
-    });
-    e.target.value = '';
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={() => inputRef.current?.click()}
-      className="flex w-full items-center gap-1.5 self-stretch rounded-[8px] border border-dashed border-border text-left hover:border-primary transition-colors"
-    >
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-        className="hidden"
-        onChange={handleChange}
-      />
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 self-stretch rounded-[8px] border border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 py-5">
-        <UploadCloud className="h-5 w-5 text-primary/60" />
-        <div className="flex flex-col items-center text-center gap-0.5">
-          <span className="text-[12px] font-medium text-foreground">{title}</span>
-          <span className="text-[10px] leading-[13px] text-muted">{helper}</span>
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function UploadedFileRow({
-  file,
-  onRemove,
-}: {
-  file: UploadedFile;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-[8px] border border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 py-2.5">
-      <div className="flex items-center gap-2.5 min-w-0">
-        <FileIcon className="h-[26px] w-[26px] shrink-0 text-primary/60" />
-        <div className="min-w-0">
-          <p className="truncate text-[11px] font-medium text-foreground">{file.name}</p>
-          <p className="text-[10px] text-muted">{file.size}</p>
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-3">
-        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Remove file"
-          className="text-muted transition-colors hover:text-destructive"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </div>
-  );
-}
 
 function StepBar({ currentStep }: { currentStep: number }) {
   return (
@@ -559,10 +476,8 @@ function SelectInput({
 
       {isOpen && (
         <>
-          {/* Click-outside backdrop */}
           <div className="fixed inset-0 z-30" onClick={() => { setIsOpen(false); setSearchQuery(''); }} />
-          {/* Dropdown list */}
-          <div className="absolute left-0 top-[64px] z-40 w-full rounded-lg border border-border bg-card shadow-xl py-1 max-h-[220px] overflow-y-auto flex flex-col">
+          <div className="absolute left-0 top-[64px] z-40 w-full rounded-lg border border-border bg-card shadow-xl py-1 max-h-[220px] overflow-y-auto flex flex-col animate-in fade-in duration-100">
             {options.length > 4 && (
               <div className="px-2 py-1.5 border-b border-border sticky top-0 bg-card z-10">
                 <input
@@ -620,7 +535,6 @@ function TermsCheckbox({
       onClick={onToggle}
       className="flex w-full items-start gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-border/10"
     >
-      {/* Checkbox mark */}
       <span
         className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border-[1.5px] transition-colors ${
           agreed
@@ -630,7 +544,6 @@ function TermsCheckbox({
       >
         {agreed && <Check className="h-3.5 w-3.5 text-white" strokeWidth={2.5} />}
       </span>
-      {/* Text */}
       <span className="flex-1 text-[11px] leading-[18px]">
         <span className="text-muted">I have read and agree to CanaFri&rsquo;s </span>
         <span className="font-semibold text-primary underline underline-offset-2 cursor-pointer hover:opacity-80 transition-opacity">
@@ -659,9 +572,9 @@ interface BecomeSellerPageProps {
 export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
   const { toast } = useToast();
 
-  // Wizard step state (1 = Profile, 2 = Skills, 3 = ID Verify, 4 = Review)
+  // Wizard step state (1 = Profile, 2 = Skills, 3 = Review)
   const [currentStep, setCurrentStep] = useState(1);
-  const TOTAL_STEPS = 4;
+  const TOTAL_STEPS = 3;
   const isLastStep = currentStep === TOTAL_STEPS;
 
   // Form state
@@ -678,6 +591,11 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
   const [agreed, setAgreed] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Education state requirements
+  const [educationSchool, setEducationSchool] = useState('');
+  const [educationDegree, setEducationDegree] = useState('');
+  const [educationYear, setEducationYear] = useState('');
 
   // Step 2 states
   const [skillInput, setSkillInput] = useState("");
@@ -701,28 +619,43 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
     "portfolio-site.link",
   ]);
 
-  // Step 3 (Verification) states
-  const [idType, setIdType] = useState('');
-  const [idTypeOpen, setIdTypeOpen] = useState(false);
-  const [frontFile, setFrontFile] = useState<UploadedFile | null>(null);
-  const [backFile, setBackFile] = useState<UploadedFile | null>(null);
-  const [addressFile, setAddressFile] = useState<UploadedFile | null>(null);
-  const [selfieFile, setSelfieFile] = useState<UploadedFile | null>(null);
-
-  // Search states for custom inline dropdowns
+  // Search states for phone dropdown
   const [phoneSearchQuery, setPhoneSearchQuery] = useState('');
-  const [idTypeSearchQuery, setIdTypeSearchQuery] = useState('');
 
-  // Modal / submission state
+  // OTP Verification Modal States
+  const [showPhoneOtpModal, setShowPhoneOtpModal] = useState(false);
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '']);
+  const [otpTimer, setOtpTimer] = useState(59);
+  const [otpError, setOtpError] = useState('');
+
+  // Success Modal
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  const ID_TYPE_OPTIONS = [
-    'National ID Card',
-    'International Passport',
-    "Driver's License",
-    'Residence Permit',
-    'Voter\'s Card',
-  ];
+  // Phone OTP countdown
+  useEffect(() => {
+    if (showPhoneOtpModal && otpTimer > 0) {
+      const interval = setInterval(() => {
+        setOtpTimer((t) => t - 1);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [showPhoneOtpModal, otpTimer]);
+
+  const sanitize = (val: string): string => {
+    return val.trim().replace(/[<>]/g, '');
+  };
+
+  const validateEmail = (val: string): boolean => {
+    return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(val);
+  };
+
+  const validatePhone = (val: string): boolean => {
+    return /^[0-9]{7,15}$/.test(val.replace(/[\s-()]/g, ''));
+  };
+
+  const validateUsername = (val: string): boolean => {
+    return /^[a-zA-Z0-9_-]{3,20}$/.test(val);
+  };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -746,33 +679,88 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
 
   const handleSaveAndContinue = () => {
     if (currentStep === 1) {
-      if (!fullName.trim()) { toast('Please enter your full name.', 'error'); return; }
-      if (!username.trim()) { toast('Please enter a username.', 'error'); return; }
-      if (!email.trim()) { toast('Please enter your email address.', 'error'); return; }
-      if (!phone.trim()) { toast('Please enter your phone number.', 'error'); return; }
-      if (!headline.trim()) { toast('Please add a professional headline.', 'error'); return; }
-      if (!bio.trim()) { toast('Please write a short bio.', 'error'); return; }
-      if (!agreed) { toast('Please agree to the Terms of Service before continuing.', 'error'); return; }
-      toast('Profile saved! Proceeding to Skills setup…', 'success');
+      // Inputs validation & sanitization
+      const cleanFullName = sanitize(fullName);
+      const cleanUsername = username.startsWith('@') ? username.slice(1) : username;
+      const cleanEmail = sanitize(email);
+      const cleanPhone = phone.replace(/[\s-()]/g, '');
+
+      if (!cleanFullName || cleanFullName.length < 2) {
+        toast('Please enter a valid full name (at least 2 characters).', 'error');
+        return;
+      }
+      if (!validateUsername(cleanUsername)) {
+        toast('Username must be 3-20 characters and contain only letters, numbers, hyphens or underscores.', 'error');
+        return;
+      }
+      if (!validateEmail(cleanEmail)) {
+        toast('Please enter a valid email address.', 'error');
+        return;
+      }
+      if (!validatePhone(cleanPhone)) {
+        toast('Please enter a valid phone number (7-15 digits).', 'error');
+        return;
+      }
+      // Country & phone prefix must match for countries registered in the system
+      const matchedPrefixCountry = PHONE_PREFIX_OPTIONS.find((o) => o.name === country);
+      if (matchedPrefixCountry && selectedPhonePrefix.code !== matchedPrefixCountry.code) {
+        toast(`Phone country code (${selectedPhonePrefix.prefix} – ${selectedPhonePrefix.name}) doesn't match your selected country (${country}). Please make them consistent.`, 'error');
+        return;
+      }
+      if (!sanitize(headline)) {
+        toast('Please add a professional headline.', 'error');
+        return;
+      }
+      if (!sanitize(bio) || bio.length < 10) {
+        toast('Please write a short bio (at least 10 characters).', 'error');
+        return;
+      }
+      if (!sanitize(educationSchool)) {
+        toast('Please specify your School or University.', 'error');
+        return;
+      }
+      if (!sanitize(educationDegree)) {
+        toast('Please specify your degree program.', 'error');
+        return;
+      }
+      if (!educationYear) {
+        toast('Please select your graduation year.', 'error');
+        return;
+      }
+      if (!agreed) {
+        toast('Please agree to the Terms of Service before continuing.', 'error');
+        return;
+      }
+
+      toast('Profile info saved! Proceeding to Skills setup…', 'success');
       setCurrentStep(2);
     } else if (currentStep === 2) {
-      if (skills.length === 0) { toast('Please add at least one skill.', 'error'); return; }
-      if (!skillsBio.trim()) { toast('Please write about your experience.', 'error'); return; }
-      if (!hourlyRate.trim() || Number(hourlyRate) <= 0) { toast('Please enter a valid hourly rate.', 'error'); return; }
+      if (skills.length === 0) {
+        toast('Please add at least one skill.', 'error');
+        return;
+      }
+      if (!sanitize(skillsBio) || skillsBio.length < 15) {
+        toast('Please describe your professional experience (at least 15 characters).', 'error');
+        return;
+      }
+      if (!hourlyRate.trim() || Number(hourlyRate) <= 0) {
+        toast('Please enter a valid hourly rate (greater than 0).', 'error');
+        return;
+      }
+
       toast('Skills & experience updated. Previewing registration details…', 'success');
       setCurrentStep(3);
     } else if (currentStep === 3) {
-      if (!idType) { toast('Please select your ID type.', 'error'); return; }
-      if (!frontFile) { toast('Please upload the front side of your government ID.', 'error'); return; }
-      toast('Identity verified! Previewing your registration…', 'success');
-      setCurrentStep(4);
-    } else if (currentStep === 4) {
-      setShowSuccessModal(true);
+      // Trigger Phone Number Verification Modal
+      setOtpTimer(59);
+      setOtpDigits(['', '', '', '']);
+      setOtpError('');
+      setShowPhoneOtpModal(true);
     }
   };
 
   const addSkill = () => {
-    const trimmed = skillInput.trim();
+    const trimmed = sanitize(skillInput);
     if (!trimmed) return;
     if (skills.includes(trimmed)) {
       toast('Skill already added.', 'info');
@@ -805,12 +793,10 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
     }
   };
 
-
-  // ─── Sidebar cards (shared between desktop aside + mobile last-step inline) ──
   function SidebarCards() {
     return (
       <>
-        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-primary/5 p-6">
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-primary/5 p-6 animate-in fade-in duration-200">
           <h3 className="text-[13px] font-semibold leading-[18px] text-primary">
             Why become a seller?
           </h3>
@@ -864,7 +850,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
             <button
               type="button"
               onClick={handleCancel}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted transition-colors hover:border-primary hover:text-primary"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted transition-colors hover:border-primary hover:text-primary cursor-pointer"
               aria-label="Go back"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -873,8 +859,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
               <h1 className="text-[13px] font-semibold text-foreground">
                 {currentStep === 1 && 'Become a Seller — Profile'}
                 {currentStep === 2 && 'Become a Seller — Skills'}
-                {currentStep === 3 && 'Become a Seller — Identity Verification'}
-                {currentStep === 4 && 'Become a Seller — Review'}
+                {currentStep === 3 && 'Become a Seller — Review'}
               </h1>
               <p className="text-[10px] text-muted">Step {currentStep} of {TOTAL_STEPS}</p>
             </div>
@@ -915,7 +900,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                         <button
                           type="button"
                           onClick={() => setPhoneDropdownOpen(!phoneDropdownOpen)}
-                          className="flex items-center gap-[5px] rounded-l-[5px] border border-r-0 border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 outline-none focus:border-primary transition-colors"
+                          className="flex items-center gap-[5px] rounded-l-[5px] border border-r-0 border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 outline-none focus:border-primary transition-colors cursor-pointer"
                         >
                           <selectedPhonePrefix.FlagComponent />
                           <span className="text-[11px] text-muted">{selectedPhonePrefix.prefix}</span>
@@ -948,10 +933,12 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                                       type="button"
                                       onClick={() => {
                                         setSelectedPhonePrefix(opt);
+                                        // Auto-sync country when phone prefix country has a matching entry
+                                        if (PHONE_PREFIX_OPTIONS.find((o) => o.name === opt.name)) setCountry(opt.name);
                                         setPhoneDropdownOpen(false);
                                         setPhoneSearchQuery('');
                                       }}
-                                      className={`w-full flex items-center gap-3 px-3 py-2 text-[11px] text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/5 ${
+                                      className={`w-full flex items-center gap-3 px-3 py-2 text-[11px] text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/5 cursor-pointer ${
                                         selectedPhonePrefix.code === opt.code ? 'text-primary font-semibold' : 'text-foreground'
                                       }`}
                                     >
@@ -982,7 +969,12 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                   <SelectInput
                     label="Country"
                     value={country}
-                    onChange={setCountry}
+                    onChange={(val) => {
+                      setCountry(val);
+                      // Auto-sync phone prefix when selected country has a matching entry
+                      const match = PHONE_PREFIX_OPTIONS.find((o) => o.name === val);
+                      if (match) setSelectedPhonePrefix(match);
+                    }}
                     options={['United States', 'Canada', 'United Kingdom', 'Nigeria', 'Germany', 'France', 'Australia']}
                   />
                   <TextInput label="City" placeholder="e.g. New York" value={city} onChange={setCity} />
@@ -1022,6 +1014,35 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                 </div>
               </div>
 
+              {/* Education card */}
+              <div className="flex w-full flex-col gap-4 rounded-2xl border border-border bg-card px-4 py-6">
+                <h2 className="text-[13px] font-semibold leading-[18px] text-foreground">
+                  Education
+                </h2>
+                <div className="flex w-full flex-col gap-[14px] sm:flex-row sm:gap-6">
+                  <TextInput
+                    label="School/University"
+                    placeholder="e.g. Stanford University"
+                    value={educationSchool}
+                    onChange={setEducationSchool}
+                  />
+                  <TextInput
+                    label="Degree"
+                    placeholder="e.g. Bachelor of Computer Science"
+                    value={educationDegree}
+                    onChange={setEducationDegree}
+                  />
+                </div>
+                <div className="flex w-full flex-col gap-[14px] sm:flex-row sm:gap-6">
+                  <SelectInput
+                    label="Graduation Year"
+                    value={educationYear}
+                    onChange={setEducationYear}
+                    options={Array.from({ length: 15 }, (_, i) => String(new Date().getFullYear() + 5 - i))}
+                  />
+                </div>
+              </div>
+
               {/* Profile Photo card */}
               <div className="flex w-full flex-col gap-4 rounded-2xl border border-border bg-card px-4 py-6">
                 <div className="flex flex-col gap-1">
@@ -1034,7 +1055,6 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                 </div>
 
                 <div className="flex flex-col items-center gap-6">
-                  {/* Avatar preview */}
                   <div className="flex h-[100px] w-[100px] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-border bg-[#F5F8FB] dark:bg-[#161616]">
                     {avatarUrl ? (
                       <img src={avatarUrl} alt="Profile" className="h-full w-full object-cover" />
@@ -1046,7 +1066,6 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                     )}
                   </div>
 
-                  {/* Upload button */}
                   <div className="flex w-full flex-col items-center gap-1.5">
                     <input
                       type="file"
@@ -1058,7 +1077,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="flex w-full max-w-[280px] items-center justify-center gap-3 rounded-[10px] border border-dashed border-border bg-background px-6 py-4 transition-colors hover:border-primary hover:bg-primary/5"
+                      className="flex w-full max-w-[280px] items-center justify-center gap-3 rounded-[10px] border border-dashed border-border bg-background px-6 py-4 transition-colors hover:border-primary hover:bg-primary/5 cursor-pointer"
                     >
                       <UploadIcon />
                       <span className="text-[13px] font-medium leading-[18px] text-foreground">
@@ -1072,7 +1091,6 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                 </div>
               </div>
 
-              {/* Terms of Service */}
               <TermsCheckbox agreed={agreed} onToggle={() => setAgreed((a) => !a)} />
             </>
           )}
@@ -1080,7 +1098,6 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
           {/* Step 2: Skill and Expertise Registration */}
           {currentStep === 2 && (
             <>
-              {/* Skill and Expertise Card */}
               <div className="flex w-full flex-col items-start gap-8 rounded-2xl border border-border bg-card px-4 py-6">
                 <h2 className="text-[13px] font-semibold leading-[18px] text-foreground">
                   Skill and Expertise
@@ -1100,7 +1117,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                       <button
                         type="button"
                         onClick={addSkill}
-                        className="h-[38px] shrink-0 rounded-[8px] bg-primary px-5 text-[13px] font-semibold text-white hover:bg-primary-hover transition-colors"
+                        className="h-[38px] shrink-0 rounded-[8px] bg-primary px-5 text-[13px] font-semibold text-white hover:bg-primary-hover transition-colors cursor-pointer"
                       >
                         Add
                       </button>
@@ -1118,7 +1135,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                           <button
                             type="button"
                             onClick={() => removeSkill(idx)}
-                            className="text-primary hover:opacity-85 transition-opacity"
+                            className="text-primary hover:opacity-85 transition-opacity cursor-pointer"
                             aria-label={`Remove ${skill}`}
                           >
                             <CloseIcon className="h-2.5 w-2.5" />
@@ -1176,7 +1193,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                 </div>
               </div>
 
-              {/* About your experience Card */}
+              {/* About experience Card */}
               <div className="flex w-full flex-col gap-4 rounded-2xl border border-border bg-card px-4 py-6">
                 <h2 className="text-[13px] font-semibold leading-[18px] text-foreground">
                   About your Experience
@@ -1200,7 +1217,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                 </div>
               </div>
 
-              {/* Portfolio Link Card */}
+              {/* Portfolio Links */}
               <div className="flex w-full flex-col gap-4 rounded-2xl border border-border bg-card px-4 py-6">
                 <div className="flex flex-col gap-1">
                   <h2 className="text-[13px] font-semibold leading-[18px] text-foreground">
@@ -1219,7 +1236,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                         key={index}
                         className="flex w-full items-center justify-between gap-3 rounded-[10px] border border-dashed border-border bg-[#F5F8FB] dark:bg-[#161616] px-4 py-3"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0 w-full">
                           {isFile ? <LinkFileIcon /> : <LinkChainIcon />}
                           <input
                             type="text"
@@ -1236,7 +1253,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                         <button
                           type="button"
                           onClick={() => removePortfolioLink(index)}
-                          className="text-muted hover:text-foreground transition-colors p-1"
+                          className="text-muted hover:text-foreground transition-colors p-1 cursor-pointer"
                           aria-label="Remove link"
                         >
                           <CloseIcon className="h-4 w-4" />
@@ -1249,7 +1266,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                     <button
                       type="button"
                       onClick={addPortfolioLink}
-                      className="flex items-center gap-1.5 text-primary text-[11px] font-semibold hover:opacity-85 w-fit"
+                      className="flex items-center gap-1.5 text-primary text-[11px] font-semibold hover:opacity-85 w-fit cursor-pointer"
                     >
                       <PlusIcon />
                       <span>Add another link</span>
@@ -1260,182 +1277,17 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
             </>
           )}
 
-          {/* Step 3: Identity Verification */}
+          {/* Step 3: Review */}
           {currentStep === 3 && (
             <>
-              <div className="flex w-full flex-col gap-6 rounded-2xl border border-border bg-card px-4 py-6">
-                <div className="flex flex-col gap-1">
-                  <h2 className="text-[13px] font-semibold leading-[18px] text-foreground">Verification</h2>
-                  <p className="text-[11px] text-muted">
-                    Upload a government-issued ID to verify your identity.
-                  </p>
-                </div>
-
-                {/* Country — auto-filled from Step 1 */}
-                <div className="flex flex-col gap-[5px]">
-                  <label className="block text-[13px] font-medium leading-[18px] text-foreground/80">
-                    Country
-                  </label>
-                  <div className="flex h-[38px] w-full items-center justify-between rounded-[5px] border border-border bg-[#F5F8FB]/60 dark:bg-[#161616]/60 px-3 text-[11px] text-foreground opacity-80 cursor-not-allowed select-none">
-                    <span>{country || 'Not set — please complete Step 1'}</span>
-                    <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
-                      <CheckCircle2 className="h-2.5 w-2.5" />
-                      Auto-filled
-                    </span>
-                  </div>
-                </div>
-
-                {/* ID Type dropdown */}
-                <div className="flex flex-col gap-[5px] relative">
-                  <label className="block text-[13px] font-medium leading-[18px] text-foreground/80">
-                    ID Type <span className="text-destructive">*</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setIdTypeOpen((o) => !o)}
-                    className="flex h-[38px] w-full items-center justify-between rounded-[5px] border border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 text-left text-[11px] text-foreground outline-none focus:border-primary transition-colors"
-                  >
-                    <span className={idType ? 'text-foreground' : 'text-muted'}>
-                      {idType || 'Select ID type'}
-                    </span>
-                    <ChevronDownIcon className={`shrink-0 text-muted transition-transform duration-200 ${idTypeOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  {idTypeOpen && (
-                    <>
-                      <div className="fixed inset-0 z-30" onClick={() => { setIdTypeOpen(false); setIdTypeSearchQuery(''); }} />
-                      <div className="absolute left-0 top-[64px] z-40 w-full rounded-lg border border-border bg-card shadow-xl py-1 max-h-[220px] overflow-y-auto flex flex-col">
-                        <div className="px-2 py-1.5 border-b border-border sticky top-0 bg-card z-10">
-                          <input
-                            type="text"
-                            placeholder="Search ID type..."
-                            value={idTypeSearchQuery}
-                            onChange={(e) => setIdTypeSearchQuery(e.target.value)}
-                            className="w-full h-[28px] rounded-[4px] border border-border bg-[#F5F8FB] dark:bg-[#161616] px-2 text-[10px] text-foreground outline-none focus:border-primary transition-colors"
-                            autoFocus
-                          />
-                        </div>
-                        <div className="overflow-y-auto">
-                          {ID_TYPE_OPTIONS.filter((opt) =>
-                            opt.toLowerCase().includes(idTypeSearchQuery.toLowerCase())
-                          ).map((opt) => (
-                            <button
-                              key={opt}
-                              type="button"
-                              onClick={() => {
-                                setIdType(opt);
-                                setIdTypeOpen(false);
-                                setIdTypeSearchQuery('');
-                              }}
-                              className={`w-full flex items-center justify-between px-3 py-2 text-[11px] text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/5 ${
-                                idType === opt ? 'text-primary font-semibold' : 'text-foreground'
-                              }`}
-                            >
-                              <span>{opt}</span>
-                              {idType === opt && <Check className="h-3 w-3 text-primary shrink-0" />}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Government ID — front */}
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-col gap-1">
-                    <h3 className="text-[12px] font-semibold text-foreground">Upload Document</h3>
-                    <p className="text-[10px] text-muted">Upload front side of your government-issued ID</p>
-                  </div>
-                  <FileDropzone
-                    title="Upload front side"
-                    helper="PDF, DOC, JPG, PNG · Max 5MB"
-                    onSelect={setFrontFile}
-                  />
-                  {frontFile && (
-                    <UploadedFileRow file={frontFile} onRemove={() => setFrontFile(null)} />
-                  )}
-                </div>
-
-                {/* Government ID — back */}
-                <div className="flex flex-col gap-3">
-                  <p className="text-[10px] text-muted">Upload back side of your ID</p>
-                  <FileDropzone
-                    title="Upload back side"
-                    helper="PDF, DOC, JPG, PNG · Max 5MB"
-                    onSelect={setBackFile}
-                  />
-                  {backFile && (
-                    <UploadedFileRow file={backFile} onRemove={() => setBackFile(null)} />
-                  )}
-                </div>
-              </div>
-
-              {/* Address & Selfie verification */}
-              <div className="flex w-full flex-col gap-6 rounded-2xl border border-border bg-card px-4 py-6">
-                {/* Address */}
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-col gap-1">
-                    <h3 className="text-[12px] font-semibold text-foreground">Address Verification <span className="text-muted font-normal">(Optional)</span></h3>
-                    <p className="text-[10px] text-muted">Upload a utility bill or bank statement showing your address</p>
-                  </div>
-                  <FileDropzone
-                    title="Upload document"
-                    helper="PDF, DOC, JPG, PNG · Max 5MB"
-                    onSelect={setAddressFile}
-                  />
-                  {addressFile && (
-                    <UploadedFileRow file={addressFile} onRemove={() => setAddressFile(null)} />
-                  )}
-                </div>
-
-                {/* Selfie */}
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-col gap-1">
-                    <h3 className="text-[12px] font-semibold text-foreground">Selfie Verification</h3>
-                    <p className="text-[10px] text-muted">Take a clear selfie holding your ID document</p>
-                  </div>
-                  <FileDropzone
-                    title="Upload selfie"
-                    helper="JPG, PNG · Good lighting, Max 5MB"
-                    onSelect={setSelfieFile}
-                  />
-                  {selfieFile && (
-                    <UploadedFileRow file={selfieFile} onRemove={() => setSelfieFile(null)} />
-                  )}
-                </div>
-
-                {/* Tips card inline */}
-                <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-primary/5 p-4">
-                  <h4 className="text-[12px] font-semibold text-primary">Verification Tips</h4>
-                  <ul className="flex flex-col gap-1.5">
-                    {[
-                      'Use a valid government-issued photo ID',
-                      'Ensure all text and details are clearly visible',
-                      'Use good lighting for selfie photos',
-                      'Files must be original — no screenshots',
-                    ].map((tip) => (
-                      <li key={tip} className="flex items-start gap-2 text-[11px] leading-[16px] text-primary/70">
-                        <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/50" />
-                        {tip}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Step 4: Summary & Review */}
-          {currentStep === 4 && (
-            <>
               {/* Personal Information card */}
-              <div className="flex w-full flex-col gap-4 rounded-2xl border border-border bg-card px-4 py-5">
+              <div className="flex w-full flex-col gap-4 rounded-2xl border border-border bg-card px-4 py-5 animate-in fade-in duration-200">
                 <div className="flex w-full items-center justify-between">
                   <h2 className="text-[13px] font-semibold leading-[18px] text-foreground">Personal Information</h2>
                   <button
                     type="button"
                     onClick={() => setCurrentStep(1)}
-                    className="text-[10px] leading-[13px] text-muted transition-colors hover:text-primary"
+                    className="text-[10px] leading-[13px] text-muted transition-colors hover:text-primary cursor-pointer"
                   >
                     Edit
                   </button>
@@ -1470,7 +1322,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                   <button
                     type="button"
                     onClick={() => setCurrentStep(2)}
-                    className="text-[10px] leading-[13px] text-muted transition-colors hover:text-primary"
+                    className="text-[10px] leading-[13px] text-muted transition-colors hover:text-primary cursor-pointer"
                   >
                     Edit
                   </button>
@@ -1502,65 +1354,42 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                 </div>
               </div>
 
-              {/* Verification / Documents card */}
+              {/* Education details card */}
               <div className="flex w-full flex-col gap-4 rounded-2xl border border-border bg-card px-4 py-5">
                 <div className="flex w-full items-center justify-between">
-                  <h2 className="text-[13px] font-semibold leading-[18px] text-foreground">Verification Documents</h2>
+                  <h2 className="text-[13px] font-semibold leading-[18px] text-foreground">Education</h2>
                   <button
                     type="button"
-                    onClick={() => setCurrentStep(3)}
-                    className="text-[10px] leading-[13px] text-muted transition-colors hover:text-primary"
+                    onClick={() => setCurrentStep(1)}
+                    className="text-[10px] leading-[13px] text-muted transition-colors hover:text-primary cursor-pointer"
                   >
                     Edit
                   </button>
                 </div>
-                <div className="flex flex-col gap-3">
-                  {[
-                    { label: 'Identity document', value: idType || 'Government ID', uploaded: !!frontFile },
-                    { label: 'Address document', value: addressFile?.name ?? (addressFile ? 'Uploaded' : null), uploaded: !!addressFile },
-                    { label: 'Selfie verification', value: null, uploaded: !!selfieFile },
-                  ].map(({ label, value, uploaded }) => (
-                    <div key={label} className="flex w-full items-center justify-between gap-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[12px] font-medium text-foreground">{label}</span>
-                        {value && <span className="text-[10px] text-muted">{value}</span>}
-                      </div>
-                      <span className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] leading-[13px] font-medium ${
-                        uploaded
-                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                          : 'bg-border text-muted'
-                      }`}>
-                        {uploaded ? 'Verified' : 'Not uploaded'}
-                      </span>
-                    </div>
-                  ))}
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-muted">School/University</span>
+                    <span className="font-medium text-foreground">{educationSchool}</span>
+                  </div>
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-muted">Degree</span>
+                    <span className="font-medium text-foreground">{educationDegree}</span>
+                  </div>
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-muted">Graduation Year</span>
+                    <span className="font-medium text-foreground">{educationYear}</span>
+                  </div>
                 </div>
               </div>
             </>
           )}
 
-          {/* Mobile/Tablet: sidebar cards inline — only on last step */}
-          {isLastStep && (
-            <div className="flex flex-col gap-6 lg:hidden">
-              {/* Checklist card */}
-              <div className="flex w-full flex-col gap-4 rounded-2xl border border-border bg-card p-4">
-                <h3 className="text-[13px] font-semibold text-foreground">Checklist</h3>
-                <ChecklistStepper />
-                <div className="flex flex-col gap-1 rounded-xl border border-border bg-[#F5F8FB] dark:bg-[#161616] p-3">
-                  <span className="text-[10px] text-muted">Estimated review time</span>
-                  <span className="text-[15px] font-semibold text-foreground">24 – 48 hours</span>
-                </div>
-              </div>
-              <SidebarCards />
-            </div>
-          )}
-
-          {/* Action buttons — static on desktop, pushed to sticky bar on mobile via hidden */}
+          {/* Action buttons */}
           <div className="hidden lg:flex items-center gap-3">
             <button
               type="button"
               onClick={handleCancel}
-              className="flex h-[38px] flex-1 items-center justify-center gap-2 rounded-xl border border-primary text-[13px] font-semibold text-primary transition-colors hover:bg-primary/10"
+              className="flex h-[38px] flex-1 items-center justify-center gap-2 rounded-xl border border-primary text-[13px] font-semibold text-primary transition-colors hover:bg-primary/10 cursor-pointer"
             >
               {currentStep === 1 ? null : <ArrowIcon direction="left" />}
               {currentStep === 1 ? 'Cancel' : 'Back'}
@@ -1568,7 +1397,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
             <button
               type="button"
               onClick={handleSaveAndContinue}
-              className="flex h-[38px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-[13px] font-semibold text-white transition-colors hover:bg-primary/90"
+              className="flex h-[38px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-[13px] font-semibold text-white transition-colors hover:bg-primary/90 cursor-pointer"
             >
               {currentStep === TOTAL_STEPS ? 'Submit for Review' : 'Save and Continue'}
               {currentStep === TOTAL_STEPS ? null : <ArrowIcon direction="right" />}
@@ -1578,9 +1407,8 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
 
         {/* ── Right sidebar — desktop only ── */}
         <aside className="hidden lg:flex w-full flex-col gap-6 lg:w-[320px] lg:shrink-0">
-          {currentStep === 4 ? (
+          {currentStep === 3 ? (
             <>
-              {/* Checklist card */}
               <div className="flex w-full flex-col gap-4 rounded-2xl border border-border bg-card p-4">
                 <h3 className="text-[13px] font-semibold text-foreground">Checklist</h3>
                 <ChecklistStepper />
@@ -1599,30 +1427,153 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
       </div>
 
       {/* Sticky bottom action bar — mobile/tablet only */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 flex items-center gap-3 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-sm lg:hidden">
+      <div className="fixed bottom-0 left-0 right-0 z-40 flex items-center gap-3 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-sm lg:hidden">
         <button
           type="button"
           onClick={handleCancel}
-          className="flex h-[38px] flex-1 items-center justify-center gap-2 rounded-xl border border-primary text-[13px] font-semibold text-primary transition-colors hover:bg-primary/10"
+          className="flex h-[38px] flex-1 items-center justify-center gap-2 rounded-xl border border-primary text-[13px] font-semibold text-primary transition-colors hover:bg-primary/10 cursor-pointer"
         >
-        {currentStep === 1 ? null : <ArrowIcon direction="left" />}
+          {currentStep === 1 ? null : <ArrowIcon direction="left" />}
           {currentStep === 1 ? 'Cancel' : 'Back'}
         </button>
         <button
           type="button"
           onClick={handleSaveAndContinue}
-          className="flex h-[38px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-[13px] font-semibold text-white transition-colors hover:bg-primary/90"
+          className="flex h-[38px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-[13px] font-semibold text-white transition-colors hover:bg-primary/90 cursor-pointer"
         >
           {currentStep === TOTAL_STEPS ? 'Submit for Review' : 'Save and Continue'}
           {currentStep === TOTAL_STEPS ? null : <ArrowIcon direction="right" />}
         </button>
       </div>
 
+      {/* Phone OTP Verification Modal */}
+      {showPhoneOtpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-[380px] rounded-2xl border border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col gap-5">
+            <div className="flex flex-col gap-1 text-center">
+              <h3 className="text-[16px] font-bold text-foreground">Verify Your Phone Number</h3>
+              <p className="text-[11px] leading-[16px] text-muted">
+                We sent a 4-digit code to <strong className="text-foreground">{selectedPhonePrefix.prefix} {phone}</strong>.
+              </p>
+            </div>
+
+            <div className="flex justify-center items-center gap-3 py-2">
+              {otpDigits.map((digit, idx) => (
+                <input
+                  key={idx}
+                  id={`otp-${idx}`}
+                  type="text"
+                  maxLength={1}
+                  inputMode="numeric"
+                  value={digit}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val !== '' && !/^[0-9]$/.test(val)) return;
+                    const next = [...otpDigits];
+                    next[idx] = val;
+                    setOtpDigits(next);
+                    if (val !== '' && idx < 3) {
+                      document.getElementById(`otp-${idx + 1}`)?.focus();
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Backspace' && otpDigits[idx] === '' && idx > 0) {
+                      document.getElementById(`otp-${idx - 1}`)?.focus();
+                    }
+                  }}
+                  className="w-12 h-12 rounded-xl border border-border bg-[#F5F8FB] dark:bg-[#161616] text-center text-lg font-bold text-foreground focus:border-primary outline-none transition-colors"
+                />
+              ))}
+            </div>
+
+            {otpError && (
+              <p className="text-[10px] text-red-500 text-center -mt-2">{otpError}</p>
+            )}
+
+            <div className="flex flex-col items-center gap-1">
+              {otpTimer > 0 ? (
+                <p className="text-[11px] text-muted">Resend code in <span className="font-semibold text-foreground">00:{otpTimer < 10 ? `0${otpTimer}` : otpTimer}</span></p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOtpTimer(59);
+                    setOtpDigits(['', '', '', '']);
+                    setOtpError('');
+                  }}
+                  className="text-[11px] font-semibold text-primary hover:underline cursor-pointer bg-transparent border-none"
+                >
+                  Resend code
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 w-full mt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPhoneOtpModal(false);
+                  setOtpDigits(['', '', '', '']);
+                  setOtpError('');
+                }}
+                className="flex-1 h-[38px] rounded-xl border border-border text-[13px] font-semibold hover:bg-foreground/5 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={otpDigits.some(d => d === '')}
+                onClick={() => {
+                  const code = otpDigits.join('');
+                  if (code === '0000') {
+                    setOtpError('Invalid code. Try again (use any code except 0000).');
+                  } else {
+                    setShowPhoneOtpModal(false);
+                    // Save to local storage
+                    const profileData = {
+                      fullName: sanitize(fullName),
+                      username: username.startsWith('@') ? username : `@${username}`,
+                      email: sanitize(email),
+                      phonePrefix: selectedPhonePrefix.prefix,
+                      phone: sanitize(phone),
+                      country: sanitize(country),
+                      city: sanitize(city),
+                      headline: sanitize(headline),
+                      bio: sanitize(bio),
+                      avatarUrl: avatarUrl,
+                      skills,
+                      primaryCategory,
+                      subCategory,
+                      yearsOfExperience,
+                      language,
+                      hourlyRate,
+                      availability,
+                      skillsBio: sanitize(skillsBio),
+                      portfolioLinks,
+                      educationSchool: sanitize(educationSchool),
+                      educationDegree: sanitize(educationDegree),
+                      educationYear: sanitize(educationYear),
+                      isSeller: true,
+                      isVerified: false, 
+                      memberSince: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+                    };
+                    localStorage.setItem('canafri_user_profile', JSON.stringify(profileData));
+                    setShowSuccessModal(true);
+                  }
+                }}
+                className="flex-1 h-[38px] rounded-xl bg-primary text-[13px] font-semibold text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Verify & Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Success Confirmation Modal */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="relative w-full max-w-[440px] rounded-2xl border border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200 text-center flex flex-col items-center gap-5">
-            {/* Success Icon */}
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20">
               <Check className="h-8 w-8" strokeWidth={3} />
             </div>
@@ -1632,11 +1583,10 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                 Application Submitted Successfully!
               </h3>
               <p className="text-[12px] leading-relaxed text-muted px-2">
-                Your application to become a seller is currently under review. Our team will verify your profile and verification documents within <strong>24 to 48 hours</strong>. You will be live on the platform as soon as the review is complete!
+                Your application to become a seller is currently under review. Our team will verify your profile within <strong>24 to 48 hours</strong>. You will be live on the platform as soon as the review is complete!
               </p>
             </div>
 
-            {/* Checklist Preview inline */}
             <div className="w-full rounded-xl border border-border bg-[#F5F8FB] dark:bg-[#161616] p-4 text-left flex flex-col gap-3">
               <span className="text-[10px] font-semibold text-foreground uppercase tracking-wider">Next Steps:</span>
               <ChecklistStepper />
@@ -1648,7 +1598,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                 setShowSuccessModal(false);
                 onBack();
               }}
-              className="w-full h-[40px] flex items-center justify-center rounded-xl bg-primary text-[13px] font-semibold text-white transition-colors hover:bg-primary/90"
+              className="w-full h-[40px] flex items-center justify-center rounded-xl bg-primary text-[13px] font-semibold text-white transition-colors hover:bg-primary/90 cursor-pointer"
             >
               Go to Dashboard
             </button>
@@ -1658,4 +1608,3 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
     </div>
   );
 }
-

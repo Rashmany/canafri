@@ -58,7 +58,7 @@
   --text-primary: #FFFFFF;
   --text-muted: #A0A0A0;
 
-  --border: #242424;
+  --border: #121212;
 
   --sidebar-hover: #2A2C33;
 
@@ -72,6 +72,7 @@
   --color-foreground: var(--text-primary);
   --color-sidebar: var(--bg-sidebar);
   --color-card: var(--bg-card);
+  --color-card-border: var(--bg-card-border);
   --color-border: var(--border);
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
@@ -91,6 +92,13 @@ html {
   /* IE and Edge */
   scrollbar-width: none;
   /* Firefox */
+}
+
+/* Ensure all borders are solid by default (matches Figma spec) */
+*,
+*::before,
+*::after {
+  border-style: solid;
 }
 
 html::-webkit-scrollbar {
@@ -621,4 +629,50 @@ option {
     animation: none;
     opacity: 0;
   }
+}
+
+/* ═════════════════════════════════════════════════════════════════
+   CanaFri Publish Editor — Rich-Text ContentEditable
+   ═════════════════════════════════════════════════════════════════ */
+
+/* Placeholder text when editor is empty */
+.publish-editor[contenteditable]:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(160, 160, 160, 0.45);
+  pointer-events: none;
+  display: block;
+}
+
+/* Rich text formatting styles rendered inside the editor */
+.publish-editor strong  { font-weight: 700; }
+.publish-editor em      { font-style: italic; }
+.publish-editor u       { text-decoration: underline; }
+
+.publish-editor ul {
+  list-style-type: disc;
+  padding-left: 1.4rem;
+  margin: 0.5rem 0;
+}
+.publish-editor ol {
+  list-style-type: decimal;
+  padding-left: 1.4rem;
+  margin: 0.5rem 0;
+}
+.publish-editor li {
+  margin: 0.2rem 0;
+  line-height: 1.6;
+}
+
+.publish-editor blockquote {
+  border-left: 3px solid rgba(140, 92, 255, 0.55);
+  padding-left: 1rem;
+  margin: 0.75rem 0;
+  color: rgba(160, 160, 160, 0.9);
+  font-style: italic;
+}
+
+/* Active / pressed state on toolbar buttons */
+.fmt-btn-active {
+  color: #8C5CFF !important;
+  background-color: rgba(140, 92, 255, 0.12) !important;
 }

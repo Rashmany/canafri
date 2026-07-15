@@ -195,11 +195,9 @@ function MessagesPanel({
             }`}
           >
             <div className="relative flex-shrink-0">
-              <img
-                src={AVATAR_URL}
-                alt={conv.name}
-                className="w-[46px] h-[46px] rounded-full object-cover"
-              />
+              <div className="w-[46px] h-[46px] rounded-full bg-[#291D46] flex items-center justify-center flex-shrink-0 text-white text-[15px] font-semibold">
+                {conv.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+              </div>
               {conv.unread && (
                 <div className="absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full bg-[#8C5CFF] border-2 border-[#FAFAFD] dark:border-[#0B0B0B]" />
               )}
@@ -331,11 +329,9 @@ function ChatPanel({ onBack }: { onBack: () => void }) {
           <ArrowBackIcon />
         </button>
         <div className="flex items-center gap-2.5 flex-1">
-          <img
-            src={AVATAR_URL}
-            alt="Amara Chibueze"
-            className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-          />
+          <div className="w-8 h-8 rounded-full bg-[#291D46] flex items-center justify-center flex-shrink-0 text-white text-[11px] font-semibold">
+            AC
+          </div>
           <div className="flex flex-col">
             <span className="text-[#010101] dark:text-white text-[13px] font-medium leading-[18px] flex items-center gap-1.5">
               Amara Chibueze
