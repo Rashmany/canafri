@@ -53,6 +53,10 @@ interface SidebarProps {
   onMobileClose?: () => void;
   /** Whether current user is a freelancer — enables dropdown on Bookmarks */
   isFreelancer?: boolean;
+  /** Controlled seller mode state */
+  sellerMode?: boolean;
+  /** Callback triggered when seller mode changes */
+  onSellerModeChange?: (v: boolean) => void;
 }
 
 // ─── Design tokens (matched to CanaFri spec) ─────────────────────────────────
@@ -197,7 +201,6 @@ function SellingNavItem({ activePage, setActivePage, showLabel = true, onClose }
     { label: 'Proposals', page: 'Proposals' },
     { label: 'Gigs', page: 'Gigs' },
     { label: 'Buyer Request', page: 'Buyer Request' },
-    { label: 'Orders', page: 'Orders' },
   ];
 
   const isActive = subItems.some(item => activePage === item.page) || activePage === 'Selling';
@@ -245,16 +248,16 @@ function SellingNavItem({ activePage, setActivePage, showLabel = true, onClose }
 
       {/* Dropdown */}
       {open && showLabel && (
-        <div className="ml-6 mt-1 flex flex-col gap-[2px]">
+        <div className="ml-4 mt-1 flex flex-col gap-[2px] rounded-[0.75rem] border border-border bg-card py-[0.375rem] px-[0.25rem]">
           {subItems.map(({ label, page }) => (
             <button
               key={page}
               type="button"
               onClick={() => handleNavigate(page)}
               className={[
-                'flex h-[2.5rem] w-full items-center gap-[0.5rem] rounded-[0.75rem] px-[1.25rem]',
+                'flex h-[2.5rem] w-full items-center gap-[0.5rem] rounded-[0.625rem] px-[1rem]',
                 'cursor-pointer transition-colors duration-200 text-left',
-                activePage === page ? 'bg-foreground/10' : 'hover:bg-border/50',
+                activePage === page ? 'bg-foreground/10' : 'hover:bg-foreground/5',
               ].join(' ')}
             >
               <span className={[
@@ -333,16 +336,16 @@ function JobsNavItem({ activePage, setActivePage, showLabel = true, onClose }: J
 
       {/* Dropdown */}
       {open && showLabel && (
-        <div className="ml-6 mt-1 flex flex-col gap-[2px]">
+        <div className="ml-4 mt-1 flex flex-col gap-[2px] rounded-[0.75rem] border border-border bg-card py-[0.375rem] px-[0.25rem]">
           {subItems.map(({ label, page }) => (
             <button
               key={page}
               type="button"
               onClick={() => handleNavigate(page)}
               className={[
-                'flex h-[2.5rem] w-full items-center gap-[0.5rem] rounded-[0.75rem] px-[1.25rem]',
+                'flex h-[2.5rem] w-full items-center gap-[0.5rem] rounded-[0.625rem] px-[1rem]',
                 'cursor-pointer transition-colors duration-200 text-left',
-                activePage === page ? 'bg-foreground/10' : 'hover:bg-border/50',
+                activePage === page ? 'bg-foreground/10' : 'hover:bg-foreground/5',
               ].join(' ')}
             >
               <span className={[
@@ -464,12 +467,12 @@ function ProfileRow({
     <div className="relative w-full px-[0.5rem] pb-4">
       {/* ── Context menu ── */}
       {menuOpen && (
-        <div className="absolute bottom-full left-0 z-50 mb-2 w-full min-w-[13rem] overflow-hidden rounded-[0.75rem] border border-border bg-background shadow-xl">
+        <div className="absolute bottom-full left-0 z-50 mb-2 w-full min-w-[13rem] overflow-hidden rounded-[0.875rem] border border-border bg-card shadow-xl">
           {/* Header preview in popup */}
           <button
             type="button"
             onClick={() => { setMenuOpen(false); onViewProfile?.(); }}
-            className="flex w-full items-center gap-3 border-b border-border px-4 py-[0.875rem] text-left hover:bg-foreground/5 transition-colors"
+            className="flex w-full items-center gap-3 border-b border-border px-4 py-[0.875rem] text-left hover:bg-foreground/5 transition-colors rounded-t-[0.875rem]"
           >
             <AvatarOnline src={avatarSrc} alt={name} size="sm" online />
             <div className="min-w-0">
@@ -1029,9 +1032,14 @@ export default function Sidebar({
   mobileOpen = false,
   onMobileClose,
   isFreelancer = false,
+  sellerMode: controlledSellerMode,
+  onSellerModeChange,
 }: SidebarProps) {
   const [activePage, setActivePage] = useState(activeItem);
-  const [sellerMode, setSellerMode] = useState(false);
+  const [localSellerMode, setLocalSellerMode] = useState(false);
+
+  const sellerMode = controlledSellerMode !== undefined ? controlledSellerMode : localSellerMode;
+  const setSellerMode = onSellerModeChange !== undefined ? onSellerModeChange : setLocalSellerMode;
 
   const handleSetActivePage = (page: string) => {
     setActivePage(page);

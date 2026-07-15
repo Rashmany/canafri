@@ -1,7 +1,6 @@
 'use client';
 import { useState, useRef } from "react";
 import { ChevronLeft, ChevronDown, ChevronUp, X, UploadCloud, AlertCircle } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { SuccessModal } from "@/components/ui/success-modal";
 import { JobSummaryModal } from "@/components/ui/job-summary-modal";
 
@@ -14,6 +13,7 @@ interface FileUpload {
   name: string;
   size: string;
   progress: number;
+  dataUrl?: string;
 }
 
 export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitProjectPageProps) {
@@ -22,41 +22,82 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
   const [description, setDescription] = useState("");
   const [responseDropdownOpen, setResponseDropdownOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<FileUpload[]>([
-    { name: "Week 2 progress....zip", size: "15.5KB", progress: 65 }
+    { name: "Week 2 progress....zip", size: "15.5KB", progress: 65 },
   ]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
+  const handleUploadClick = () => fileInputRef.current?.click();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const newFile = e.target.files[0];
-      const sizeKB = (newFile.size / 1024).toFixed(1);
-      const fileObj: FileUpload = {
-        name: newFile.name,
-        size: `${sizeKB}KB`,
-        progress: 100
-      };
-      setUploadedFiles(prev => [...prev, fileObj]);
-    }
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const sizeKB = (f.size / 1024).toFixed(1);
+    const reader = new FileReader();
+    reader.onload = (ev) =>
+      setUploadedFiles(prev => [
+        ...prev,
+        { name: f.name, size: `${sizeKB}KB`, progress: 100, dataUrl: ev.target?.result as string },
+      ]);
+    reader.readAsDataURL(f);
   };
 
-  const handleRemoveFile = (index: number) => {
-    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
-  };
+  const handleRemoveFile = (i: number) =>
+    setUploadedFiles(prev => prev.filter((_, idx) => idx !== i));
 
-  const handleSuggestResponse = (response: string) => {
-    setDescription(response);
+  const handleSuggestResponse = (r: string) => {
+    setDescription(r);
     setResponseDropdownOpen(false);
+  };
+
+  const handleSubmit = () => {
+    if (!description.trim()) {
+      alert("Please describe your delivery before submitting.");
+      return;
+    }
+    if (typeof window !== "undefined") {
+      const profileRaw = localStorage.getItem("canafri_user_profile");
+      let freelancerName = "Josh Trek";
+      let freelancerHandle = "@joshtrek";
+      let initials = "JT";
+      if (profileRaw) {
+        try {
+          const p = JSON.parse(profileRaw);
+          freelancerName = p.fullName || freelancerName;
+          freelancerHandle = `@${(p.username || "joshtrek").toLowerCase()}`;
+          initials = freelancerName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+        } catch (e) { console.error(e); }
+      }
+      const delivery = {
+        id: Date.now(),
+        jobTitle: "Create a landing page for my web3 blog",
+        freelancerName,
+        freelancerHandle,
+        initials,
+        avatarBg: "bg-blue-600",
+        message: description,
+        submittedAt: new Date().toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }),
+        files: uploadedFiles.map(file => ({
+          name: file.name,
+          size: file.size,
+          dataUrl: file.dataUrl || null,
+          icon: file.name.endsWith(".pdf") ? "pdf" : file.name.endsWith(".zip") ? "zip" : "img",
+          iconBg: file.name.endsWith(".pdf") ? "bg-red-500/10" : file.name.endsWith(".zip") ? "bg-amber-500/10" : "bg-blue-500/10",
+        })),
+        status: "pending",
+        review: null,
+      };
+      const existing: unknown[] = (() => { try { return JSON.parse(localStorage.getItem("canafri_job_deliveries") || "[]"); } catch { return []; } })();
+      existing.unshift(delivery);
+      localStorage.setItem("canafri_job_deliveries", JSON.stringify(existing));
+    }
+    setShowSuccess(true);
   };
 
   const suggestedResponses = [
     "Here is the final completed project. Please review and let me know if any updates are needed.",
     "Project delivery: I have completed all milestone objectives as per our agreement. Files attached.",
-    "Milestone update: Deliverables completed. Looking forward to your review and feedback."
+    "Milestone update: Deliverables completed. Looking forward to your review and feedback.",
   ];
 
   return (
@@ -64,11 +105,7 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
       {/* Header with back button and page name */}
       <div className="flex items-center gap-3 border-b border-[#D8D8D8]/30 dark:border-[#121212]/30 bg-background px-6 py-5 shrink-0">
         {onBack && (
-          <button
-            onClick={onBack}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#D8D8D8] dark:border-[#121212] bg-[#FAFAFD] dark:bg-[#0B0B0B] text-muted hover:text-foreground transition-colors cursor-pointer"
-            title="Back"
-          >
+          <button onClick={onBack} className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#D8D8D8] dark:border-[#121212] bg-[#FAFAFD] dark:bg-[#0B0B0B] text-muted hover:text-foreground transition-colors cursor-pointer" title="Back">
             <ChevronLeft size={16} />
           </button>
         )}
@@ -79,12 +116,10 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
         </div>
       </div>
 
-      {/* Main Layout: Column on mobile, Row on desktop */}
+      {/* Main Layout */}
       <div className="w-full flex-1 p-4 sm:p-6 lg:p-8 flex flex-col lg:flex-row items-start gap-6 max-w-6xl mx-auto">
-
         {/* Left Column: Deliver Completed Project main card */}
         <div className="bg-[#FAFAFD] dark:bg-[#080808] border border-[#D8D8D8] dark:border-[#121212] rounded-2xl flex flex-col items-start w-full lg:flex-1 overflow-hidden">
-
           {/* Card Header */}
           <div className="bg-[#F5F8FB] dark:bg-[#0b0b0b] flex items-center justify-between px-6 py-3 border-b border-[#D8D8D8] dark:border-[#121212] w-full">
             <p className="text-[12px] font-medium text-foreground/80 leading-normal">
@@ -94,7 +129,6 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
 
           {/* Card Body */}
           <div className="flex flex-col gap-6 px-6 py-6 w-full">
-
             {/* Upload Area Wrapper */}
             <div className="flex flex-col gap-4 w-full">
               {/* Dashed dropzone */}
@@ -112,24 +146,24 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
                   <UploadCloud size={20} className="text-muted/80 shrink-0" />
                   <div className="text-[10px] text-muted leading-tight text-center">
                     <p className="font-medium">Drag and drop files here or click to upload</p>
-                    <p className="opacity-80">pdf, docs, jpj, png (Max 700MB)</p>
+                    <p className="opacity-80">pdf, docs, jpg, png (Max 700MB)</p>
                   </div>
                 </div>
               </div>
 
               {/* Uploaded Files List */}
               {uploadedFiles.map((file, idx) => (
-                <div key={idx} className="flex items-center gap-3.5 bg-transparent shrink-0">
-                  <p className="text-[10px] text-muted leading-none whitespace-nowrap">
-                    {file.name} {file.size}
+                <div key={idx} className="flex items-center gap-3.5 bg-transparent shrink-0 w-full min-w-0">
+                  <p className="text-[10px] text-muted leading-none truncate max-w-[120px] sm:max-w-none flex-1">
+                    {file.name} <span className="opacity-70">({file.size})</span>
                   </p>
 
                   {/* Progress bar container */}
-                  <div className="flex h-6 items-center shrink-0 w-[95px] relative">
-                    <div className="bg-[#DADADA] dark:bg-[#1f2937] h-[10px] rounded-full w-full shadow-[0px_2px_4px_0px_rgba(0,0,0,0.1)]" />
+                  <div className="flex h-6 items-center shrink-0 w-[80px] sm:w-[95px] relative">
+                    <div className="bg-[#DADADA] dark:bg-[#1f2937] h-[10px] rounded-full w-full" />
                     <div
                       style={{ width: `${file.progress}%` }}
-                      className="absolute bg-gradient-to-r from-[#8b5cf6] via-[#3b82f6] to-[#06b6d4] h-[10px] left-0 rounded-full shadow-[0px_0px_12px_rgba(139,92,246,0.25)]"
+                      className="absolute bg-gradient-to-r from-[#8b5cf6] via-[#3b82f6] to-[#06b6d4] h-[10px] left-0 rounded-full"
                     />
                   </div>
 
@@ -146,7 +180,6 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
 
             {/* Description / Feedback Field */}
             <div className="flex flex-col gap-2.5 w-full relative">
-
               {/* Dropdown toggle */}
               <div className="relative">
                 <button
@@ -187,9 +220,7 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
                   </p>
                 </div>
               </div>
-
             </div>
-
           </div>
 
           {/* Card Footer */}
@@ -201,16 +232,15 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
               Cancel
             </button>
             <button
-              onClick={() => setShowSuccess(true)}
+              onClick={handleSubmit}
               className="cursor-pointer bg-[#8C5CFF] hover:bg-[#8C5CFF]/90 text-white text-[13px] font-semibold px-5 py-2 rounded-xl transition-all active:scale-[0.98]"
             >
               Submit
             </button>
           </div>
-
         </div>
 
-        {/* Right Column: Portfolio Samples & Job Summary Card */}
+        {/* Right Column */}
         <div className="w-full lg:w-[18rem] shrink-0 flex flex-col gap-5">
           {/* Summary toggle card */}
           <div className="self-stretch rounded-2xl bg-[#FAFAFD] dark:bg-[#0b0b0b] border border-[#D8D8D8] dark:border-[#121212] flex flex-col items-start p-[1.5rem] gap-[1.25rem]">
@@ -241,10 +271,9 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
             </div>
           </div>
         </div>
-
       </div>
 
-      {/* Project Delivery Success Modal */}
+      {/* Success Modal */}
       <SuccessModal
         open={showSuccess}
         onClose={() => {

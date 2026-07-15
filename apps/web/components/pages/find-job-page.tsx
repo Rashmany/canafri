@@ -23,11 +23,12 @@ export interface Job {
   spent: string;
   location: string;
   proposalsInReview?: boolean;
+  questions?: string[];
 }
 
 export const JOBS: Job[] = [
   {
-    id: 1,
+    id: 10001,
     title: "Full Stack Web Developer",
     timeAgo: "2 days ago",
     pay: "$20-30",
@@ -44,9 +45,14 @@ export const JOBS: Job[] = [
     spent: "20k+ CC Spent",
     location: "Turkey",
     proposalsInReview: true,
+    questions: [
+      "Describe your recent experience with similar React/Next.js projects.",
+      "What is your experience with Canton network or Ledger API?",
+      "Include a link to your GitHub profile or portfolio.",
+    ],
   },
   {
-    id: 2,
+    id: 10002,
     title: "Senior Daml Smart Contract Developer",
     timeAgo: "3 days ago",
     pay: "$40-60",
@@ -63,9 +69,14 @@ export const JOBS: Job[] = [
     spent: "50k+ CC Spent",
     location: "United Kingdom",
     proposalsInReview: false,
+    questions: [
+      "Describe your experience writing Daml smart contracts.",
+      "Have you deployed on Canton mainnet or testnet? Provide details.",
+      "What security auditing tools have you used for smart contracts?",
+    ],
   },
   {
-    id: 3,
+    id: 10003,
     title: "Frontend Integration Engineer (Next.js)",
     timeAgo: "5 days ago",
     pay: "$1,500",
@@ -82,6 +93,10 @@ export const JOBS: Job[] = [
     spent: "5k+ CC Spent",
     location: "Turkey",
     proposalsInReview: true,
+    questions: [
+      "Describe your experience integrating Tailwind CSS with WebSocket-driven UIs.",
+      "Have you worked with Fastify before? Share an example.",
+    ],
   },
 ];
 
@@ -320,9 +335,10 @@ interface JobListPanelProps {
   onSelectJob: (job: Job) => void;
   savedJobIds: Record<number, boolean>;
   onToggleSaveJob: (id: number) => void;
+  jobsList: Job[];
 }
 
-function JobListPanel({ onBack, selectedJobId, onSelectJob, savedJobIds, onToggleSaveJob }: JobListPanelProps) {
+function JobListPanel({ onBack, selectedJobId, onSelectJob, savedJobIds, onToggleSaveJob, jobsList }: JobListPanelProps) {
   const [expandedJobIds, setExpandedJobIds] = useState<Record<number, boolean>>({});
   return (
     <div className="flex flex-col h-full bg-[#FAFAFD] dark:bg-[#0B0B0B]">
@@ -340,11 +356,11 @@ function JobListPanel({ onBack, selectedJobId, onSelectJob, savedJobIds, onToggl
 
       {/* Job list */}
       <div className="flex-1 overflow-y-auto no-scrollbar">
-        {JOBS.map((job, index) => {
+        {jobsList.map((job, index) => {
           const isSelected = selectedJobId === job.id;
           return (
             <div
-              key={job.id}
+              key={`${job.id}-${index}`}
               onClick={() => onSelectJob(job)}
               className={`flex flex-col gap-4 px-5 py-6 cursor-pointer border-b border-[#D8D8D8] dark:border-[#121212] transition-colors ${
                 isSelected
@@ -799,8 +815,41 @@ interface FindJobPageProps {
 }
 
 export default function FindJobPage({ onBack, onMobileViewChange, savedJobIds: externalSavedJobIds, onToggleSaveJob: externalToggleSaveJob }: FindJobPageProps) {
+  const [jobsList] = useState<Job[]>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("canafri_posted_jobs");
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          const parsedMapped = parsed.map((j: any) => ({
+            id: j.id,
+            title: j.title,
+            timeAgo: j.date === "Today" ? "1 hour ago" : `Posted ${j.date}`,
+            pay: j.budget,
+            payType: "Fixed-price",
+            payUnit: "CC Budget",
+            level: "Intermediate",
+            estimate: "Est - Time: 1 to 3 months",
+            description: j.description || "No description provided.",
+            tags: j.category.split(" & ").flatMap((s: any) => s.split(" ")).filter((s: any) => s.length > 2),
+            paymentVerified: true,
+            proposals: j.proposals || 0,
+            rating: 5,
+            spent: "0 CC Spent",
+            location: "United States",
+            questions: j.questions || [],
+          }));
+          return [...parsedMapped, ...JOBS];
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+    return JOBS;
+  });
+
   const [loading, setLoading] = useState(true);
-  const [selectedJob, setSelectedJob] = useState<Job | null>(JOBS[0]);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(() => jobsList[0] || null);
   const [mobileView, setMobileView] = useState<"list" | "detail">("list");
   const [applyingJob, setApplyingJob] = useState<Job | null>(null);
   const [internalSavedJobIds, setInternalSavedJobIds] = useState<Record<number, boolean>>({});
@@ -840,7 +889,7 @@ export default function FindJobPage({ onBack, onMobileViewChange, savedJobIds: e
   if (loading) return <FindJobPageSkeleton />;
 
   if (applyingJob) {
-    return <ApplyJobPage job={applyingJob} onBack={handleBackFromApply} />;
+    return <ApplyJobPage job={applyingJob} jobQuestions={applyingJob.questions} onBack={handleBackFromApply} />;
   }
 
   return (
@@ -858,6 +907,7 @@ export default function FindJobPage({ onBack, onMobileViewChange, savedJobIds: e
             onSelectJob={handleSelectJob}
             savedJobIds={savedJobIds}
             onToggleSaveJob={handleToggleSaveJob}
+            jobsList={jobsList}
           />
         </div>
 

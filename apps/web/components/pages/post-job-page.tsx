@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ConfirmDepositDialog, JobPostedDialog } from "@/components/ui/post-job-dialogs";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -16,6 +16,7 @@ import {
   ListOrdered,
   Check,
   FileText,
+  Smartphone,
 } from "lucide-react";
 
 type PayType = "hourly" | "fixed";
@@ -404,6 +405,122 @@ function RateField({
   );
 }
 
+function UsFlag() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 9 9"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="shrink-0"
+    >
+      <path
+        d="M8 1.25H1C0.948667 1.25 0.898333 1.25375 0.849 1.26125L0.848 1.69975L0.1655 1.69875C0.0575034 1.86231 -4.74053e-05 2.054 2.92989e-08 2.25V6.75C2.92989e-08 7.01522 0.105357 7.26957 0.292893 7.45711C0.48043 7.64464 0.734784 7.75 1 7.75H8C8.26522 7.75 8.51957 7.64464 8.70711 7.45711C8.89464 7.26957 9 7.01522 9 6.75V2.25C9 1.98478 8.89464 1.73043 8.70711 1.54289C8.51957 1.35536 8.26522 1.25 8 1.25Z"
+        fill="#00247D"
+      />
+      <path
+        d="M2.75 1.25H2V2.5H0V3.25H2V4.5H2.75V3.25H4.75V2.5H2.75V1.25Z"
+        fill="#CF1B2B"
+      />
+      <path
+        d="M4.75 1.25H4.16725L3 2.06725V1.25H1.75V1.89225L0.849 1.26125C0.698708 1.28368 0.555644 1.34058 0.431 1.4275L1.6065 2.25H1.1725L0.24175 1.59775C0.214226 1.62977 0.188759 1.66351 0.1655 1.69875L0.95325 2.25H0V3.5H0.97125L0 4.1915V4.5H0.833L1.75 3.858V4.5H3V3.68275L4.167 4.5H4.75V3.99275L4.04625 3.5H4.75V2.25H4.0465L4.75 1.75725V1.25Z"
+        fill="#EEEEEE"
+      />
+      <path
+        d="M4.75009 1.25H4.38484L3.00009 2.21975V2.25H3.39284L4.75009 1.2995V1.25ZM0.431094 1.4275C0.361015 1.47596 0.297417 1.53317 0.241844 1.59775L1.17259 2.25H1.60634L0.431094 1.4275ZM1.60934 3.5L0.183594 4.5H0.615344L1.75009 3.7055V3.5H1.60934ZM4.75009 4.4505V4.1455L3.82834 3.5H3.39259L4.75009 4.4505Z"
+        fill="#CF1B2B"
+      />
+    </svg>
+  );
+}
+
+function CanadaFlag() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 9 6" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+      <rect width="9" height="6" fill="#F01C24" />
+      <rect x="2.25" width="4.5" height="6" fill="#FFFFFF" />
+      <path d="M4.5 1.5L4.8 2.5L5.8 2.5L5 3.2L5.3 4.2L4.5 3.6L3.7 4.2L4 3.2L3.2 2.5L4.2 2.5L4.5 1.5Z" fill="#F01C24" />
+    </svg>
+  );
+}
+
+function UkFlag() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 9 6" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+      <rect width="9" height="6" fill="#00247D" />
+      <path d="M0 0L9 6M9 0L0 6" stroke="#FFFFFF" strokeWidth="0.8" />
+      <path d="M0 0L9 6M9 0L0 6" stroke="#CF1B2B" strokeWidth="0.4" />
+      <path d="M4.5 0V6M0 3H9" stroke="#FFFFFF" strokeWidth="1.2" />
+      <path d="M4.5 0V6M0 3H9" stroke="#CF1B2B" strokeWidth="0.6" />
+    </svg>
+  );
+}
+
+function NigeriaFlag() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 9 6" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+      <rect width="3" height="6" fill="#008751" />
+      <rect x="3" width="3" height="6" fill="#FFFFFF" />
+      <rect x="6" width="3" height="6" fill="#008751" />
+    </svg>
+  );
+}
+
+function GermanyFlag() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 9 6" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+      <rect width="9" height="2" fill="#000000" />
+      <rect y="2" width="9" height="2" fill="#DD0000" />
+      <rect y="4" width="9" height="2" fill="#FFCC00" />
+    </svg>
+  );
+}
+
+function FranceFlag() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 9 6" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+      <rect width="3" height="6" fill="#00209F" />
+      <rect x="3" width="3" height="6" fill="#FFFFFF" />
+      <rect x="6" width="3" height="6" fill="#F6424F" />
+    </svg>
+  );
+}
+
+function AustraliaFlag() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 9 6" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+      <rect width="9" height="6" fill="#000080" />
+      <rect width="4.5" height="3" fill="#00247D" />
+      <path d="M0 0L4.5 3M4.5 0L0 3" stroke="#FFFFFF" strokeWidth="0.4" />
+      <path d="M2.25 0V3M0 1.5H4.5" stroke="#FFFFFF" strokeWidth="0.6" />
+      <path d="M2.25 0V3M0 1.5H4.5" stroke="#CF1B2B" strokeWidth="0.3" />
+      <circle cx="6.75" cy="1.5" r="0.3" fill="#FFFFFF" />
+      <circle cx="6.75" cy="4.5" r="0.3" fill="#FFFFFF" />
+      <circle cx="5.4" cy="3" r="0.3" fill="#FFFFFF" />
+      <circle cx="8.1" cy="3" r="0.3" fill="#FFFFFF" />
+      <circle cx="7.4" cy="3.6" r="0.15" fill="#FFFFFF" />
+    </svg>
+  );
+}
+
+interface CountryPhoneOption {
+  code: string;
+  prefix: string;
+  name: string;
+  FlagComponent: React.ComponentType;
+}
+
+const PHONE_PREFIX_OPTIONS: CountryPhoneOption[] = [
+  { code: 'US', prefix: '+1', name: 'United States', FlagComponent: UsFlag },
+  { code: 'CA', prefix: '+1', name: 'Canada', FlagComponent: CanadaFlag },
+  { code: 'GB', prefix: '+44', name: 'United Kingdom', FlagComponent: UkFlag },
+  { code: 'NG', prefix: '+234', name: 'Nigeria', FlagComponent: NigeriaFlag },
+  { code: 'DE', prefix: '+49', name: 'Germany', FlagComponent: GermanyFlag },
+  { code: 'FR', prefix: '+33', name: 'France', FlagComponent: FranceFlag },
+  { code: 'AU', prefix: '+61', name: 'Australia', FlagComponent: AustraliaFlag },
+];
+
 interface PostJobPageProps {
   onBack: () => void;
 }
@@ -436,13 +553,48 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
   const [deadline, setDeadline] = useState("30");
   const [milestones, setMilestones] = useState("5");
 
+  // Revision policy states (Step 2)
+  const [freeRevisions, setFreeRevisions] = useState("2");
+  const [revisionDeadline, setRevisionDeadline] = useState("7");
+  const [revisionScope, setRevisionScope] = useState("");
+  const [extraRevisionCost, setExtraRevisionCost] = useState("50");
+
+  // Screening questions state (Step 1)
+  const [screeningQuestions, setScreeningQuestions] = useState<string[]>([
+    "Describe your recent experience with similar projects",
+    "What framework have you worked with?",
+  ]);
+  const [questionInput, setQuestionInput] = useState("");
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Dialog states
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
   const [successDialogOpen, setSuccessDialogOpen] = useState(false);
 
+  // Phone OTP verification modal
+  const [showPhoneOtpModal, setShowPhoneOtpModal] = useState(false);
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '']);
+  const [otpTimer, setOtpTimer] = useState(59);
+  const [otpError, setOtpError] = useState('');
+  const [selectedPrefix, setSelectedPrefix] = useState<CountryPhoneOption>(PHONE_PREFIX_OPTIONS[0]);
+  const [phoneInputVal, setPhoneInputVal] = useState("");
+  const [otpStep, setOtpStep] = useState<"input" | "verify">("input");
+  const [showPrefixDropdown, setShowPrefixDropdown] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    if (showPhoneOtpModal && otpTimer > 0) {
+      const interval = setInterval(() => setOtpTimer((t) => t - 1), 1000);
+      return () => clearInterval(interval);
+    }
+  }, [showPhoneOtpModal, otpTimer]);
+
   const { toast } = useToast();
+
+  const sanitize = (val: string): string => {
+    return val.trim().replace(/[<>]/g, '');
+  };
 
   // Estimated values dynamically derived
   const derivedBudget = payType === "fixed" 
@@ -467,6 +619,16 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
     if (!prefSkillInput.trim()) return;
     setPrefSkills((prev) => [...prev, prefSkillInput.trim()]);
     setPrefSkillInput("");
+  };
+
+  const addScreeningQuestion = () => {
+    if (!questionInput.trim() || screeningQuestions.length >= 5) return;
+    setScreeningQuestions((prev) => [...prev, questionInput.trim()]);
+    setQuestionInput("");
+  };
+
+  const removeScreeningQuestion = (index: number) => {
+    setScreeningQuestions((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -526,7 +688,7 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
             </div>
 
             <div className="flex w-full flex-col gap-3">
-              <p className="text-[13px] font-medium leading-[18px] text-foreground min-h-[36px]">
+              <p className="text-[13px] font-medium leading-[18px] text-foreground min-h-[36px] break-words overflow-hidden w-full">
                 {title || "Build a React and Next.js frontend for a Canton wallet dashboard."}
               </p>
               <div className="flex items-center gap-2 flex-wrap">
@@ -640,34 +802,237 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
   };
 
   const handlePublish = () => {
-    if (!title || !category || !description) {
+    // Validate Step 1 first just in case
+    if (!title.trim() || !category || !description.trim()) {
       toast('Please fill in all required fields on Step 1 first.', 'error');
       setStep(1);
       return;
     }
-    if (payType === 'fixed' && (!minTotalBudget || !maxTotalBudget)) {
-      toast('Please set your project budget range.', 'error');
+
+    // Validate Step 2 inputs
+    if (payType === 'fixed') {
+      const minB = Number(minTotalBudget);
+      const maxB = Number(maxTotalBudget);
+      if (isNaN(minB) || minB <= 0 || isNaN(maxB) || maxB <= 0) {
+        toast('Please set valid positive numbers for your total budget range.', 'error');
+        return;
+      }
+      if (minB > maxB) {
+        toast('Minimum budget cannot exceed maximum budget.', 'error');
+        return;
+      }
+      
+      const dl = Number(deadline);
+      if (isNaN(dl) || dl <= 0 || !Number.isInteger(dl)) {
+        toast('Please enter a valid positive number of days for the deadline.', 'error');
+        return;
+      }
+
+      const ms = Number(milestones);
+      if (isNaN(ms) || ms <= 0 || !Number.isInteger(ms)) {
+        toast('Please enter a valid positive number of milestone phases.', 'error');
+        return;
+      }
+    } else {
+      const minR = Number(minHourlyRate);
+      const maxR = Number(maxHourlyRate);
+      if (isNaN(minR) || minR <= 0 || isNaN(maxR) || maxR <= 0) {
+        toast('Please set valid positive numbers for your hourly rate range.', 'error');
+        return;
+      }
+      if (minR > maxR) {
+        toast('Minimum hourly rate cannot exceed maximum hourly rate.', 'error');
+        return;
+      }
+    }
+
+    // Validate revision configurations
+    const revs = Number(freeRevisions);
+    if (isNaN(revs) || revs < 0 || !Number.isInteger(revs)) {
+      toast('Please enter a valid non-negative integer for free revisions.', 'error');
       return;
     }
-    if (payType === 'hourly' && (!minHourlyRate || !maxHourlyRate)) {
-      toast('Please set your hourly rate range.', 'error');
+
+    const revDl = Number(revisionDeadline);
+    if (isNaN(revDl) || revDl <= 0 || !Number.isInteger(revDl)) {
+      toast('Please enter a valid positive number of days for the revision response deadline.', 'error');
       return;
     }
-    // Open the deposit confirmation dialog
+
+    const revCost = Number(extraRevisionCost);
+    if (isNaN(revCost) || revCost < 0) {
+      toast('Please enter a valid non-negative number for additional revision cost.', 'error');
+      return;
+    }
+
+    // Sanitize input values
+    const sanitizedTitle = sanitize(title);
+    const sanitizedDesc = sanitize(description);
+    const sanitizedWeeklyCommitment = sanitize(weeklyCommitment);
+    const sanitizedEstimatedTime = sanitize(estimatedTime);
+    const sanitizedLocation = sanitize(location);
+    const sanitizedRevisionScope = sanitize(revisionScope);
+
+    setTitle(sanitizedTitle);
+    setDescription(sanitizedDesc);
+    setWeeklyCommitment(sanitizedWeeklyCommitment);
+    setEstimatedTime(sanitizedEstimatedTime);
+    setLocation(sanitizedLocation);
+    setRevisionScope(sanitizedRevisionScope);
+
+    // Open the deposit confirmation dialog directly without phone OTP intercept
     setDepositDialogOpen(true);
+  };
+
+  const createAndPublishJob = () => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("canafri_posted_jobs");
+      let jobsList = [];
+      if (stored) {
+        try {
+          jobsList = JSON.parse(stored);
+        } catch (e) {
+          console.error(e);
+        }
+      } else {
+        // Fallback/seed default mock jobs
+        jobsList = [
+          { id: 1, title: "Create a landing page for my web3 blog", category: "Web Programming & Design", proposals: 8, date: "Mar. 24", budget: "150 CC", status: "open", freelancerName: "No Selection Yet", freelancerHandle: "Accepting proposals", avatarClassName: "bg-muted text-muted-foreground border border-border", initials: "?" },
+          { id: 2, title: "Daml Smart Contract Escrow System", category: "Smart Contracts", proposals: 15, date: "Mar. 20", budget: "400 CC", status: "working", freelancerName: "Alex Daml", freelancerHandle: "@alexdaml", avatarClassName: "bg-purple-600", initials: "AD" },
+          { id: 3, title: "Next.js frontend theme refactor", category: "Frontend Dev", proposals: 12, date: "Mar. 15", budget: "250 CC", status: "completed", freelancerName: "Sina Front", freelancerHandle: "@sinafront", avatarClassName: "bg-emerald-600", initials: "SF" },
+          { id: 4, title: "Tailwind layout alignment tweaks", category: "UI CSS Tweak", proposals: 0, date: "Mar. 28", budget: "50 CC", status: "draft", freelancerName: "Draft Status", freelancerHandle: "Not published", avatarClassName: "bg-gray-400", initials: "DS" },
+        ];
+      }
+
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const dateObj = new Date();
+      const dateStr = `${months[dateObj.getMonth()]}. ${dateObj.getDate()}`;
+
+      const newJob = {
+        id: Date.now(),
+        title,
+        category,
+        proposals: 0,
+        date: dateStr,
+        budget: `${derivedBudget} CC`,
+        status: "open",
+        freelancerName: "No Selection Yet",
+        freelancerHandle: "Accepting proposals",
+        avatarClassName: "bg-muted text-muted-foreground border border-border",
+        initials: "?",
+        description,
+        questions: screeningQuestions,
+      };
+
+      jobsList.unshift(newJob);
+      localStorage.setItem("canafri_posted_jobs", JSON.stringify(jobsList));
+    }
+
+    // Mark that the user has now successfully posted their first job
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('canafri_first_posted', 'true');
+      localStorage.setItem('canafri_phone_verified', 'true');
+    }
+
+    // Small delay so dialog exit animates before success appears
+    setTimeout(() => setSuccessDialogOpen(true), 80);
   };
 
   const handleDepositConfirm = () => {
     setDepositDialogOpen(false);
-    // Small delay so deposit dialog exit animates before success appears
-    setTimeout(() => setSuccessDialogOpen(true), 80);
+
+    // Check if user has verified their phone number AND has posted at least once before.
+    // canafri_phone_verified = phone OTP completed
+    // canafri_first_posted   = set after the very first successful job post
+    // We require BOTH: if either is missing, show the phone verification popup.
+    const isPhoneVerified = typeof window !== 'undefined' &&
+      localStorage.getItem('canafri_phone_verified') === 'true';
+    const hasPostedBefore = typeof window !== 'undefined' &&
+      localStorage.getItem('canafri_first_posted') === 'true';
+
+    if (!isPhoneVerified || !hasPostedBefore) {
+      // Find the country and phone pre-selected from the post-job form or registration profile
+      let userCountry = "United States";
+      let userPhone = "";
+      if (typeof window !== 'undefined') {
+        const storedProfile = localStorage.getItem("canafri_user_profile");
+        if (storedProfile) {
+          try {
+            const p = JSON.parse(storedProfile);
+            if (p.country) userCountry = p.country;
+            if (p.phone) userPhone = p.phone;
+          } catch (e) {
+            console.error("Error reading profile data from storage:", e);
+          }
+        }
+      }
+      
+      // Match against PHONE_PREFIX_OPTIONS
+      const matchedPrefix = PHONE_PREFIX_OPTIONS.find(
+        opt => opt.name.toLowerCase() === userCountry.toLowerCase()
+      ) || PHONE_PREFIX_OPTIONS[0];
+
+      setSelectedPrefix(matchedPrefix);
+      setPhoneInputVal(userPhone);
+      setOtpStep("input");
+      setOtpDigits(['', '', '', '']);
+      setOtpTimer(59);
+      setOtpError('');
+      setShowPhoneOtpModal(true);
+      return;
+    }
+
+    createAndPublishJob();
   };
 
   const handleNextStep = () => {
-    if (!title || !category || !description) {
-      alert("Please fill in all required fields marked with * before moving to Payment settings.");
+    if (!title.trim()) {
+      toast("Please enter a job title.", "error");
       return;
     }
+    if (title.trim().length < 10) {
+      toast("Job title must be at least 10 characters long.", "error");
+      return;
+    }
+    if (!category) {
+      toast("Please select a category.", "error");
+      return;
+    }
+    if (!subCategory) {
+      toast("Please select a sub-category.", "error");
+      return;
+    }
+    if (!estimatedTime) {
+      toast("Please select estimated job duration.", "error");
+      return;
+    }
+    if (!weeklyCommitment) {
+      toast("Please select weekly commitment.", "error");
+      return;
+    }
+    if (!location) {
+      toast("Please select location requirement.", "error");
+      return;
+    }
+    if (!description.trim()) {
+      toast("Please enter a job description.", "error");
+      return;
+    }
+    if (description.trim().length < 30) {
+      toast("Job description must be at least 30 characters long.", "error");
+      return;
+    }
+    if (skills.length === 0) {
+      toast("Please add at least one required skill tag.", "error");
+      return;
+    }
+
+    // Sanitize Step 1 inputs
+    const sanitizedTitle = sanitize(title);
+    const sanitizedDesc = sanitize(description);
+    
+    setTitle(sanitizedTitle);
+    setDescription(sanitizedDesc);
     setStep(2);
   };
 
@@ -813,14 +1178,14 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                     </div>
                     <textarea
                       placeholder="Describe the job, responsibilities, deliverables and project goals..."
-                      rows={6}
+                      rows={10}
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
-                      maxLength={500}
+                      maxLength={2500}
                       className="w-full resize-none bg-transparent px-4 py-3 text-[11px] text-foreground placeholder:text-muted outline-none"
                     />
                     <div className="flex justify-end px-2 pb-2 text-[10px] text-muted">
-                      {description.length}/500
+                      {description.length}/2500
                     </div>
                   </div>
                 </div>
@@ -954,6 +1319,55 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                     </div>
                   )}
                 </div>
+              </section>
+
+              {/* Screening Questions card */}
+              <section className="flex flex-col gap-4 border border-border bg-card rounded-[25px] p-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[13px] font-medium leading-[18px] text-foreground">Screening Questions</h2>
+                  <span className="text-[10px] text-muted">{screeningQuestions.length}/5 questions</span>
+                </div>
+                <p className="text-[11px] leading-[16px] text-muted -mt-2">
+                  Add up to 5 questions freelancers must answer when applying. This helps you screen candidates more effectively.
+                </p>
+
+                {/* Question list */}
+                <div className="flex flex-col gap-2">
+                  {screeningQuestions.map((q, i) => (
+                    <div key={i} className="flex items-start gap-2 rounded-[8px] border border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 py-2.5">
+                      <span className="text-[10px] font-bold text-primary shrink-0 mt-0.5">{i + 1}.</span>
+                      <span className="flex-1 text-[11px] leading-5 text-foreground">{q}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeScreeningQuestion(i)}
+                        className="shrink-0 text-muted hover:text-foreground transition-colors ml-1"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add question input */}
+                {screeningQuestions.length < 5 && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={questionInput}
+                      onChange={(e) => setQuestionInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && addScreeningQuestion()}
+                      placeholder="e.g. What is your experience with Canton network?"
+                      className="h-[38px] flex-1 rounded-[5px] border border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 text-[11px] text-foreground placeholder:text-muted outline-none focus:border-primary transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={addScreeningQuestion}
+                      className="h-[38px] shrink-0 rounded-[8px] bg-primary px-5 text-[13px] font-semibold text-white hover:bg-primary-hover transition-colors"
+                    >
+                      Add
+                    </button>
+                  </div>
+                )}
               </section>
 
               {/* Action buttons */}
@@ -1104,6 +1518,78 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                 </BudgetRangeCard>
               )}
 
+              {/* Revision Policy card (Step 2) */}
+              <div className="flex flex-col gap-4 rounded-[25px] border border-border bg-card p-6">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-[13px] font-medium leading-[18px] text-foreground">Revision Policy</h2>
+                  <p className="text-[11px] leading-[16px] text-muted">Define how many revisions are included and what happens when the client requests more.</p>
+                </div>
+
+                {/* Free revisions count */}
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel required={false}>Number of Free Revisions</FieldLabel>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {["0", "1", "2", "3", "Unlimited"].map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => setFreeRevisions(opt)}
+                        className={`flex items-center justify-center h-[34px] px-4 rounded-[5px] border text-[11px] font-semibold transition-colors ${
+                          freeRevisions === opt
+                            ? "bg-[#8C5CFF]/10 dark:bg-[rgba(140,92,255,0.12)] border-[#8C5CFF] text-primary"
+                            : "bg-[#F5F8FB] dark:bg-[#161616] border-border text-muted hover:text-foreground"
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                  {/* Revision request deadline */}
+                  <div className="flex flex-col gap-1.5">
+                    <FieldLabel required={false}>Revision Request Deadline (Days after delivery)</FieldLabel>
+                    <input
+                      type="number"
+                      min="1"
+                      value={revisionDeadline}
+                      onChange={(e) => setRevisionDeadline(e.target.value)}
+                      className="h-[38px] w-full rounded-[5px] border border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 text-[11px] text-foreground placeholder:text-muted outline-none focus:border-primary transition-colors"
+                    />
+                  </div>
+
+                  {/* Extra revision cost */}
+                  <div className="flex flex-col gap-1.5">
+                    <FieldLabel required={false}>Extra Revision Cost (CC per request)</FieldLabel>
+                    <input
+                      type="number"
+                      min="0"
+                      value={extraRevisionCost}
+                      onChange={(e) => setExtraRevisionCost(e.target.value)}
+                      placeholder="e.g. 50"
+                      className="h-[38px] w-full rounded-[5px] border border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 text-[11px] text-foreground placeholder:text-muted outline-none focus:border-primary transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {/* Revision scope */}
+                <DropdownSelect
+                  label="Scope of Revision"
+                  placeholder="Select revision scope"
+                  value={revisionScope}
+                  options={["Minor tweaks only", "Content & layout changes", "Major design changes", "Full rework allowed"]}
+                  onChange={setRevisionScope}
+                  required={false}
+                />
+
+                <div className="flex items-center gap-2 rounded-[8px] bg-[#8C5CFF]/10 dark:bg-[rgba(140,92,255,0.12)] border border-[#8C5CFF]/20 px-4 py-3">
+                  <span className="text-[10px] leading-[14px] text-primary/80">
+                    ✦ Freelancers see your revision policy before applying, which reduces disputes and sets clear expectations on both sides.
+                  </span>
+                </div>
+              </div>
+
               {/* Mobile and Tablet Preview (Step 2 bottom, before buttons) */}
               <div className="block lg:hidden border border-border bg-card rounded-[25px] px-4 py-6 shadow-sm">
                 <JobPreviewContent />
@@ -1142,6 +1628,223 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
         </aside>
 
       </div>
+
+      {/* ── Phone OTP Verification Modal (first-time post) ──────────── */}
+      {showPhoneOtpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-[400px] rounded-2xl border border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            {otpStep === "input" ? (
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                    <Smartphone size={22} className="text-primary" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-[16px] font-bold text-foreground">Verify Your Phone Number</h3>
+                    <p className="text-[12px] leading-[18px] text-muted">
+                      Please enter your phone number to receive a verification code. This helps verify your identity for your first posting.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5 text-left relative">
+                  <label className="text-[11px] font-semibold text-foreground/85">Phone Number <span className="text-rose-500">*</span></label>
+                  <div className="flex items-center gap-2">
+                    {/* Prefix dropdown trigger */}
+                    <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setShowPrefixDropdown(prev => !prev)}
+                        className="flex items-center gap-1.5 px-3 h-[38px] rounded-lg border border-border bg-[#F5F8FB] dark:bg-[#161616] hover:bg-foreground/5 transition-colors cursor-pointer"
+                      >
+                        <selectedPrefix.FlagComponent />
+                        <span className="text-[12px] font-semibold text-foreground">{selectedPrefix.prefix}</span>
+                        <ChevronDown size={12} className="text-muted" />
+                      </button>
+
+                      {/* Dropdown list */}
+                      {showPrefixDropdown && (
+                        <div className="absolute left-0 top-[calc(100%+4px)] z-50 w-[240px] rounded-xl border border-border bg-card p-2 shadow-xl flex flex-col gap-2">
+                          <input
+                            type="text"
+                            placeholder="Search country..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-[#F5F8FB] dark:bg-[#161616] text-[11px] outline-none text-foreground"
+                          />
+                          <div className="max-h-[160px] overflow-y-auto flex flex-col gap-0.5 no-scrollbar">
+                            {PHONE_PREFIX_OPTIONS.filter(opt =>
+                              opt.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                              opt.prefix.includes(searchQuery)
+                            ).map((opt) => (
+                              <button
+                                key={opt.code}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedPrefix(opt);
+                                  setShowPrefixDropdown(false);
+                                  setSearchQuery("");
+                                }}
+                                className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[11px] hover:bg-foreground/5 transition-colors w-full text-left cursor-pointer"
+                              >
+                                <opt.FlagComponent />
+                                <span className="font-semibold text-foreground">{opt.prefix}</span>
+                                <span className="text-muted font-medium truncate">{opt.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Phone number input field */}
+                    <input
+                      type="tel"
+                      placeholder="e.g. 5550123"
+                      value={phoneInputVal}
+                      onChange={(e) => setPhoneInputVal(e.target.value.replace(/[^0-9]/g, ''))}
+                      className="flex-1 h-[38px] px-3 rounded-lg border border-border bg-[#F5F8FB] dark:bg-[#161616] text-[12px] font-semibold outline-none focus:border-primary transition-colors text-foreground"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 w-full mt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setShowPhoneOtpModal(false); setOtpError(''); }}
+                    className="flex-1 h-[38px] rounded-xl border border-border text-[13px] font-semibold hover:bg-foreground/5 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!phoneInputVal.trim()}
+                    onClick={() => {
+                      const cleanPhone = phoneInputVal.replace(/[\s-()]/g, '');
+                      if (cleanPhone.length < 7 || cleanPhone.length > 15) {
+                        setOtpError("Please enter a valid phone number (7 to 15 digits).");
+                        return;
+                      }
+                      setOtpError('');
+                      setOtpTimer(59);
+                      setOtpDigits(['', '', '', '']);
+                      setOtpStep("verify");
+                    }}
+                    className="flex-1 h-[38px] rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-40"
+                  >
+                    Send Code
+                  </button>
+                </div>
+                {otpError && (
+                  <p className="text-[11px] text-red-500 text-center">{otpError}</p>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-5">
+                {/* Header */}
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                    <Smartphone size={22} className="text-primary" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-[16px] font-bold text-foreground">Verify Your Phone Number</h3>
+                    <p className="text-[12px] leading-[18px] text-muted">
+                      We sent a 4-digit code to <strong className="text-foreground">{selectedPrefix.prefix} {phoneInputVal}</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                {/* OTP digit inputs */}
+                <div className="flex justify-center items-center gap-3 py-1">
+                  {otpDigits.map((digit, idx) => (
+                    <input
+                      key={idx}
+                      id={`post-otp-${idx}`}
+                      type="text"
+                      maxLength={1}
+                      inputMode="numeric"
+                      value={digit}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val !== '' && !/^[0-9]$/.test(val)) return;
+                        const next = [...otpDigits];
+                        next[idx] = val;
+                        setOtpDigits(next);
+                        if (val !== '' && idx < 3) {
+                          document.getElementById(`post-otp-${idx + 1}`)?.focus();
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Backspace' && otpDigits[idx] === '' && idx > 0) {
+                          document.getElementById(`post-otp-${idx - 1}`)?.focus();
+                        }
+                      }}
+                      className="w-12 h-12 rounded-xl border border-border bg-[#F5F8FB] dark:bg-[#161616] text-center text-lg font-bold text-foreground focus:border-primary outline-none transition-colors"
+                    />
+                  ))}
+                </div>
+
+                {otpError && (
+                  <p className="text-[11px] text-red-500 text-center -mt-2">{otpError}</p>
+                )}
+
+                {/* Resend timer */}
+                <div className="flex flex-col items-center gap-1">
+                  {otpTimer > 0 ? (
+                    <p className="text-[11px] text-muted">Resend code in <span className="font-semibold text-foreground">00:{otpTimer < 10 ? `0${otpTimer}` : otpTimer}</span></p>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setOtpTimer(59); setOtpDigits(['', '', '', '']); setOtpError(''); }}
+                      className="text-[11px] font-semibold text-primary hover:underline cursor-pointer bg-transparent border-none"
+                    >
+                      Resend code
+                    </button>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-3 w-full mt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOtpStep("input");
+                      setOtpDigits(['', '', '', '']);
+                      setOtpError('');
+                    }}
+                    className="flex-1 h-[38px] rounded-xl border border-border text-[13px] font-semibold hover:bg-foreground/5 transition-colors cursor-pointer"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={otpDigits.some(d => d === '')}
+                    onClick={() => {
+                      const code = otpDigits.join('');
+                      if (code === '0000') {
+                        setOtpError('Invalid code. Please try again.');
+                      } else {
+                        // Mark phone as verified
+                        if (typeof window !== 'undefined') {
+                          localStorage.setItem('canafri_phone_verified', 'true');
+                        }
+                        setShowPhoneOtpModal(false);
+                        setOtpDigits(['', '', '', '']);
+                        setOtpError('');
+                        // Now create and publish the job directly
+                        createAndPublishJob();
+                      }
+                    }}
+                    className="flex-1 h-[38px] rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Verify & Continue
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Deposit confirmation popup ───────────────────────────────── */}
       <ConfirmDepositDialog
