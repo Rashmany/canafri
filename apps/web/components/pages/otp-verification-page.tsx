@@ -6,13 +6,15 @@ import { Mail, ArrowLeft, RefreshCw } from 'lucide-react';
 interface OtpVerificationPageProps {
   email?: string;
   length?: number;
+  isForgotPassword?: boolean;
   onBack?: () => void;
-  onVerificationSuccess?: () => void;
+  onVerificationSuccess?: (code?: string) => void;
 }
 
 export default function OtpVerificationPage({
   email = 'user@gmail.com',
-  length = 4,
+  length = 6,
+  isForgotPassword = false,
   onBack,
   onVerificationSuccess,
 }: OtpVerificationPageProps) {
@@ -20,6 +22,7 @@ export default function OtpVerificationPage({
   const [timer, setTimer] = useState(59);
   const [canResend, setCanResend] = useState(false);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -63,16 +66,32 @@ export default function OtpVerificationPage({
     }
   };
 
-  const handleResend = () => {
+  const handleResend = async () => {
     if (!canResend) return;
-    setTimer(59);
-    setCanResend(false);
-    setOtp(Array(length).fill(''));
-    inputRefs.current[0]?.focus();
     setError('');
+
+    try {
+      const res = await fetch('http://localhost:3001/auth/resend-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to resend verification code.');
+      }
+
+      setTimer(59);
+      setCanResend(false);
+      setOtp(Array(length).fill(''));
+      inputRefs.current[0]?.focus();
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend verification code. Please try again.');
+    }
   };
 
-  const handleVerify = (e: React.FormEvent) => {
+  const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     const code = otp.join('');
     
@@ -81,22 +100,44 @@ export default function OtpVerificationPage({
       return;
     }
 
-    // Mock validation: success for any complete code (e.g. 000000 fails)
-    const failCode = Array(length).fill('0').join('');
-    if (code === failCode) {
-      setError('Invalid verification code. Please try again.');
-    } else {
-      onVerificationSuccess?.();
+    setIsSubmitting(true);
+    setError('');
+
+    try {
+      const endpoint = isForgotPassword
+        ? 'http://localhost:3001/auth/verify-forgot-otp'
+        : 'http://localhost:3001/auth/verify-email';
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          otp: code,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Verification failed.');
+      }
+
+      onVerificationSuccess?.(code);
+    } catch (err: any) {
+      setError(err.message || 'Invalid verification code. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const isComplete = otp.every((digit) => digit !== '');
 
   return (
-    <div className="flex flex-col items-center min-h-screen bg-[#080808] text-white w-full max-w-md mx-auto md:max-w-full">
-      
-      {/* Back navigation & Header */}
-      <div className="flex items-center justify-between w-full px-6 pt-10 pb-4 shrink-0">
+    /* Root — full screen, dark bg, flex column */
+    <div className="flex flex-col min-h-screen w-full bg-[#080808] text-white">
+
+      {/* ── Top bar: back arrow + title (full width, not inside card) ── */}
+      <div className="flex items-center justify-between w-full px-6 pt-10 pb-4 shrink-0 max-w-sm mx-auto md:max-w-[428px]">
         <button
           onClick={onBack}
           className="flex items-center justify-center size-10 rounded-xl bg-[#121212] border border-[#1b1b1b] text-[#a0a0a0] hover:text-white transition-colors cursor-pointer"
@@ -105,23 +146,15 @@ export default function OtpVerificationPage({
           <ArrowLeft size={20} strokeWidth={1.5} />
         </button>
         <span className="text-sm font-semibold tracking-wide text-white/90">OTP Verification</span>
-        <div className="size-10" /> {/* Spacer to balance layout */}
+        <div className="size-10" />
       </div>
 
-      {/* Centered Logo */}
-      <div className="flex items-center justify-center pt-4 pb-8 shrink-0">
-        <svg width="102" height="23" viewBox="0 0 102 23" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <text x="0" y="18" fontFamily="Inter" fontWeight="700" fontSize="20" fill="#8C5CFF" letterSpacing="-0.5">canafri</text>
-          <line x1="0" y1="22" x2="102" y2="22" stroke="#8C5CFF" strokeWidth="1.5" strokeLinecap="round"/>
-        </svg>
-      </div>
 
-      {/* Card Sheet */}
-      <div className="flex flex-col flex-1 items-center w-full bg-[#0b0b0b] border-t border-[#121212] rounded-tl-[45px] rounded-tr-[45px] pt-8 px-6 pb-12">
-        
-        <div className="flex flex-col gap-8 w-full flex-1 max-w-sm">
+      {/* ── Card Sheet — grows to fill remaining height, centered ── */}
+      <div className="flex flex-col flex-1 items-center w-full bg-[#0b0b0b] border-t border-[#121212] rounded-tl-[45px] rounded-tr-[45px]">
+        <div className="flex flex-col w-full flex-1 max-w-sm mx-auto md:max-w-[428px] px-6 pt-8 pb-10 gap-8">
 
-          {/* Icon and Description */}
+          {/* Icon and description */}
           <div className="flex flex-col items-center gap-4 text-center">
             <div className="flex items-center justify-center size-16 rounded-full bg-primary/10 text-primary">
               <Mail size={32} strokeWidth={1.5} />
@@ -130,16 +163,17 @@ export default function OtpVerificationPage({
               <h1 className="text-2xl font-bold leading-8 text-white/90">
                 Verification Code
               </h1>
-              <p className="text-xs leading-5 text-[#a0a0a0] px-4">
+              <p className="text-xs leading-5 text-[#a0a0a0] px-2">
                 We have sent a {length}-digit verification code to <br />
                 <span className="text-white font-medium break-all">{email}</span>
               </p>
             </div>
           </div>
 
-          {/* OTP Code Fields Form */}
+          {/* OTP form */}
           <form onSubmit={handleVerify} className="flex flex-col gap-8 w-full">
-            <div className="flex justify-center items-center gap-2">
+            {/* OTP inputs — gap shrinks on very small screens */}
+            <div className="flex justify-center items-center gap-2 xs:gap-3">
               {otp.map((digit, index) => (
                 <input
                   key={index}
@@ -150,26 +184,26 @@ export default function OtpVerificationPage({
                   value={digit}
                   onChange={(e) => handleChange(index, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(index, e)}
-                  className="size-12 bg-[#121212] border border-[#1b1b1b] focus:border-primary/80 rounded-2xl text-center text-lg font-bold text-white outline-none transition-colors"
+                  className="w-11 h-12 shrink-0 bg-[#121212] border border-[#1b1b1b] focus:border-primary/80 rounded-2xl text-center text-lg font-bold text-white outline-none transition-colors"
                 />
               ))}
             </div>
 
             {error && (
-              <p className="text-xs text-red-500 text-center mt-[-10px]">{error}</p>
+              <p className="text-xs text-red-500 text-center -mt-4">{error}</p>
             )}
 
-            {/* Submit Verification Button */}
+            {/* Submit button */}
             <button
               type="submit"
-              disabled={!isComplete}
+              disabled={!isComplete || isSubmitting}
               className="w-full h-[44px] bg-primary rounded-xl text-[13px] font-semibold leading-[18px] text-white hover:bg-primary-hover active:scale-[0.98] transition-all flex items-center justify-center cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary disabled:active:scale-100"
             >
-              Verify Code
+              {isSubmitting ? 'Verifying...' : 'Verify Code'}
             </button>
           </form>
 
-          {/* Timer and Resend option */}
+          {/* Timer / resend */}
           <div className="flex flex-col items-center gap-2 mt-auto">
             {canResend ? (
               <button

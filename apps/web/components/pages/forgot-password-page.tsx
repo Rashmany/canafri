@@ -20,15 +20,16 @@ function validateEmail(val: string): boolean {
 export default function ForgotPasswordPage({ onBack, onEmailSubmit }: ForgotPasswordPageProps) {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const isFormValid = validateEmail(email.trim());
+  const isFormValid = validateEmail(email.trim()) && !isSubmitting;
 
   const handleChange = (val: string) => {
     setEmail(val);
     if (error) setError('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = sanitizeInput(email);
 
@@ -41,7 +42,27 @@ export default function ForgotPasswordPage({ onBack, onEmailSubmit }: ForgotPass
       return;
     }
 
-    onEmailSubmit?.(clean);
+    setIsSubmitting(true);
+    setError('');
+
+    try {
+      const res = await fetch('http://localhost:3001/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: clean }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Request failed.');
+      }
+
+      onEmailSubmit?.(clean);
+    } catch (err: any) {
+      setError(err.message || 'An error occurred. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -116,10 +137,10 @@ export default function ForgotPasswordPage({ onBack, onEmailSubmit }: ForgotPass
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={!isFormValid}
+                disabled={!isFormValid || isSubmitting}
                 className="w-full h-[44px] bg-primary rounded-xl text-[13px] font-semibold leading-[18px] text-white hover:bg-primary-hover active:scale-[0.98] transition-all flex items-center justify-center cursor-pointer mt-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary disabled:active:scale-100"
               >
-                Send Reset Code
+                {isSubmitting ? 'Sending...' : 'Send Reset Code'}
               </button>
             </form>
 

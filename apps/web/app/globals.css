@@ -676,3 +676,48 @@ option {
   color: #8C5CFF !important;
   background-color: rgba(140, 92, 255, 0.12) !important;
 }
+
+/* ─────────────────────────────────────────
+   CanaFri Primary Button Gradient Enhancement
+   ───────────────────────────────────────── */
+
+/* Select any button or interactive element styled with bg-[#8C5CFF] or bg-primary (excluding translucent ones) */
+button.bg-\[\#8C5CFF\],
+button[class*="bg-[#8C5CFF]"]:not([class*="/"]),
+button.bg-primary,
+button[class*="bg-primary"]:not([class*="/"]),
+[role="button"].bg-\[\#8C5CFF\],
+[role="button"][class*="bg-[#8C5CFF]"]:not([class*="/"]),
+a.bg-\[\#8C5CFF\],
+a[class*="bg-[#8C5CFF]"]:not([class*="/"]) {
+  background-image: linear-gradient(135deg, #8C5CFF 0%, #6D3AE9 100%) !important;
+  background-color: transparent !important;
+  box-shadow: 0 4px 14px 0 rgba(140, 92, 255, 0.3) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border-style: none !important;
+}
+
+button.bg-\[\#8C5CFF\]:hover,
+button[class*="bg-[#8C5CFF]"]:not([class*="/"]):hover,
+button.bg-primary:hover,
+button[class*="bg-primary"]:not([class*="/"]):hover,
+[role="button"].bg-\[\#8C5CFF\]:hover,
+[role="button"][class*="bg-[#8C5CFF]"]:not([class*="/"]):hover,
+a.bg-\[\#8C5CFF\]:hover,
+a[class*="bg-[#8C5CFF]"]:not([class*="/"]):hover {
+  background-image: linear-gradient(135deg, #AC8EF3 0%, #8C5CFF 100%) !important;
+  box-shadow: 0 6px 18px 0 rgba(140, 92, 255, 0.45) !important;
+  transform: translateY(-1px);
+}
+
+button.bg-\[\#8C5CFF\]:active,
+button[class*="bg-[#8C5CFF]"]:not([class*="/"]):active,
+button.bg-primary:active,
+button[class*="bg-primary"]:not([class*="/"]):active,
+[role="button"].bg-\[\#8C5CFF\]:active,
+[role="button"][class*="bg-[#8C5CFF]"]:not([class*="/"]):active,
+a.bg-\[\#8C5CFF\]:active,
+a[class*="bg-[#8C5CFF]"]:not([class*="/"]):active {
+  transform: translateY(0.5px);
+  box-shadow: 0 2px 8px 0 rgba(140, 92, 255, 0.25) !important;
+}

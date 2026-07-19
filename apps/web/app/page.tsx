@@ -26,7 +26,7 @@ import ResolutionPage from '@/components/pages/resolution-page';
 import BuyerJobsPage from '@/components/pages/buyer-jobs-page';
 import ReviewProposalsPage from '@/components/pages/review-proposals-page';
 import MobileSplashPage from '@/components/pages/mobile-splash-page';
-import MobileSplashPage2 from '@/components/pages/mobile-splash-page-2';
+// MobileSplashPage2 removed — single splash screen is now used
 import RegisterPage from '@/components/pages/register-page';
 import LoginPage from '@/components/pages/login-page';
 import OtpVerificationPage from '@/components/pages/otp-verification-page';
@@ -43,10 +43,21 @@ import SearchPage from '@/components/pages/search-page';
  */
 export default function Home() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [activePage, setActivePage] = useState<string>('MobileSplash');
+  const [activePage, setActivePage] = useState<string>('Login');
+  const [isInitialized, setIsInitialized] = useState(false);
   const [hideBottomNav, setHideBottomNav] = useState(false);
+  const [userProfile, setUserProfile] = useState<{
+    name: string;
+    handle: string;
+    avatarSrc: string;
+  }>({
+    name: '',
+    handle: '',
+    avatarSrc: '/images/default-avatar.png',
+  });
   const [savedJobIds, setSavedJobIds] = useState<Record<number, boolean>>({});
   const [pendingEmail, setPendingEmail] = useState('');
+  const [pendingOtp, setPendingOtp] = useState('');
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [sellerMode, setSellerMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -74,36 +85,45 @@ export default function Home() {
     handleNavigate('Dashboard');
   };
 
+  // Sync user details from local storage on load or whenever page changes (e.g. after login)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('canafri_user_profile');
+      if (stored) {
+        try {
+          const profile = JSON.parse(stored);
+          setUserProfile({
+            name: profile.fullName || 'User',
+            handle: profile.username ? `@${profile.username}` : '@user',
+            avatarSrc: profile.avatarSrc || '/images/default-avatar.png',
+          });
+        } catch (e) {
+          console.error('Failed to parse user profile', e);
+        }
+      }
+    }
+  }, [activePage]);
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('canafri_active_page');
-      const isDesktop = window.innerWidth >= 768;
-
-      if (saved) {
-        if (isDesktop && (saved === 'MobileSplash' || saved === 'MobileSplash2')) {
-          setActivePage('Login');
-        } else {
-          setActivePage(saved);
-        }
+      const token = localStorage.getItem('canafri_access_token');
+      if (saved && saved !== 'MobileSplash' && saved !== 'MobileSplash2') {
+        // Restore previously visited page
+        setActivePage(saved);
+      } else if (!token) {
+        // Unauthenticated first-time visit → show onboarding splash on all screen sizes
+        setActivePage('MobileSplash');
       } else {
-        if (isDesktop) {
-          setActivePage('Login');
-        } else {
-          setActivePage('MobileSplash');
-        }
+        // Authenticated user → go to Login
+        setActivePage('Login');
       }
+      setIsInitialized(true);
     }
   }, []);
 
   const handleToggleSaveJob = (id: number) => {
     setSavedJobIds((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  // Sample user profile info — should be wired up to auth session hooks later.
-  const sampleUser = {
-    name: 'Josh Trek',
-    handle: '@joshtrek',
-    avatarSrc: '/images/default-avatar.png',
   };
 
   const handleLogout = () => {
@@ -114,7 +134,15 @@ export default function Home() {
     setShowLogoutModal(false);
     if (typeof window !== 'undefined') {
       localStorage.removeItem('canafri_active_page');
+      localStorage.removeItem('canafri_access_token');
+      localStorage.removeItem('canafri_user_profile');
     }
+    // Reset profile state — real data will reload from localStorage on next login
+    setUserProfile({
+      name: '',
+      handle: '',
+      avatarSrc: '/images/default-avatar.png',
+    });
     setActivePage('Login');
     toast('Logged out successfully', 'success');
   };
@@ -128,23 +156,20 @@ export default function Home() {
     }
   };
 
+  // Render a clean fallback background while resolving localStorage path to prevent login flash
+  if (!isInitialized) {
+    return <div className="min-h-screen w-full bg-[#080808]" />;
+  }
+
   if (activePage === 'MobileSplash') {
     return (
       <MobileSplashPage
-        onNext={() => handleNavigate('MobileSplash2')}
-        onSkip={() => handleNavigate('Dashboard')}
+        onRegisterClick={() => handleNavigate('Register')}
+        onLoginClick={() => handleNavigate('Login')}
       />
     );
   }
 
-  if (activePage === 'MobileSplash2') {
-    return (
-      <MobileSplashPage2
-        onNext={() => handleNavigate('Login')}
-        onSkip={() => handleNavigate('Dashboard')}
-      />
-    );
-  }
 
   if (activePage === 'Login') {
     return (
@@ -152,6 +177,7 @@ export default function Home() {
         onRegisterClick={() => handleNavigate('Register')}
         onLoginSuccess={() => handleNavigate('Dashboard')}
         onForgotPasswordClick={() => handleNavigate('ForgotPassword')}
+        onBackClick={() => handleNavigate('MobileSplash')}
       />
     );
   }
@@ -164,6 +190,7 @@ export default function Home() {
           setPendingEmail(email ?? '');
           handleNavigate('OtpVerification');
         }}
+        onBackClick={() => handleNavigate('MobileSplash')}
       />
     );
   }
@@ -173,7 +200,11 @@ export default function Home() {
       <OtpVerificationPage
         email={pendingEmail || 'your email'}
         onBack={() => handleNavigate('Register')}
-        onVerificationSuccess={() => handleNavigate('Dashboard')}
+        onVerificationSuccess={() => {
+          // Email is verified — user must now log in to get a real session token
+          handleNavigate('Login');
+          toast('Email verified! Please sign in to continue.', 'success');
+        }}
       />
     );
   }
@@ -195,8 +226,12 @@ export default function Home() {
       <OtpVerificationPage
         email={pendingEmail || 'your email'}
         length={6}
+        isForgotPassword={true}
         onBack={() => handleNavigate('ForgotPassword')}
-        onVerificationSuccess={() => handleNavigate('ResetPassword')}
+        onVerificationSuccess={(code) => {
+          setPendingOtp(code || '');
+          handleNavigate('ResetPassword');
+        }}
       />
     );
   }
@@ -204,6 +239,8 @@ export default function Home() {
   if (activePage === 'ResetPassword') {
     return (
       <ResetPasswordPage
+        email={pendingEmail}
+        otp={pendingOtp}
         onBack={() => handleNavigate('ForgotPasswordOtp')}
         onPasswordResetSuccess={() => handleNavigate('PasswordUpdated')}
       />
@@ -222,7 +259,7 @@ export default function Home() {
     <div className="flex h-screen w-screen overflow-hidden bg-background">
       {/* ── Sidebar (Desktop: static, Tablet: rail, Mobile: drawer) ── */}
       <Sidebar
-        user={sampleUser}
+        user={userProfile}
         activeItem={activePage}
         onActiveChange={handleNavigate}
         onLogout={handleLogout}
@@ -239,7 +276,7 @@ export default function Home() {
       <div className="flex h-full min-w-0 flex-1 flex-col">
         {/* Top Navbar */}
         <TopNav
-          user={sampleUser}
+          user={userProfile}
           notificationCount={3}
           activePage={activePage}
           onMenuOpen={() => setMobileSidebarOpen(true)}

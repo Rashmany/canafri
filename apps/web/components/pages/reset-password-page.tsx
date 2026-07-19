@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Eye, EyeOff, Lock, Check, X } from 'lucide-react';
 
 interface ResetPasswordPageProps {
+  email: string;
+  otp: string;
   onBack?: () => void;
   onPasswordResetSuccess?: () => void;
 }
@@ -61,16 +63,20 @@ function InputField({
 }
 
 export default function ResetPasswordPage({
+  email,
+  otp,
   onBack,
   onPasswordResetSuccess,
 }: ResetPasswordPageProps) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Password rule tests
   const rules = {
-    length: newPassword.length >= 8,
+    length: newPassword.length >= 8, // matches backend Zod: z.string().min(8)
     uppercase: /[A-Z]/.test(newPassword),
     number: /[0-9]/.test(newPassword),
     specialChar: /[^A-Za-z0-9]/.test(newPassword),
@@ -80,15 +86,38 @@ export default function ResetPasswordPage({
 
   // Match check
   const passwordsMatch = newPassword !== '' && newPassword === confirmPassword;
-  const isFormValid = isPasswordValid && passwordsMatch;
+  const isFormValid = isPasswordValid && passwordsMatch && !isSubmitting;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFormValid) return;
 
-    // Simulate session invalidation / refresh token clearance and redirection
-    // These will be wired to backend session management later.
-    onPasswordResetSuccess?.();
+    setIsSubmitting(true);
+    setApiError(null);
+
+    try {
+      const res = await fetch('http://localhost:3001/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          otp,
+          newPassword,
+          confirmPassword,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Reset password failed.');
+      }
+
+      onPasswordResetSuccess?.();
+    } catch (err: any) {
+      setApiError(err.message || 'An error occurred. Please request a new code.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -109,13 +138,6 @@ export default function ResetPasswordPage({
         <div className="size-10" />
       </div>
 
-      {/* Centered Logo */}
-      <div className="flex items-center justify-center pt-4 pb-8 shrink-0">
-        <svg width="102" height="23" viewBox="0 0 102 23" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <text x="0" y="18" fontFamily="Inter" fontWeight="700" fontSize="20" fill="#8C5CFF" letterSpacing="-0.5">canafri</text>
-          <line x1="0" y1="22" x2="102" y2="22" stroke="#8C5CFF" strokeWidth="1.5" strokeLinecap="round"/>
-        </svg>
-      </div>
 
       {/* Card Sheet Container */}
       <div className="flex flex-col flex-1 items-center w-full bg-[#0b0b0b] border-t border-[#121212] rounded-tl-[45px] rounded-tr-[45px] pt-8 px-6 pb-12">
@@ -205,13 +227,19 @@ export default function ResetPasswordPage({
               )}
             </div>
 
+            {apiError && (
+              <div className="text-[11px] text-red-500 bg-red-500/10 border border-red-500/20 rounded-xl p-2.5 text-center">
+                {apiError}
+              </div>
+            )}
+
             {/* Submit Reset Button */}
             <button
               type="submit"
-              disabled={!isFormValid}
+              disabled={!isFormValid || isSubmitting}
               className="w-full h-[44px] bg-primary rounded-xl text-[13px] font-semibold leading-[18px] text-white hover:bg-primary-hover active:scale-[0.98] transition-all flex items-center justify-center cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary disabled:active:scale-100 mt-2"
             >
-              Reset Password
+              {isSubmitting ? 'Resetting...' : 'Reset Password'}
             </button>
           </form>
 

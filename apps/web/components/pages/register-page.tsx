@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Eye, EyeOff, User, Lock, Mail, Check, X } from 'lucide-react';
+import { Eye, EyeOff, User, Lock, Mail, Check, X, ArrowLeft } from 'lucide-react';
 
 interface RegisterPageProps {
   onLoginClick?: () => void;
   onRegisterSuccess?: (email?: string) => void;
+  onBackClick?: () => void;
 }
 
 interface InputFieldProps {
@@ -19,6 +20,7 @@ interface InputFieldProps {
   onBlur?: () => void;
   rightSlot?: React.ReactNode;
   error?: string;
+  prefixText?: string;
 }
 
 function InputField({
@@ -32,6 +34,7 @@ function InputField({
   onBlur,
   rightSlot,
   error,
+  prefixText,
 }: InputFieldProps) {
   return (
     <div className="w-full flex flex-col gap-1.5">
@@ -42,6 +45,11 @@ function InputField({
       )}
       <div className="flex items-center gap-3 h-[46px] w-full rounded-xl bg-[#121212] border border-[#1b1b1b] px-3.5 focus-within:border-primary/80 transition-colors">
         <span className="text-[#a0a0a0]/60 shrink-0 flex items-center">{icon}</span>
+        {prefixText && (
+          <span className="text-xs text-primary font-semibold select-none mr-[-6px] flex items-center">
+            {prefixText}
+          </span>
+        )}
         <input
           type={type}
           placeholder={placeholder}
@@ -79,7 +87,7 @@ function validateFullName(val: string): boolean {
   return nameRegex.test(val);
 }
 
-export default function RegisterPage({ onLoginClick, onRegisterSuccess }: RegisterPageProps) {
+export default function RegisterPage({ onLoginClick, onRegisterSuccess, onBackClick }: RegisterPageProps) {
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -91,11 +99,16 @@ export default function RegisterPage({ onLoginClick, onRegisterSuccess }: Regist
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
 
+  // ── Multi-step state ──────────────────────────────────────────────────────
+  const [step, setStep] = useState<1 | 2>(1);
+
   // Mock taken usernames database
   const takenUsernames = ['taken', 'admin', 'canafri', 'johndoe', 'joshtrek'];
 
   // Error States
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Real-time password requirement flags
   const hasMinLength = password.length >= 8;
@@ -103,11 +116,9 @@ export default function RegisterPage({ onLoginClick, onRegisterSuccess }: Regist
   const hasNumber = /[0-9]/.test(password);
   const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
 
-  // Sanitized values for real-time calculations
-  const cleanUsername = username.startsWith('@') ? username.slice(1) : username;
+  const cleanUsername = username;
   const isUsernameTaken = takenUsernames.includes(cleanUsername.toLowerCase());
 
-  // Overall form validity
   const isFormValid =
     validateFullName(fullName) &&
     validateUsername(username) &&
@@ -118,26 +129,32 @@ export default function RegisterPage({ onLoginClick, onRegisterSuccess }: Regist
     hasNumber &&
     hasSpecialChar &&
     password === confirmPassword &&
-    agreedToTerms;
+    agreedToTerms &&
+    !isSubmitting;
 
   const handlePasswordFocus = () => setIsPasswordFocused(true);
-  const handlePasswordBlur = () => {
-    if (hasMinLength && hasUppercase && hasNumber && hasSpecialChar) {
-      setIsPasswordFocused(false);
+  const handlePasswordBlur = () => setIsPasswordFocused(false);
+
+  // Validate step 1 fields before advancing
+  const isStep1Valid =
+    validateFullName(fullName) &&
+    validateUsername(username) &&
+    !isUsernameTaken &&
+    validateEmail(email);
+
+  const handleNextStep = () => {
+    const fieldErrors: Record<string, string> = {};
+    if (!validateFullName(fullName)) fieldErrors.fullName = 'Enter a valid full name (letters only, 2–50 chars).';
+    if (!validateUsername(username)) fieldErrors.username = 'Username must be 3–20 characters (letters, numbers, _ or -).';
+    else if (isUsernameTaken) fieldErrors.username = 'Username already taken.';
+    if (!validateEmail(email)) fieldErrors.email = 'Enter a valid email address.';
+    if (Object.keys(fieldErrors).length > 0) {
+      setErrors((prev) => ({ ...prev, ...fieldErrors }));
+      return;
     }
+    setStep(2);
   };
 
-  const handleUsernameFocus = () => {
-    if (username === '') {
-      setUsername('@');
-    }
-  };
-
-  const handleUsernameBlur = () => {
-    if (username === '@') {
-      setUsername('');
-    }
-  };
 
   const handleFieldChange = (field: string, value: string) => {
     if (errors[field]) {
@@ -147,16 +164,12 @@ export default function RegisterPage({ onLoginClick, onRegisterSuccess }: Regist
         return next;
       });
     }
+    setApiError(null);
 
     if (field === 'fullName') setFullName(value);
     if (field === 'username') {
-      let val = value;
-      if (val === '') {
-        val = '@';
-      } else if (!val.startsWith('@')) {
-        val = '@' + val;
-      }
-      setUsername(val);
+      const clean = value.replace(/[@\s]/g, '');
+      setUsername(clean);
     }
     if (field === 'email') setEmail(value);
     if (field === 'password') setPassword(value);
@@ -174,259 +187,276 @@ export default function RegisterPage({ onLoginClick, onRegisterSuccess }: Regist
     setAgreedToTerms(checked);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFormValid) return;
+    setIsSubmitting(true);
+    setApiError(null);
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('canafri_user_profile', JSON.stringify({
-        fullName: sanitizeInput(fullName),
-        username: sanitizeInput(username),
-        email: sanitizeInput(email),
-        location: "Turkey",
-        memberSince: "April 2026",
-      }));
+    const cleanedUsername = sanitizeInput(username);
+
+    try {
+      const res = await fetch('http://localhost:3001/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: sanitizeInput(fullName),
+          username: cleanedUsername,
+          email: sanitizeInput(email),
+          password,
+          confirmPassword,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        const firstDetail = Array.isArray(data.details) && data.details[0]?.message;
+        throw new Error(firstDetail || data.message || data.error || 'Registration failed.');
+      }
+
+      onRegisterSuccess?.(sanitizeInput(email));
+    } catch (err: any) {
+      setApiError(err.message || 'An error occurred. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    onRegisterSuccess?.(sanitizeInput(email));
   };
 
   return (
-    <div className="flex flex-col md:flex-row items-stretch min-h-screen bg-[#080808] text-white w-full max-w-md mx-auto md:max-w-none">
-      
-      {/* LEFT SIDE: Register Form (w-full on mobile, w-1/2 split on desktop) */}
-      <div className="flex flex-col w-full md:w-1/2 bg-[#080808] md:bg-[#0b0b0b] items-center justify-center min-h-screen md:min-h-0 py-8">
-        
-        {/* Mobile Logo (hidden on desktop) */}
-        <div className="flex items-center justify-center pb-8 shrink-0 md:hidden">
-          <svg width="102" height="23" viewBox="0 0 102 23" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <text x="0" y="18" fontFamily="Inter" fontWeight="700" fontSize="20" fill="#8C5CFF" letterSpacing="-0.5">canafri</text>
-            <line x1="0" y1="22" x2="102" y2="22" stroke="#8C5CFF" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </div>
+    <div className="flex flex-col items-center justify-center min-h-screen w-full bg-[#080808] text-white">
 
-        {/* Card Sheet */}
-        <div className="flex flex-col items-center w-full bg-[#0b0b0b] border-t md:border-t-0 border-[#121212] rounded-tl-[45px] rounded-tr-[45px] md:rounded-none pt-7 md:pt-0 px-6 pb-10 max-w-sm md:w-[428px]">
+      {/* ── Top-Left Viewport Back Button (Desktop & Tablet only) ── */}
+      {onBackClick && (
+        <button
+          type="button"
+          onClick={onBackClick}
+          className="hidden md:flex fixed left-8 top-8 text-[#a0a0a0] hover:text-white transition-colors cursor-pointer items-center justify-center z-30"
+          aria-label="Go back"
+        >
+          <ArrowLeft size={24} strokeWidth={2} />
+        </button>
+      )}
+
+      {/* ── Main Form Container ── */}
+      <div className="relative flex flex-col items-center justify-center w-full py-8 z-10 px-4">
+        
+        {/* Card Sheet (No split screen on desktop; centered minimal sheet) */}
+        <div className="relative flex flex-col items-center w-full bg-[#0b0b0b] border-t md:border border-[#121212] rounded-tl-[45px] rounded-tr-[45px] md:rounded-[24px] pt-16 md:pt-12 px-6 pb-10 max-w-sm md:max-w-[428px] md:w-[428px] md:shadow-2xl md:shadow-black/50">
           
+          {/* Back Button for Mobile View (Absolute inside Card Sheet) */}
+          {onBackClick && (
+            <button
+              type="button"
+              onClick={onBackClick}
+              className="absolute left-6 top-6 text-[#a0a0a0] hover:text-white transition-colors cursor-pointer flex items-center justify-center md:hidden"
+              aria-label="Go back"
+            >
+              <ArrowLeft size={20} strokeWidth={2} />
+            </button>
+          )}
+
           <div className="flex flex-col gap-6 w-full flex-1">
+            {/* Step indicator */}
+            <div className="flex items-center justify-center gap-2">
+              <span
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  step === 1 ? 'w-6 bg-primary' : 'w-3 bg-[#2a2a2a]'
+                }`}
+              />
+              <span
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  step === 2 ? 'w-6 bg-primary' : 'w-3 bg-[#2a2a2a]'
+                }`}
+              />
+            </div>
 
             {/* Header */}
             <div className="flex flex-col items-center gap-1.5">
               <h1 className="text-[32px] font-bold leading-[38px] tracking-[-0.18px] text-white/95 text-center">
-                Register
+                {step === 1 ? 'Register' : 'Set Password'}
               </h1>
               <p className="text-[13px] font-normal leading-[20px] text-[#a0a0a0] text-center">
-                Create your account
+                {step === 1 ? 'Create your account' : 'Choose a strong password'}
               </p>
             </div>
 
             {/* Form Fields */}
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4.5 w-full">
-              {/* Full Name */}
-              <InputField
-                label="Full Name"
-                icon={<User size={16} strokeWidth={1.5} />}
-                placeholder="e.g., John Doe"
-                value={fullName}
-                onChange={(val) => handleFieldChange('fullName', val)}
-                error={errors.fullName}
-              />
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4 w-full">
 
-              {/* Username */}
-              <div>
-                <InputField
-                  label="Username"
-                  icon={<User size={16} strokeWidth={1.5} />}
-                  placeholder="e.g., @johndoe123"
-                  value={username}
-                  onChange={(val) => handleFieldChange('username', val)}
-                  onFocus={handleUsernameFocus}
-                  onBlur={handleUsernameBlur}
-                  error={errors.username}
-                />
+              {/* ── Step 1: Identity ──────────────────────────────────── */}
+              {step === 1 && (
+                <div className="flex flex-col gap-4 w-full">
+                  <InputField
+                    label="Full Name"
+                    icon={<User size={16} strokeWidth={1.5} />}
+                    placeholder="e.g., John Doe"
+                    value={fullName}
+                    onChange={(val) => handleFieldChange('fullName', val)}
+                    error={errors.fullName}
+                  />
 
-                {/* Live Username Availability Indicator */}
-                {username.length > 1 && (
-                  <div className="flex items-center gap-1.5 px-1 mt-1.5">
-                    {validateUsername(username) ? (
-                      isUsernameTaken ? (
-                        <>
-                          <X size={12} className="text-red-500 shrink-0" />
-                          <span className="text-[10px] text-red-400 font-medium">Username is not available</span>
-                        </>
-                      ) : (
-                        <>
-                          <Check size={12} className="text-emerald-500 shrink-0" />
-                          <span className="text-[10px] text-emerald-400 font-medium">Username is available</span>
-                        </>
-                      )
-                    ) : (
-                      <>
-                        <X size={12} className="text-red-500 shrink-0" />
-                        <span className="text-[10px] text-red-400 font-medium">3-20 characters, letters/numbers/underscores only</span>
-                      </>
+                  <div>
+                    <InputField
+                      label="Username"
+                      icon={<User size={16} strokeWidth={1.5} />}
+                      prefixText="@"
+                      placeholder="johndoe123"
+                      value={username}
+                      onChange={(val) => handleFieldChange('username', val)}
+                      error={errors.username}
+                    />
+                    {username.length > 0 && !errors.username && (
+                      <div className="px-1 mt-1">
+                        {isUsernameTaken ? (
+                          <span className="text-[10px] text-red-500 font-medium">Username already taken</span>
+                        ) : (
+                          <span className="text-[10px] text-emerald-400 font-medium">Username available</span>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
 
-              {/* Email/Gmail */}
-              <InputField
-                label="Email Address"
-                icon={<Mail size={16} strokeWidth={1.5} />}
-                placeholder="e.g., johndoe@gmail.com"
-                value={email}
-                onChange={(val) => handleFieldChange('email', val)}
-                error={errors.email}
-              />
+                  <InputField
+                    label="Email Address"
+                    icon={<Mail size={16} strokeWidth={1.5} />}
+                    placeholder="e.g., johndoe@gmail.com"
+                    value={email}
+                    onChange={(val) => handleFieldChange('email', val)}
+                    error={errors.email}
+                  />
 
-              {/* Password */}
-              <InputField
-                label="Password"
-                icon={<Lock size={16} strokeWidth={1.5} />}
-                placeholder="••••••••"
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(val) => handleFieldChange('password', val)}
-                onFocus={handlePasswordFocus}
-                onBlur={handlePasswordBlur}
-                error={errors.password}
-                rightSlot={
+                  {/* Next button */}
                   <button
                     type="button"
-                    onClick={() => setShowPassword((p) => !p)}
-                    className="hover:text-white transition-colors cursor-pointer"
+                    onClick={handleNextStep}
+                    className="w-full h-[40px] bg-primary rounded-[12px] text-[13px] font-semibold leading-[18px] text-white hover:bg-primary-hover active:scale-[0.98] transition-all flex items-center justify-center cursor-pointer mt-2"
                   >
-                    {showPassword ? <EyeOff size={18} strokeWidth={1.5} /> : <Eye size={18} strokeWidth={1.5} />}
+                    Next
                   </button>
-                }
-              />
+                </div>
+              )}
 
-              {/* Live Password Requirements List */}
-              {(isPasswordFocused || password.length > 0) && (
-                <div className="flex flex-col gap-1.5 bg-[#121212]/50 border border-[#1b1b1b] rounded-xl p-3 text-[11px] leading-[15px] transition-all">
-                  <span className="font-semibold text-white/70 mb-0.5">Password must contain:</span>
-                  
-                  <div className="flex items-center gap-2">
-                    {hasMinLength ? (
-                      <Check size={12} className="text-emerald-500 shrink-0" />
-                    ) : (
-                      <X size={12} className="text-white/30 shrink-0" />
+              {/* ── Step 2: Password ──────────────────────────────────── */}
+              {step === 2 && (
+                <div className="flex flex-col gap-4 w-full">
+                  <InputField
+                    label="Password"
+                    icon={<Lock size={16} strokeWidth={1.5} />}
+                    placeholder="••••••••"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(val) => handleFieldChange('password', val)}
+                    onFocus={handlePasswordFocus}
+                    onBlur={handlePasswordBlur}
+                    error={errors.password}
+                    rightSlot={
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((p) => !p)}
+                        className="hover:text-white transition-colors cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff size={18} strokeWidth={1.5} /> : <Eye size={18} strokeWidth={1.5} />}
+                      </button>
+                    }
+                  />
+
+                  {isPasswordFocused && (
+                    <div className="flex flex-col gap-1.5 bg-[#121212]/50 border border-[#1b1b1b] rounded-xl p-3 text-[11px] leading-[15px] transition-all">
+                      <span className="font-semibold text-white/70 mb-0.5">Password must contain:</span>
+                      <div className="flex items-center gap-2">
+                        {hasMinLength ? <Check size={12} className="text-emerald-500 shrink-0" /> : <X size={12} className="text-white/30 shrink-0" />}
+                        <span className={hasMinLength ? 'text-emerald-400' : 'text-[#a0a0a0]'}>At least 8 characters</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {hasUppercase ? <Check size={12} className="text-emerald-500 shrink-0" /> : <X size={12} className="text-white/30 shrink-0" />}
+                        <span className={hasUppercase ? 'text-emerald-400' : 'text-[#a0a0a0]'}>One uppercase letter (A-Z)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {hasNumber ? <Check size={12} className="text-emerald-500 shrink-0" /> : <X size={12} className="text-white/30 shrink-0" />}
+                        <span className={hasNumber ? 'text-emerald-400' : 'text-[#a0a0a0]'}>One number (0-9)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {hasSpecialChar ? <Check size={12} className="text-emerald-500 shrink-0" /> : <X size={12} className="text-white/30 shrink-0" />}
+                        <span className={hasSpecialChar ? 'text-emerald-400' : 'text-[#a0a0a0]'}>One special character (e.g., @$!%*?&)</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <InputField
+                      label="Confirm Password"
+                      icon={<Lock size={16} strokeWidth={1.5} />}
+                      placeholder="••••••••"
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(val) => handleFieldChange('confirmPassword', val)}
+                      error={errors.confirmPassword}
+                      rightSlot={
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword((p) => !p)}
+                          className="hover:text-white transition-colors cursor-pointer"
+                        >
+                          {showConfirmPassword ? <EyeOff size={18} strokeWidth={1.5} /> : <Eye size={18} strokeWidth={1.5} />}
+                        </button>
+                      }
+                    />
+                    {confirmPassword.length > 0 && (
+                      <div className="flex items-center gap-1.5 px-1 mt-1.5">
+                        {password === confirmPassword ? (
+                          <><Check size={12} className="text-emerald-500 shrink-0" /><span className="text-[10px] text-emerald-400 font-medium">Passwords match</span></>
+                        ) : (
+                          <><X size={12} className="text-red-500 shrink-0" /><span className="text-[10px] text-red-400 font-medium">Passwords do not match</span></>
+                        )}
+                      </div>
                     )}
-                    <span className={hasMinLength ? 'text-emerald-400' : 'text-[#a0a0a0]'}>
-                      At least 8 characters
-                    </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {hasUppercase ? (
-                      <Check size={12} className="text-emerald-500 shrink-0" />
-                    ) : (
-                      <X size={12} className="text-white/30 shrink-0" />
-                    )}
-                    <span className={hasUppercase ? 'text-emerald-400' : 'text-[#a0a0a0]'}>
-                      One uppercase letter (A-Z)
-                    </span>
+                  {/* Terms */}
+                  <div className="flex flex-col gap-1 mt-1">
+                    <label className="flex items-start gap-2.5 select-none cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={agreedToTerms}
+                        onChange={(e) => handleTermsChange(e.target.checked)}
+                        className="mt-0.5 rounded border-[#242424] text-primary focus:ring-primary bg-transparent size-4 cursor-pointer accent-primary"
+                      />
+                      <span className="text-[11px] leading-[16px] text-[#a0a0a0] font-normal">
+                        By signing up, you agree to our{' '}
+                        <a href="#" className="text-primary hover:underline font-medium">Terms &amp; Conditions</a>
+                        {' '}and{' '}
+                        <a href="#" className="text-primary hover:underline font-medium">Privacy Policy</a>.
+                      </span>
+                    </label>
+                    {errors.agreed && <span className="text-[10px] text-red-500 px-1">{errors.agreed}</span>}
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {hasNumber ? (
-                      <Check size={12} className="text-emerald-500 shrink-0" />
-                    ) : (
-                      <X size={12} className="text-white/30 shrink-0" />
-                    )}
-                    <span className={hasNumber ? 'text-emerald-400' : 'text-[#a0a0a0]'}>
-                      One number (0-9)
-                    </span>
-                  </div>
+                  {apiError && (
+                    <div className="text-[11px] text-red-500 bg-red-500/10 border border-red-500/20 rounded-xl p-2.5 text-center">
+                      {apiError}
+                    </div>
+                  )}
 
-                  <div className="flex items-center gap-2">
-                    {hasSpecialChar ? (
-                      <Check size={12} className="text-emerald-500 shrink-0" />
-                    ) : (
-                      <X size={12} className="text-white/30 shrink-0" />
-                    )}
-                    <span className={hasSpecialChar ? 'text-emerald-400' : 'text-[#a0a0a0]'}>
-                      One special character (e.g., @$!%*?&)
-                    </span>
+                  {/* Back + Register buttons */}
+                  <div className="flex gap-3 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="h-[40px] px-5 rounded-[12px] text-[13px] font-semibold leading-[18px] text-[#a0a0a0] hover:text-white border border-[#1b1b1b] hover:border-[#2a2a2a] transition-all flex items-center justify-center cursor-pointer shrink-0"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!isFormValid || isSubmitting}
+                      className="flex-1 h-[40px] bg-primary rounded-[12px] text-[13px] font-semibold leading-[18px] text-white hover:bg-primary-hover active:scale-[0.98] transition-all flex items-center justify-center cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary disabled:active:scale-100"
+                    >
+                      {isSubmitting ? 'Registering...' : 'Register'}
+                    </button>
                   </div>
                 </div>
               )}
 
-              {/* Confirm Password */}
-              <div>
-                <InputField
-                  label="Confirm Password"
-                  icon={<Lock size={16} strokeWidth={1.5} />}
-                  placeholder="••••••••"
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(val) => handleFieldChange('confirmPassword', val)}
-                  error={errors.confirmPassword}
-                  rightSlot={
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword((p) => !p)}
-                      className="hover:text-white transition-colors cursor-pointer"
-                    >
-                      {showConfirmPassword ? <EyeOff size={18} strokeWidth={1.5} /> : <Eye size={18} strokeWidth={1.5} />}
-                    </button>
-                  }
-                />
-
-                {/* Live Confirm Password Match Indicator */}
-                {confirmPassword.length > 0 && (
-                  <div className="flex items-center gap-1.5 px-1 mt-1.5">
-                    {password === confirmPassword ? (
-                      <>
-                        <Check size={12} className="text-emerald-500 shrink-0" />
-                        <span className="text-[10px] text-emerald-400 font-medium">Passwords match</span>
-                      </>
-                    ) : (
-                      <>
-                        <X size={12} className="text-red-500 shrink-0" />
-                        <span className="text-[10px] text-red-400 font-medium">Passwords do not match</span>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Terms and Conditions checkbox */}
-              <div className="flex flex-col gap-1 mt-1">
-                <label className="flex items-start gap-2.5 select-none cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={agreedToTerms}
-                    onChange={(e) => handleTermsChange(e.target.checked)}
-                    className="mt-0.5 rounded border-[#242424] text-primary focus:ring-primary bg-transparent size-4 cursor-pointer accent-primary"
-                  />
-                  <span className="text-[11px] leading-[16px] text-[#a0a0a0] font-normal">
-                    By signing up, you agree to our{' '}
-                    <a href="#" className="text-primary hover:underline font-medium">Terms &amp; Conditions</a>
-                    {' '}and{' '}
-                    <a href="#" className="text-primary hover:underline font-medium">Privacy Policy</a>.
-                  </span>
-                </label>
-                {errors.agreed && <span className="text-[10px] text-red-500 px-1">{errors.agreed}</span>}
-              </div>
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={!isFormValid}
-                className="w-full h-[40px] bg-primary rounded-[12px] text-[13px] font-semibold leading-[18px] text-white hover:bg-primary-hover active:scale-[0.98] transition-all flex items-center justify-center cursor-pointer mt-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary disabled:active:scale-100"
-              >
-                Register
-              </button>
-
-              {/* Browse as Guest Link */}
-              <button
-                type="button"
-                className="text-xs text-[#a0a0a0]/80 hover:text-white hover:underline transition-colors text-center cursor-pointer mt-1 block w-full bg-transparent border-none py-1"
-              >
-                Browse as Guest
-              </button>
             </form>
 
             {/* Divider */}
@@ -438,7 +468,6 @@ export default function RegisterPage({ onLoginClick, onRegisterSuccess }: Regist
 
             {/* Social Auth Icons */}
             <div className="flex items-center justify-center gap-6">
-              {/* Google */}
               <button
                 type="button"
                 className="border border-primary/40 hover:border-primary rounded-[12.5px] w-[32px] h-[32px] flex items-center justify-center hover:bg-primary/10 active:scale-95 transition-all cursor-pointer"
@@ -452,7 +481,6 @@ export default function RegisterPage({ onLoginClick, onRegisterSuccess }: Regist
                 </svg>
               </button>
 
-              {/* Apple */}
               <button
                 type="button"
                 className="border border-primary/40 hover:border-primary rounded-[12.5px] w-[32px] h-[32px] flex items-center justify-center hover:bg-primary/10 active:scale-95 transition-all cursor-pointer"
@@ -464,74 +492,9 @@ export default function RegisterPage({ onLoginClick, onRegisterSuccess }: Regist
               </button>
             </div>
 
-            {/* Login Link */}
-            <p className="text-[13px] font-normal leading-[20px] text-center mt-auto">
-              <span className="text-[#a0a0a0]">Already have an account? </span>
-              <button
-                type="button"
-                onClick={onLoginClick}
-                className="text-primary font-semibold hover:underline cursor-pointer bg-transparent border-none"
-              >
-                Login
-              </button>
-            </p>
-
           </div>
         </div>
       </div>
-
-      {/* RIGHT SIDE: Info Illustration panel (desktop/tablet md: and up only) */}
-      <div className="hidden md:flex md:w-1/2 flex-col items-center justify-between p-12 bg-[#0b0b0b] border-l border-[#242424] self-stretch">
-        
-        {/* Logo at top-left */}
-        <div className="w-full flex justify-start pl-6">
-          <svg width="102" height="23" viewBox="0 0 102 23" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <text x="0" y="18" fontFamily="Inter" fontWeight="700" fontSize="20" fill="#8C5CFF" letterSpacing="-0.5">canafri</text>
-            <line x1="0" y1="22" x2="102" y2="22" stroke="#8C5CFF" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </div>
-
-        {/* Connected illustration placeholder representing Growth, Revenue, Gigs */}
-        <div className="flex-1 flex items-center justify-center max-w-[420px] max-h-[420px] my-10 select-none">
-          <svg width="340" height="340" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full text-primary">
-            {/* Background grid */}
-            <circle cx="100" cy="100" r="80" stroke="currentColor" strokeWidth="0.5" strokeDasharray="3 3" className="opacity-15"/>
-            <circle cx="100" cy="100" r="55" stroke="currentColor" strokeWidth="0.5" strokeDasharray="2 2" className="opacity-20"/>
-            <circle cx="100" cy="100" r="30" stroke="currentColor" strokeWidth="0.5" className="opacity-25"/>
-            
-            {/* Center node */}
-            <circle cx="100" cy="100" r="14" fill="currentColor" className="opacity-10"/>
-            <circle cx="100" cy="100" r="8" fill="currentColor"/>
-            
-            {/* Connected nodes */}
-            <g className="opacity-80">
-              <line x1="100" y1="100" x2="145" y2="70" stroke="currentColor" strokeWidth="1.5"/>
-              <circle cx="145" cy="70" r="5" fill="#00C853"/>
-              
-              <line x1="100" y1="100" x2="60" y2="65" stroke="currentColor" strokeWidth="1"/>
-              <circle cx="60" cy="65" r="4" fill="currentColor"/>
-              
-              <line x1="100" y1="100" x2="70" y2="140" stroke="currentColor" strokeWidth="1.2"/>
-              <circle cx="70" cy="140" r="5" fill="#00C853"/>
-
-              <line x1="100" y1="100" x2="135" y2="135" stroke="currentColor" strokeWidth="1"/>
-              <circle cx="135" cy="135" r="4.5" fill="currentColor"/>
-            </g>
-
-            {/* Orbital path and satellites */}
-            <path d="M 100,100 m -55,0 a 55,55 0 1,0 110,0 a 55,55 0 1,0 -110,0" stroke="currentColor" strokeWidth="0.5" className="opacity-30"/>
-            <circle cx="138" cy="60" r="2.5" fill="currentColor"/>
-            <circle cx="58" cy="130" r="3" fill="#8C5CFF"/>
-          </svg>
-        </div>
-
-        {/* Footer text */}
-        <p className="text-[13px] font-normal leading-[20px] text-center text-[#a0a0a0] max-w-sm px-6">
-          Find jobs, hire experts, and build meaningful connections in one powerful platform.
-        </p>
-
-      </div>
-
     </div>
   );
 }
