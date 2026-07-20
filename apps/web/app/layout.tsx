@@ -25,7 +25,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               try {
-                var theme = localStorage.getItem('theme') || 'system';
+                var theme = localStorage.getItem('theme') || 'dark';
                 var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
                 if (theme === 'dark' || (theme === 'system' && prefersDark)) {
                   document.documentElement.classList.add('dark');

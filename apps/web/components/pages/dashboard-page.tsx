@@ -1524,12 +1524,30 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
     // Strip HTML tags for feed snippet fallback text
     const textSnippet = html.replace(/<[^>]*>/g, '') || (image ? 'Shared an image' : '');
 
+    let authorName = 'Josh Trek';
+    let authorHandle = '@joshtrek';
+    let authorAvatar = '/images/default-avatar.png';
+
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('canafri_user_profile');
+      if (stored) {
+        try {
+          const profile = JSON.parse(stored);
+          if (profile.fullName) authorName = profile.fullName;
+          if (profile.username) authorHandle = `@${profile.username}`;
+          if (profile.avatarSrc) authorAvatar = profile.avatarSrc;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+
     const newPost: Post = {
       id: Date.now(),
-      name: 'Josh Trek',
-      handle: '@joshtrek',
+      name: authorName,
+      handle: authorHandle,
       date: 'Just now',
-      avatarSrc: '/images/default-avatar.png',
+      avatarSrc: authorAvatar,
       category: 'premium',
       stakeReward: '5 CC Read-Stake Required',
       likesCount: 0,
@@ -1719,7 +1737,7 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
           <button
             type="button"
             onClick={() => setPublishComposerOpen(true)}
-            className="absolute bottom-20 right-5 z-30 size-[52px] rounded-full bg-[#8C5CFF] hover:bg-[#AC8EF3] flex items-center justify-center text-white shadow-2xl shadow-[#8C5CFF]/40 transition-all duration-200 active:scale-90 hover:scale-105 md:bottom-6 md:right-6 cursor-pointer"
+            className="fixed bottom-20 right-5 z-30 size-[52px] rounded-full bg-[#8C5CFF] hover:bg-[#AC8EF3] flex items-center justify-center text-white shadow-2xl shadow-[#8C5CFF]/40 transition-all duration-200 active:scale-90 hover:scale-105 md:bottom-6 md:right-6 cursor-pointer"
             title="Publish new content"
             aria-label="Publish new post"
           >

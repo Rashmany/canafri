@@ -13,13 +13,6 @@ export default function PasswordUpdatedPage({ onSignInClick }: PasswordUpdatedPa
       {/* Spacer Header */}
       <div className="w-full h-20 shrink-0" />
 
-      {/* Centered Logo */}
-      <div className="flex items-center justify-center pb-8 shrink-0">
-        <svg width="102" height="23" viewBox="0 0 102 23" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <text x="0" y="18" fontFamily="Inter" fontWeight="700" fontSize="20" fill="#8C5CFF" letterSpacing="-0.5">canafri</text>
-          <line x1="0" y1="22" x2="102" y2="22" stroke="#8C5CFF" strokeWidth="1.5" strokeLinecap="round"/>
-        </svg>
-      </div>
 
       {/* Card Sheet */}
       <div className="flex flex-col flex-1 items-center w-full bg-[#0b0b0b] border-t border-[#121212] rounded-tl-[45px] rounded-tr-[45px] pt-12 px-6 pb-12">

@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { Eye, EyeOff, User, Lock, Mail, Check, X } from 'lucide-react';
+import { Eye, EyeOff, User, Lock, ArrowLeft } from 'lucide-react';
 
 interface LoginPageProps {
   onRegisterClick?: () => void;
   onLoginSuccess?: () => void;
   onForgotPasswordClick?: () => void;
+  onBackClick?: () => void;
 }
 
 interface InputFieldProps {
@@ -64,17 +65,17 @@ function sanitizeInput(val: string): string {
   return val.trim().replace(/[<>]/g, '');
 }
 
-export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPasswordClick }: LoginPageProps) {
+export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPasswordClick, onBackClick }: LoginPageProps) {
   const [identifier, setIdentifier] = useState(''); // Username or Email
   const [password, setPassword] = useState('');
-  
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const isFormValid = identifier.trim().length > 0 && password.length >= 8;
+  const isFormValid = identifier.trim().length > 0 && password.length >= 8 && !isSubmitting;
 
   const handleFieldChange = (field: string, value: string) => {
-    // Clear errors
     if (errors[field]) {
       setErrors((prev) => {
         const next = { ...prev };
@@ -82,73 +83,104 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
         return next;
       });
     }
+    setApiError(null);
 
-    if (field === 'identifier') {
-      let val = value;
-      // Auto-prepend @ if user is typing username handle (doesn't contain @ email sign)
-      if (val.length > 0 && !val.includes('@') && !val.startsWith('@')) {
-        // If they just typed a letter, we can prepend @
-        val = '@' + val;
-      }
-      setIdentifier(val);
-    }
+    if (field === 'identifier') setIdentifier(value);
     if (field === 'password') setPassword(value);
   };
 
-  const handleIdentifierFocus = () => {
-    if (identifier === '') {
-      setIdentifier('@');
-    }
-  };
-
-  const handleIdentifierBlur = () => {
-    if (identifier === '@') {
-      setIdentifier('');
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newErrors: Record<string, string> = {};
+    if (!isFormValid) return;
+
+    setApiError(null);
+    const fieldErrors: Record<string, string> = {};
 
     const cleanIdentifier = sanitizeInput(identifier);
-
-    if (!cleanIdentifier || cleanIdentifier === '@') {
-      newErrors.identifier = 'Username or Email is required.';
+    if (!cleanIdentifier) {
+      fieldErrors.identifier = 'Username or Email is required.';
     }
 
-    if (!password) {
-      newErrors.password = 'Password is required.';
-    } else if (password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters.';
+    if (password.length < 8) {
+      fieldErrors.password = 'Password must be at least 8 characters.';
     }
 
-    setErrors(newErrors);
+    if (Object.keys(fieldErrors).length > 0) {
+      setErrors(fieldErrors);
+      return;
+    }
 
-    if (Object.keys(newErrors).length === 0) {
+    setIsSubmitting(true);
+
+    try {
+      const res = await fetch('http://localhost:3001/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: cleanIdentifier,
+          password: password,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Login failed.');
+      }
+
+      if (typeof window !== 'undefined' && data.accessToken && data.user) {
+        localStorage.setItem('canafri_access_token', data.accessToken);
+        localStorage.setItem('canafri_user_profile', JSON.stringify({
+          id: data.user.id,
+          fullName: data.user.displayName || data.user.fullName || '',
+          username: data.user.username,
+          email: data.user.email,
+          role: data.user.role,
+          memberSince: "April 2026",
+        }));
+      }
+
       onLoginSuccess?.();
+    } catch (err: any) {
+      setApiError(err.message || 'Invalid email or password.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="flex flex-col md:flex-row items-stretch min-h-screen bg-[#080808] text-white w-full max-w-md mx-auto md:max-w-none">
-      
-      {/* LEFT SIDE: Login Form (w-full on mobile, w-1/2 split on desktop) */}
-      <div className="flex flex-col w-full md:w-1/2 bg-[#080808] md:bg-[#0b0b0b] items-center justify-center min-h-screen md:min-h-0 py-8">
+    <div className="flex flex-col items-center justify-center min-h-screen w-full bg-[#080808] text-white">
+
+      {/* ── Top-Left Viewport Back Button (Desktop & Tablet only) ── */}
+      {onBackClick && (
+        <button
+          type="button"
+          onClick={onBackClick}
+          className="hidden md:flex fixed left-8 top-8 text-[#a0a0a0] hover:text-white transition-colors cursor-pointer items-center justify-center z-30"
+          aria-label="Go back"
+        >
+          <ArrowLeft size={24} strokeWidth={2} />
+        </button>
+      )}
+
+      {/* ── Main Form Container ── */}
+      <div className="relative flex flex-col items-center justify-center w-full py-8 z-10 px-4">
         
-        {/* Mobile Logo (hidden on desktop) */}
-        <div className="flex items-center justify-center pb-8 shrink-0 md:hidden">
-          <svg width="102" height="23" viewBox="0 0 102 23" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <text x="0" y="18" fontFamily="Inter" fontWeight="700" fontSize="20" fill="#8C5CFF" letterSpacing="-0.5">canafri</text>
-            <line x1="0" y1="22" x2="102" y2="22" stroke="#8C5CFF" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </div>
-
-        {/* Card Sheet */}
-        <div className="flex flex-col items-center w-full bg-[#0b0b0b] border-t md:border-t-0 border-[#121212] rounded-tl-[45px] rounded-tr-[45px] md:rounded-none pt-7 md:pt-0 px-6 pb-10 max-w-sm md:w-[428px]">
+        {/* Card Sheet (No split screen on desktop; centered minimal sheet) */}
+        <div className="relative flex flex-col items-center w-full bg-[#0b0b0b] border-t md:border border-[#121212] rounded-tl-[45px] rounded-tr-[45px] md:rounded-[24px] pt-16 md:pt-12 px-6 pb-10 max-w-sm md:max-w-[428px] md:w-[428px] md:shadow-2xl md:shadow-black/50">
           
-          <div className="flex flex-col gap-6 w-full flex-1">
+          {/* Back Button for Mobile View (Absolute inside Card Sheet) */}
+          {onBackClick && (
+            <button
+              type="button"
+              onClick={onBackClick}
+              className="absolute left-6 top-6 text-[#a0a0a0] hover:text-white transition-colors cursor-pointer flex items-center justify-center md:hidden"
+              aria-label="Go back"
+            >
+              <ArrowLeft size={20} strokeWidth={2} />
+            </button>
+          )}
 
+          <div className="flex flex-col gap-6 w-full flex-1">
             {/* Header */}
             <div className="flex flex-col items-center gap-1.5">
               <h1 className="text-[32px] font-bold leading-[38px] tracking-[-0.18px] text-white/95 text-center">
@@ -161,19 +193,15 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
 
             {/* Form Fields */}
             <form onSubmit={handleSubmit} className="flex flex-col gap-4.5 w-full">
-              {/* Identifier (Username or Email) */}
               <InputField
                 label="Username or Email"
                 icon={<User size={16} strokeWidth={1.5} />}
-                placeholder="e.g., @johndoe123 or johndoe@gmail.com"
+                placeholder="e.g., johndoe123 or johndoe@gmail.com"
                 value={identifier}
                 onChange={(val) => handleFieldChange('identifier', val)}
-                onFocus={handleIdentifierFocus}
-                onBlur={handleIdentifierBlur}
                 error={errors.identifier}
               />
 
-              {/* Password */}
               <div className="w-full flex flex-col gap-1">
                 <InputField
                   label="Password"
@@ -194,7 +222,6 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
                   }
                 />
                 
-                {/* Forgot Password Link */}
                 <div className="flex justify-end px-1 mt-1">
                   <button
                     type="button"
@@ -206,22 +233,18 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
                 </div>
               </div>
 
-              {/* Submit Button */}
+              {apiError && (
+                <div className="text-[11px] text-red-500 bg-red-500/10 border border-red-500/20 rounded-xl p-2.5 text-center mt-2">
+                  {apiError}
+                </div>
+              )}
+
               <button
                 type="submit"
-                disabled={!isFormValid}
+                disabled={!isFormValid || isSubmitting}
                 className="w-full h-[40px] bg-primary rounded-[12px] text-[13px] font-semibold leading-[18px] text-white hover:bg-primary-hover active:scale-[0.98] transition-all flex items-center justify-center cursor-pointer mt-4 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary disabled:active:scale-100"
               >
-                Login
-              </button>
-
-              {/* Browse as Guest Link */}
-              <button
-                type="button"
-                onClick={onLoginSuccess}
-                className="text-xs text-[#a0a0a0]/80 hover:text-white hover:underline transition-colors text-center cursor-pointer mt-1 block w-full bg-transparent border-none py-1"
-              >
-                Browse as Guest
+                {isSubmitting ? 'Logging in...' : 'Login'}
               </button>
             </form>
 
@@ -234,7 +257,6 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
 
             {/* Social Auth Icons */}
             <div className="flex items-center justify-center gap-6">
-              {/* Google */}
               <button
                 type="button"
                 className="border border-primary/40 hover:border-primary rounded-[12.5px] w-[32px] h-[32px] flex items-center justify-center hover:bg-primary/10 active:scale-95 transition-all cursor-pointer"
@@ -248,7 +270,6 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
                 </svg>
               </button>
 
-              {/* Apple */}
               <button
                 type="button"
                 className="border border-primary/40 hover:border-primary rounded-[12.5px] w-[32px] h-[32px] flex items-center justify-center hover:bg-primary/10 active:scale-95 transition-all cursor-pointer"
@@ -260,74 +281,9 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
               </button>
             </div>
 
-            {/* Register Link */}
-            <p className="text-[13px] font-normal leading-[20px] text-center mt-auto">
-              <span className="text-[#a0a0a0]">Not a member yet? </span>
-              <button
-                type="button"
-                onClick={onRegisterClick}
-                className="text-primary font-semibold hover:underline cursor-pointer bg-transparent border-none"
-              >
-                Register
-              </button>
-            </p>
-
           </div>
         </div>
       </div>
-
-      {/* RIGHT SIDE: Info Illustration panel (desktop/tablet md: and up only) */}
-      <div className="hidden md:flex md:w-1/2 flex-col items-center justify-between p-12 bg-[#0b0b0b] border-l border-[#242424] self-stretch">
-        
-        {/* Logo at top-left */}
-        <div className="w-full flex justify-start pl-6">
-          <svg width="102" height="23" viewBox="0 0 102 23" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <text x="0" y="18" fontFamily="Inter" fontWeight="700" fontSize="20" fill="#8C5CFF" letterSpacing="-0.5">canafri</text>
-            <line x1="0" y1="22" x2="102" y2="22" stroke="#8C5CFF" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </div>
-
-        {/* Connected illustration placeholder representing Growth, Revenue, Gigs */}
-        <div className="flex-1 flex items-center justify-center max-w-[420px] max-h-[420px] my-10 select-none">
-          <svg width="340" height="340" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full text-primary">
-            {/* Background grid */}
-            <circle cx="100" cy="100" r="80" stroke="currentColor" strokeWidth="0.5" strokeDasharray="3 3" className="opacity-15"/>
-            <circle cx="100" cy="100" r="55" stroke="currentColor" strokeWidth="0.5" strokeDasharray="2 2" className="opacity-20"/>
-            <circle cx="100" cy="100" r="30" stroke="currentColor" strokeWidth="0.5" className="opacity-25"/>
-            
-            {/* Center node */}
-            <circle cx="100" cy="100" r="14" fill="currentColor" className="opacity-10"/>
-            <circle cx="100" cy="100" r="8" fill="currentColor"/>
-            
-            {/* Connected nodes */}
-            <g className="opacity-80">
-              <line x1="100" y1="100" x2="145" y2="70" stroke="currentColor" strokeWidth="1.5"/>
-              <circle cx="145" cy="70" r="5" fill="#00C853"/>
-              
-              <line x1="100" y1="100" x2="60" y2="65" stroke="currentColor" strokeWidth="1"/>
-              <circle cx="60" cy="65" r="4" fill="currentColor"/>
-              
-              <line x1="100" y1="100" x2="70" y2="140" stroke="currentColor" strokeWidth="1.2"/>
-              <circle cx="70" cy="140" r="5" fill="#00C853"/>
-
-              <line x1="100" y1="100" x2="135" y2="135" stroke="currentColor" strokeWidth="1"/>
-              <circle cx="135" cy="135" r="4.5" fill="currentColor"/>
-            </g>
-
-            {/* Orbital path and satellites */}
-            <path d="M 100,100 m -55,0 a 55,55 0 1,0 110,0 a 55,55 0 1,0 -110,0" stroke="currentColor" strokeWidth="0.5" className="opacity-30"/>
-            <circle cx="138" cy="60" r="2.5" fill="currentColor"/>
-            <circle cx="58" cy="130" r="3" fill="#8C5CFF"/>
-          </svg>
-        </div>
-
-        {/* Footer text */}
-        <p className="text-[13px] font-normal leading-[20px] text-center text-[#a0a0a0] max-w-sm px-6">
-          Find jobs, hire experts, and build meaningful connections in one powerful platform.
-        </p>
-
-      </div>
-
     </div>
   );
 }
