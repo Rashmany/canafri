@@ -3,11 +3,32 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { redis } from '../lib/redis.js';
 import { authGuard, roleGuard } from '../middleware/auth.js';
+import { HashService } from '../lib/hash.js';
+import { AuditService } from '../services/audit.js';
 import { CantonService } from '../services/canton.js';
 import { RiskService } from '../middleware/riskCheck.js';
 
 const SuspendUserSchema = z.object({
   status: z.enum(['ACTIVE', 'SUSPENDED', 'BANNED']),
+});
+
+const InviteCreateSchema = z.object({
+  email: z.string().email().toLowerCase().trim(),
+  role: z.enum(['ADMIN', 'SUPER_ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN']),
+});
+
+const AcceptInviteSchema = z.object({
+  fullName:  z.string().min(2).max(80).trim(),
+  username:  z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/).trim(),
+  password:  z.string().min(8),
+});
+
+const RoleUpdateSchema = z.object({
+  role: z.enum(['ADMIN', 'SUPER_ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN']),
+});
+
+const RevokeAdminSchema = z.object({
+  reason: z.string().min(1).max(500).trim(),
 });
 
 const ContentApproveSchema = z.object({
@@ -49,6 +70,22 @@ export async function adminRoutes(fastify: FastifyInstance) {
   fastify.addHook('preValidation', authGuard);
   fastify.addHook('preHandler', roleGuard(['ADMIN', 'SUPER_ADMIN']));
 
+  // GET /admin/me — lightweight heartbeat endpoint used by the frontend to
+  // detect revoked sessions and force-logout the browser tab.
+  fastify.get('/me', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId, role } = request.user as any;
+      // Fetch live status from DB so a freshly-revoked admin gets 403 here
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { status: true, role: true } });
+      if (!user || user.status === 'REVOKED' || user.status === 'BANNED') {
+        return reply.status(403).send({ error: 'Forbidden', message: 'Account access has been revoked.' });
+      }
+      return reply.send({ ok: true, role, userId });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
   // GET /admin/users - List all users
   fastify.get('/users', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -60,6 +97,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
   });
+
 
   // PATCH /admin/users/:id/suspend - Update user status (suspend/ban)
   fastify.patch('/users/:id/suspend', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -425,6 +463,357 @@ export async function adminRoutes(fastify: FastifyInstance) {
       });
 
       return reply.send({ success: true, config: updatedConfig });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: error.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // GET /admin/team — List active admins + pending invites (SUPER_ADMIN + ADMIN)
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.get('/team', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const [activeAdmins, pendingInvites] = await Promise.all([
+        prisma.user.findMany({
+          where: { role: { in: ['ADMIN', 'SUPER_ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN'] } },
+          select: {
+            id: true,
+            displayName: true,
+            username: true,
+            email: true,
+            role: true,
+            status: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        }),
+        prisma.adminInvite.findMany({
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
+
+      return reply.send({ success: true, activeAdmins, pendingInvites });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // POST /admin/invites — Create invite (SUPER_ADMIN only)
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.post('/invites', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const callerRole = (request.user as any).role;
+      if (callerRole !== 'SUPER_ADMIN') {
+        return reply.status(403).send({ error: 'Forbidden', message: 'Only SUPER_ADMIN can invite admins.' });
+      }
+
+      const callerId = (request.user as any).userId ?? (request.user as any).sub;
+      const { email, role } = InviteCreateSchema.parse(request.body);
+
+      // Check that the email is not already taken by an active user
+      const existingUser = await prisma.user.findUnique({ where: { email } });
+      if (existingUser) {
+        return reply.status(409).send({ error: 'Conflict', message: 'A user with this email already exists.' });
+      }
+
+      // Check that there is no active pending invite for this email
+      const existingInvite = await prisma.adminInvite.findUnique({ where: { email } });
+      if (existingInvite) {
+        return reply.status(409).send({ error: 'Conflict', message: 'A pending invite already exists for this email.' });
+      }
+
+      const token = HashService.generateToken();
+      const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+
+      const invite = await prisma.adminInvite.create({
+        data: { email, role, token, invitedBy: callerId, expiresAt },
+      });
+
+      const inviteLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/admin?inviteToken=${token}`;
+
+      await AuditService.log({
+        userId: callerId,
+        action: 'ADMIN_INVITE_CREATED',
+        target: email,
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.status(201).send({
+        success: true,
+        message: 'Invite created successfully.',
+        invite: { id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt },
+        inviteLink,
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: error.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // DELETE /admin/invites/:id — Revoke pending invite (SUPER_ADMIN only)
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.delete('/invites/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const callerRole = (request.user as any).role;
+      if (callerRole !== 'SUPER_ADMIN') {
+        return reply.status(403).send({ error: 'Forbidden', message: 'Only SUPER_ADMIN can revoke invites.' });
+      }
+
+      const { id } = request.params as { id: string };
+      const invite = await prisma.adminInvite.findUnique({ where: { id } });
+      if (!invite) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Invite not found.' });
+      }
+
+      await prisma.adminInvite.delete({ where: { id } });
+
+      return reply.send({ success: true, message: 'Invite revoked.' });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // DELETE /admin/users/:id — Revoke admin account (SUPER_ADMIN only)
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.delete('/users/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const callerRole = (request.user as any).role;
+      const callerId  = (request.user as any).userId ?? (request.user as any).sub;
+
+      if (callerRole !== 'SUPER_ADMIN') {
+        return reply.status(403).send({ error: 'Forbidden', message: 'Only SUPER_ADMIN can revoke admin accounts.' });
+      }
+
+      const { id } = request.params as { id: string };
+
+      if (id === callerId) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'You cannot revoke your own account.' });
+      }
+
+      const { reason } = RevokeAdminSchema.parse(request.body);
+
+      const target = await prisma.user.findUnique({ where: { id } });
+      if (!target || target.role === 'MEMBER') {
+        return reply.status(404).send({ error: 'Not Found', message: 'Admin user not found.' });
+      }
+
+      // Soft-revoke: update status and save revocation log details
+      await prisma.user.update({
+        where: { id },
+        data: {
+          status: 'REVOKED',
+          revokedBy: callerId,
+          revokedAt: new Date(),
+          revokeReason: reason,
+        },
+      });
+
+      // Flush all active sessions for this user
+      const sessions = await prisma.session.findMany({ where: { userId: id } });
+      for (const s of sessions) {
+        await redis.del(`session:${s.id}`);
+      }
+      await prisma.session.deleteMany({ where: { userId: id } });
+
+      await AuditService.log({
+        userId: callerId,
+        action: 'ADMIN_REVOKED',
+        target: id,
+        after: { reason },
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, message: 'Admin access has been revoked successfully.' });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: error.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // POST /admin/users/:id/reactivate — Reactivate admin account (SUPER_ADMIN only)
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.post('/users/:id/reactivate', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const callerRole = (request.user as any).role;
+      const callerId  = (request.user as any).userId ?? (request.user as any).sub;
+
+      if (callerRole !== 'SUPER_ADMIN') {
+        return reply.status(403).send({ error: 'Forbidden', message: 'Only SUPER_ADMIN can reactivate admin accounts.' });
+      }
+
+      const { id } = request.params as { id: string };
+
+      const target = await prisma.user.findUnique({ where: { id } });
+      if (!target || target.role === 'MEMBER') {
+        return reply.status(404).send({ error: 'Not Found', message: 'Admin user not found.' });
+      }
+
+      if (target.status !== 'REVOKED') {
+        return reply.status(400).send({ error: 'Bad Request', message: 'User account is not revoked.' });
+      }
+
+      // Restore status to ACTIVE and reset metadata
+      await prisma.user.update({
+        where: { id },
+        data: {
+          status: 'ACTIVE',
+          revokedBy: null,
+          revokedAt: null,
+          revokeReason: null,
+        },
+      });
+
+      await AuditService.log({
+        userId: callerId,
+        action: 'ADMIN_REACTIVATED',
+        target: id,
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, message: 'Admin account has been reactivated successfully.' });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // PATCH /admin/users/:id/role — Change admin role (SUPER_ADMIN only)
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.patch('/users/:id/role', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const callerRole = (request.user as any).role;
+      const callerId  = (request.user as any).userId ?? (request.user as any).sub;
+
+      if (callerRole !== 'SUPER_ADMIN') {
+        return reply.status(403).send({ error: 'Forbidden', message: 'Only SUPER_ADMIN can change admin roles.' });
+      }
+
+      const { id } = request.params as { id: string };
+
+      if (id === callerId) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'You cannot change your own role.' });
+      }
+
+      const { role: newRole } = RoleUpdateSchema.parse(request.body);
+
+      const target = await prisma.user.findUnique({ where: { id } });
+      if (!target || target.role === 'MEMBER') {
+        return reply.status(404).send({ error: 'Not Found', message: 'Admin user not found.' });
+      }
+
+      await prisma.user.update({ where: { id }, data: { role: newRole } });
+
+      // Flush sessions so the new role takes effect on next login
+      const sessions = await prisma.session.findMany({ where: { userId: id } });
+      for (const s of sessions) {
+        await redis.del(`session:${s.id}`);
+      }
+      await prisma.session.deleteMany({ where: { userId: id } });
+
+      await AuditService.log({
+        userId: callerId,
+        action: 'ADMIN_ROLE_CHANGED',
+        target: id,
+        before: { role: target.role },
+        after:  { role: newRole },
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, message: `Role updated to ${newRole}.` });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: error.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Public invite-acceptance routes (no auth guard)
+// ────────────────────────────────────────────────────────────────────────────
+
+export async function publicInviteRoutes(fastify: FastifyInstance) {
+
+  // GET /auth/admin/invites/:token — Validate invite token
+  fastify.get('/admin/invites/:token', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { token } = request.params as { token: string };
+      const invite = await prisma.adminInvite.findUnique({ where: { token } });
+
+      if (!invite) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Invite not found or already used.' });
+      }
+      if (invite.expiresAt < new Date()) {
+        return reply.status(410).send({ error: 'Gone', message: 'This invite link has expired.' });
+      }
+
+      return reply.send({
+        success: true,
+        invite: { email: invite.email, role: invite.role, expiresAt: invite.expiresAt },
+      });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // POST /auth/admin/invites/:token/accept — Create admin account via invite
+  fastify.post('/admin/invites/:token/accept', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { token } = request.params as { token: string };
+      const { fullName, username, password } = AcceptInviteSchema.parse(request.body);
+
+      const invite = await prisma.adminInvite.findUnique({ where: { token } });
+      if (!invite) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Invite not found or already used.' });
+      }
+      if (invite.expiresAt < new Date()) {
+        return reply.status(410).send({ error: 'Gone', message: 'This invite link has expired.' });
+      }
+
+      // Check username isn't taken
+      const existingUsername = await prisma.user.findUnique({ where: { username } });
+      if (existingUsername) {
+        return reply.status(409).send({ error: 'Conflict', message: 'Username is already taken.' });
+      }
+
+      const passwordHash = await HashService.hashPassword(password);
+
+      await prisma.user.create({
+        data: {
+          displayName: fullName,
+          username,
+          email: invite.email,
+          passwordHash,
+          emailVerified: true,
+          role: invite.role,
+          status: 'ACTIVE',
+          trustScore: 100,
+        },
+      });
+
+      // Consume the invite
+      await prisma.adminInvite.delete({ where: { token } });
+
+      return reply.status(201).send({
+        success: true,
+        message: 'Account created. You can now sign in and complete your MFA setup.',
+      });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Validation Error', details: error.errors });

@@ -17,19 +17,12 @@ import { jobRoutes } from './routes/jobs.js';
 import { messageRoutes } from './routes/messages.js';
 import { walletRoutes } from './routes/wallet.js';
 import { adminRoutes } from './routes/admin.js';
+import { publicInviteRoutes } from './routes/admin.js';
 
 dotenv.config();
 
 const server = fastify({
-  logger: {
-    transport: {
-      target: 'pino-pretty',
-      options: {
-        translateTime: 'HH:MM:ss Z',
-        ignore: 'pid,hostname',
-      },
-    },
-  },
+  logger: true,
 });
 
 const startServer = async () => {
@@ -73,6 +66,7 @@ const startServer = async () => {
     await server.register(messageRoutes, { prefix: '/messages' });
     await server.register(walletRoutes, { prefix: '/wallet' });
     await server.register(adminRoutes, { prefix: '/admin' });
+    await server.register(publicInviteRoutes, { prefix: '/auth' });
 
     // Global Health check endpoint
     server.get('/health', async () => {

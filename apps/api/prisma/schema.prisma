@@ -13,9 +13,10 @@ datasource db {
 
 model User {
   id              String      @id @default(cuid())
-  phoneHash       String      @unique
+  phoneHash       String?     @unique
   phoneVerified   Boolean     @default(false)
   phonePrefix     String?
+  passwordHash    String?
   email           String?     @unique
   emailVerified   Boolean     @default(false)
   walletAddress   String?     @unique
@@ -37,6 +38,11 @@ model User {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
+  // Revocation metadata
+  revokedBy       String?
+  revokedAt       DateTime?
+  revokeReason    String?
+
   subscription    Subscription?
   creatorStake    CreatorStake?
   sentMessages    Message[]       @relation("SentMessages")
@@ -48,6 +54,8 @@ model User {
   readStakes      ReadStake[]
   sessions        Session[]
   riskFlags       RiskFlag[]
+  totpSecret      String?
+  totpEnabled     Boolean         @default(false)
 
   @@index([phoneHash])
   @@index([walletAddress])
@@ -58,12 +66,16 @@ enum UserStatus {
   ACTIVE
   SUSPENDED
   BANNED
+  REVOKED
 }
 
 enum UserRole {
   MEMBER
   ADMIN
   SUPER_ADMIN
+  CONTENT_ADMIN
+  FINANCE_ADMIN
+  SUPPORT_ADMIN
 }
 
 // ─────────────────────────────────────────
@@ -71,15 +83,18 @@ enum UserRole {
 // ─────────────────────────────────────────
 
 model Session {
-  id          String    @id @default(cuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id])
-  token       String    @unique
-  deviceInfo  String?
-  ipAddress   String?
-  lastSeen    DateTime  @default(now())
-  expiresAt   DateTime
-  createdAt   DateTime  @default(now())
+  id                 String    @id @default(cuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id])
+  token              String    @unique
+  deviceInfo         String?
+  ipAddress          String?
+  userAgent          String?
+  hashedRefreshToken String?
+  lastSeen           DateTime  @default(now())
+  expiresAt          DateTime
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([userId])
   @@index([token])
@@ -442,12 +457,32 @@ model Notification {
 
 model AuditLog {
   id          String   @id @default(cuid())
-  adminId     String
+  adminId     String?
+  userId      String?
   action      String
   target      String?
   before      Json?
   after       Json?
+  ipAddress   String?
+  device      String?
   createdAt   DateTime @default(now())
 
   @@index([adminId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────
+// ADMIN INVITE
+// ─────────────────────────────────────────
+
+model AdminInvite {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  role      UserRole
+  token     String   @unique
+  invitedBy String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
 }
