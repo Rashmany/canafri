@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   ChevronDown,
   UserPlus,
@@ -15,12 +15,13 @@ import {
   MoreHorizontal,
   Copy,
   CheckCircle2,
+  Link2,
 } from 'lucide-react';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 type AdminRole = 'Super Admin' | 'Content Admin' | 'Finance Admin' | 'Support Admin';
-type AdminStatus = 'Online' | 'Offline' | 'Invite Pending';
+type AdminStatus = 'Online' | 'Offline' | 'Invite Pending' | 'Revoked';
 
 interface AdminMember {
   id: string;
@@ -59,13 +60,9 @@ const ROLE_COLORS: Record<AdminRole, string> = {
   'Support Admin':  'bg-[#8C5CFF] text-white',
 };
 
-const INITIAL_MEMBERS: AdminMember[] = [
-  { id: 'self',  name: 'You',          email: 'admin@canafri.io',  role: 'Super Admin',   scope: 'Primary Signal',           status: 'Online',         isSelf: true,  joinedAt: new Date('2024-01-01') },
-  { id: 'm-1',   name: 'Jane Doe',     email: 'jane@canafri.io',   role: 'Content Admin', scope: 'Review Queue, Creators',   status: 'Online',         joinedAt: new Date('2024-03-15') },
-  { id: 'm-2',   name: 'Tunde Karimu', email: 'tunde@canafri.io',  role: 'Finance Admin', scope: 'Treasury, Analytics',      status: 'Online',         joinedAt: new Date('2024-04-01') },
-  { id: 'm-3',   name: 'Bola Taiwo',   email: 'bola@canafri.io',   role: 'Support Admin', scope: 'Users, Disputes',          status: 'Online',         joinedAt: new Date('2024-05-10') },
-  { id: 'm-4',   name: 'Samuel Ojo',   email: 'samuel@canafri.io', role: 'Support Admin', scope: 'Users, Seller Apps',       status: 'Invite Pending', joinedAt: new Date('2024-07-17') },
-];
+// ─── API base ──────────────────────────────────────────────────────────────
+
+const API = 'http://localhost:3001';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -115,6 +112,12 @@ function StatusBadge({ status }: { status: AdminStatus }) {
       <span className="text-[13px] font-medium text-amber-400">Invite Pending</span>
     </div>
   );
+  if (status === 'Revoked') return (
+    <div className="flex items-center gap-1.5">
+      <span className="size-1.5 rounded-full bg-red-500" />
+      <span className="text-[13px] font-medium text-red-500">Revoked</span>
+    </div>
+  );
   return (
     <div className="flex items-center gap-1.5">
       <span className="size-1.5 rounded-full bg-muted-foreground" />
@@ -123,22 +126,152 @@ function StatusBadge({ status }: { status: AdminStatus }) {
   );
 }
 
+// ─── Revoke Reason Modal ───────────────────────────────────────────────────
+
+function RevokeReasonModal({
+  member,
+  onClose,
+  onConfirm,
+}: {
+  member: AdminMember;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reason.trim()) {
+      setError('Please provide a reason for deactivation.');
+      return;
+    }
+    onConfirm(reason.trim());
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-6 flex flex-col gap-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[15px] font-semibold text-foreground">Revoke Admin Access</h2>
+          <button type="button" onClick={onClose} className="flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-border/40 hover:text-foreground transition-colors">
+            <X className="size-4" />
+          </button>
+        </div>
+        
+        <p className="text-[13px] text-muted-foreground">
+          Are you sure you want to deactivate <strong className="text-foreground">{member.name}</strong>? They will be signed out immediately and blocked from logging in.
+        </p>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12px] font-medium text-muted-foreground">Reason for Revocation</label>
+            <textarea
+              autoFocus
+              value={reason}
+              onChange={e => { setReason(e.target.value); setError(''); }}
+              placeholder="e.g. Contract ended, Policy violation, Offboarding"
+              rows={3}
+              className="w-full bg-background border border-border rounded-[10px] px-3 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground/50 outline-none resize-none focus:border-[#8C5CFF]/60"
+            />
+            {error && <span className="text-[11px] text-red-400">{error}</span>}
+          </div>
+
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 text-[13px] font-medium text-foreground/70 bg-background border border-border rounded-[10px] hover:bg-border/40 transition-colors">
+              Cancel
+            </button>
+            <button type="submit" className="flex-1 px-4 py-2.5 text-[13px] font-semibold text-white bg-red-500 rounded-[10px] hover:bg-red-600 transition-colors">
+              Revoke Access
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Invite Link Modal ─────────────────────────────────────────────────────
+
+function InviteLinkModal({ link, onClose }: { link: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-6 flex flex-col gap-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Link2 className="size-4 text-[#8C5CFF]" />
+            <h2 className="text-[15px] font-semibold text-foreground">Invite Link Ready</h2>
+          </div>
+          <button type="button" onClick={onClose} className="flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-border/40 hover:text-foreground transition-colors">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <p className="text-[12px] text-muted-foreground">
+          Share this link with the invited admin. It expires in <strong className="text-foreground">48 hours</strong>.
+        </p>
+
+        <div className="flex items-center gap-2 bg-background border border-border rounded-[10px] px-3 py-2.5">
+          <span className="flex-1 font-mono text-[11px] text-foreground/80 truncate">{link}</span>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-[#8C5CFF]/10 hover:bg-[#8C5CFF]/20 text-[#8C5CFF] rounded-lg transition-colors"
+          >
+            {copied ? <CheckCircle2 className="size-3.5" /> : <Copy className="size-3.5" />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+
+        <button type="button" onClick={onClose} className="w-full px-4 py-2.5 text-[13px] font-medium text-foreground bg-background border border-border rounded-[10px] hover:bg-border/40 transition-colors">
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Invite Modal ──────────────────────────────────────────────────────────
 
 function InviteModal({ onClose, onInvite }: {
   onClose: () => void;
-  onInvite: (email: string, role: AdminRole) => void;
+  onInvite: (email: string, role: AdminRole) => Promise<string>; // returns invite link
 }) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<AdminRole>('Content Admin');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const roles: AdminRole[] = ['Content Admin', 'Finance Admin', 'Support Admin'];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const ROLE_TO_API: Record<AdminRole, string> = {
+    'Super Admin':   'SUPER_ADMIN',
+    'Content Admin': 'ADMIN',
+    'Finance Admin': 'ADMIN',
+    'Support Admin': 'ADMIN',
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !email.includes('@')) { setError('Enter a valid email address.'); return; }
-    onInvite(email.trim(), role);
-    onClose();
+    setLoading(true);
+    setError('');
+    try {
+      const link = await onInvite(email.trim(), role);
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Failed to send invite.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -202,14 +335,30 @@ function InviteModal({ onClose, onInvite }: {
             <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 text-[13px] font-medium text-foreground/70 bg-background border border-border rounded-[10px] hover:bg-border/40 transition-colors">
               Cancel
             </button>
-            <button type="submit" className="flex-1 px-4 py-2.5 text-[13px] font-semibold text-white bg-[#8C5CFF] rounded-[10px] hover:bg-[#7A4AEE] transition-colors">
-              Send Invite
-            </button>
+          <button type="submit" disabled={loading} className="flex-1 px-4 py-2.5 text-[13px] font-semibold text-white bg-[#8C5CFF] rounded-[10px] hover:bg-[#7A4AEE] disabled:opacity-60 transition-colors">
+            {loading ? 'Sending…' : 'Send Invite'}
+          </button>
           </div>
         </form>
       </div>
     </div>
   );
+}
+
+// ─── Role mappers ────────────────────────────────────────────────────────────
+
+function mapRoleToDisplay(role: string): AdminRole {
+  if (role === 'SUPER_ADMIN') return 'Super Admin';
+  if (role === 'FINANCE_ADMIN') return 'Finance Admin';
+  if (role === 'SUPPORT_ADMIN') return 'Support Admin';
+  return 'Content Admin';
+}
+
+function mapDisplayToApiRole(role: AdminRole): string {
+  if (role === 'Super Admin') return 'SUPER_ADMIN';
+  if (role === 'Finance Admin') return 'FINANCE_ADMIN';
+  if (role === 'Support Admin') return 'SUPPORT_ADMIN';
+  return 'CONTENT_ADMIN';
 }
 
 // ─── Edit Role Modal ────────────────────────────────────────────────────────
@@ -219,8 +368,8 @@ function EditRoleModal({ member, onClose, onSave }: {
   onClose: () => void;
   onSave: (id: string, role: AdminRole) => void;
 }) {
-  const roles: AdminRole[] = ['Content Admin', 'Finance Admin', 'Support Admin'];
-  const [selected, setSelected] = useState<AdminRole>(member.role === 'Super Admin' ? 'Content Admin' : member.role);
+  const roles: AdminRole[] = ['Content Admin', 'Finance Admin', 'Support Admin', 'Super Admin'];
+  const [selected, setSelected] = useState<AdminRole>(member.role);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -243,7 +392,7 @@ function EditRoleModal({ member, onClose, onSave }: {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 max-h-[260px] overflow-y-auto no-scrollbar">
           {roles.map(r => (
             <button
               key={r}
@@ -333,12 +482,14 @@ function MemberRow({
   onEdit,
   onRemove,
   onRevoke,
+  onReactivate,
 }: {
   member: AdminMember;
   isSuperAdmin: boolean;
   onEdit: (m: AdminMember) => void;
   onRemove: (m: AdminMember) => void;
   onRevoke: (m: AdminMember) => void;
+  onReactivate: (m: AdminMember) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -383,27 +534,39 @@ function MemberRow({
           <span className="text-[11px] text-muted-foreground italic px-3">—</span>
         ) : isSuperAdmin ? (
           <>
-            {!isPending && (
+            {member.status === 'Revoked' ? (
               <button
                 type="button"
-                onClick={() => onEdit(member)}
-                className="px-3 py-1.5 text-[12px] font-semibold text-foreground bg-background border border-border rounded-[8px] hover:bg-border/40 transition-colors"
+                onClick={() => onReactivate(member)}
+                className="px-3 py-1.5 text-[12px] font-semibold text-white bg-emerald-500 rounded-[8px] hover:bg-emerald-600 transition-colors"
               >
-                Edit
+                Reactivate
               </button>
+            ) : (
+              <>
+                {!isPending && (
+                  <button
+                    type="button"
+                    onClick={() => onEdit(member)}
+                    className="px-3 py-1.5 text-[12px] font-semibold text-foreground bg-background border border-border rounded-[8px] hover:bg-border/40 transition-colors"
+                  >
+                    Edit
+                  </button>
+                )}
+                {isPending && (
+                  <div className="px-3 py-1.5 text-[12px] font-semibold text-muted-foreground/80 bg-background border border-border rounded-[8px]">
+                    Pending
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => isPending ? onRevoke(member) : onRemove(member)}
+                  className="px-3 py-1.5 text-[12px] font-semibold text-white bg-red-400 rounded-[8px] hover:bg-red-500 transition-colors"
+                >
+                  {isPending ? 'Revoke' : 'Remove'}
+                </button>
+              </>
             )}
-            {isPending && (
-              <div className="px-3 py-1.5 text-[12px] font-semibold text-muted-foreground/80 bg-background border border-border rounded-[8px]">
-                Pending
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => isPending ? onRevoke(member) : onRemove(member)}
-              className="px-3 py-1.5 text-[12px] font-semibold text-white bg-red-400 rounded-[8px] hover:bg-red-500 transition-colors"
-            >
-              {isPending ? 'Revoke' : 'Remove'}
-            </button>
           </>
         ) : (
           <div ref={menuRef} className="relative">
@@ -479,46 +642,176 @@ function PermissionsMatrix() {
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function AdminTeamPage() {
-  const [members, setMembers] = useState<AdminMember[]>(INITIAL_MEMBERS);
+  const [members, setMembers] = useState<AdminMember[]>([]);
   const [showInvite, setShowInvite] = useState(false);
   const [editTarget, setEditTarget] = useState<AdminMember | null>(null);
   const [removeTarget, setRemoveTarget] = useState<AdminMember | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<AdminMember | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState('');
 
-  const isSuperAdmin = true; // current user is super admin
+  const isSuperAdmin = (() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const tok = localStorage.getItem('canafri_admin_access_token');
+      if (!tok) return false;
+      const b64 = tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(b64));
+      return payload.role === 'SUPER_ADMIN';
+    } catch {
+      return false;
+    }
+  })();
 
-  const totalAdmins  = members.filter(m => m.status !== 'Invite Pending').length;
+  const getToken = () =>
+    typeof window !== 'undefined' ? localStorage.getItem('canafri_admin_access_token') ?? '' : '';
+
+  const authHeader = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` });
+
+  // ── Load team on mount ────────────────────────────────────────────────────
+  const loadTeam = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/admin/team`, { headers: authHeader() });
+      if (!res.ok) throw new Error('Failed to load team.');
+      const data = await res.json();
+
+      let currentAdminId = '';
+      try {
+        const tok = localStorage.getItem('canafri_admin_access_token');
+        if (tok) {
+          const b64 = tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+          const payload = JSON.parse(atob(b64));
+          currentAdminId = payload.userId || payload.sub || '';
+        }
+      } catch {
+        // ignore decoding errors
+      }
+
+      const active: AdminMember[] = (data.activeAdmins ?? []).map((u: any) => {
+        const displayRole = mapRoleToDisplay(u.role);
+        return {
+          id: u.id,
+          name: u.displayName || u.username,
+          email: u.email ?? '',
+          role: displayRole,
+          scope: ROLE_SCOPES[displayRole] || 'System Access',
+          status: u.status === 'REVOKED' ? 'Revoked' : 'Online' as const,
+          isSelf: u.id === currentAdminId,
+          joinedAt: new Date(u.createdAt),
+        };
+      });
+
+      const pending: AdminMember[] = (data.pendingInvites ?? []).map((inv: any) => {
+        const displayRole = mapRoleToDisplay(inv.role);
+        return {
+          id: inv.id,
+          name: inv.email.split('@')[0],
+          email: inv.email,
+          role: displayRole,
+          scope: ROLE_SCOPES[displayRole] || 'System Access',
+          status: 'Invite Pending' as const,
+          isSelf: false,
+          joinedAt: new Date(inv.createdAt),
+        };
+      });
+
+      setMembers([...active, ...pending]);
+    } catch (err: any) {
+      setLoadError(err.message);
+    }
+  }, []);
+
+  useEffect(() => { loadTeam(); }, [loadTeam]);
+
+  const totalAdmins  = members.filter(m => m.status === 'Online' || m.status === 'Offline').length;
   const pendingCount = members.filter(m => m.status === 'Invite Pending').length;
   const onlineCount  = members.filter(m => m.status === 'Online').length;
 
-  const handleInvite = (email: string, role: AdminRole) => {
-    const newMember: AdminMember = {
-      id: `m-${Date.now()}`,
-      name: email.split('@')[0].replace(/[._-]/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-      email,
-      role,
-      scope: ROLE_SCOPES[role],
-      status: 'Invite Pending',
-      joinedAt: new Date(),
-    };
-    setMembers(prev => [...prev, newMember]);
-    setToast(`Invite sent to ${email}`);
+  // ── Invite ────────────────────────────────────────────────────────────────
+  const handleInvite = async (email: string, role: AdminRole): Promise<string> => {
+    const apiRole = mapDisplayToApiRole(role);
+    const res = await fetch(`${API}/admin/invites`, {
+      method: 'POST',
+      headers: authHeader(),
+      body: JSON.stringify({ email, role: apiRole }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Invite failed.');
+    setInviteLink(data.inviteLink);
+    setToast(`Invite created for ${email}`);
+    await loadTeam();
+    return data.inviteLink;
   };
 
-  const handleEditSave = (id: string, newRole: AdminRole) => {
-    setMembers(prev => prev.map(m => m.id === id ? { ...m, role: newRole, scope: ROLE_SCOPES[newRole] } : m));
-    setToast('Role updated successfully');
+  // ── Edit role ──────────────────────────────────────────────────────────────
+  const handleEditSave = async (id: string, newDisplayRole: AdminRole) => {
+    const apiRole = mapDisplayToApiRole(newDisplayRole);
+    try {
+      const res = await fetch(`${API}/admin/users/${id}/role`, {
+        method: 'PATCH',
+        headers: authHeader(),
+        body: JSON.stringify({ role: apiRole }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Role update failed.');
+      setToast('Role updated successfully');
+      await loadTeam();
+    } catch (err: any) {
+      setToast(`Error: ${err.message}`);
+    }
   };
 
-  const handleRemove = (member: AdminMember) => {
-    setMembers(prev => prev.filter(m => m.id !== member.id));
-    setToast(`${member.name} has been removed`);
+  // ── Remove admin (Revoke Access) ─────────────────────────────────────────
+  const handleRemove = async (member: AdminMember, reason: string) => {
+    try {
+      const res = await fetch(`${API}/admin/users/${member.id}`, {
+        method: 'DELETE',
+        headers: authHeader(),
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Remove failed.');
+      setToast(`${member.name}'s admin access has been revoked`);
+      await loadTeam();
+    } catch (err: any) {
+      setToast(`Error: ${err.message}`);
+    }
   };
 
-  const handleRevoke = (member: AdminMember) => {
-    setMembers(prev => prev.filter(m => m.id !== member.id));
-    setToast(`Invite revoked for ${member.email}`);
+  // ── Reactivate admin ──────────────────────────────────────────────────────
+  const handleReactivate = async (member: AdminMember) => {
+    try {
+      // No body — do NOT send Content-Type: application/json with an empty body
+      // as Fastify will try to parse it and throw a cryptic error.
+      const res = await fetch(`${API}/admin/users/${member.id}/reactivate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || JSON.stringify(data));
+      setToast(`${member.name}'s admin access has been reactivated`);
+      await loadTeam();
+    } catch (err: any) {
+      setToast(`Error: ${err.message}`);
+    }
+  };
+
+
+  // ── Revoke invite ─────────────────────────────────────────────────────────
+  const handleRevoke = async (member: AdminMember) => {
+    try {
+      const res = await fetch(`${API}/admin/invites/${member.id}`, {
+        method: 'DELETE',
+        headers: authHeader(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Revoke failed.');
+      setToast(`Invite revoked for ${member.email}`);
+      await loadTeam();
+    } catch (err: any) {
+      setToast(`Error: ${err.message}`);
+    }
   };
 
   return (
@@ -580,6 +873,7 @@ export default function AdminTeamPage() {
               onEdit={setEditTarget}
               onRemove={setRemoveTarget}
               onRevoke={setRevokeTarget}
+              onReactivate={handleReactivate}
             />
           ))}
 
@@ -597,19 +891,20 @@ export default function AdminTeamPage() {
 
       {/* Modals */}
       {showInvite && (
-        <InviteModal onClose={() => setShowInvite(false)} onInvite={handleInvite} />
+        <InviteModal
+          onClose={() => setShowInvite(false)}
+          onInvite={handleInvite}
+        />
       )}
+      {inviteLink && <InviteLinkModal link={inviteLink} onClose={() => setInviteLink(null)} />}
       {editTarget && (
         <EditRoleModal member={editTarget} onClose={() => setEditTarget(null)} onSave={handleEditSave} />
       )}
       {removeTarget && (
-        <ConfirmModal
-          title="Remove Admin"
-          description={`Remove ${removeTarget.name} (${removeTarget.email}) from the admin team? Their access will be revoked immediately.`}
-          confirmLabel="Remove"
-          confirmClass="bg-red-400 hover:bg-red-500"
+        <RevokeReasonModal
+          member={removeTarget}
           onClose={() => setRemoveTarget(null)}
-          onConfirm={() => handleRemove(removeTarget)}
+          onConfirm={(reason) => handleRemove(removeTarget, reason)}
         />
       )}
       {revokeTarget && (
