@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -40,6 +40,7 @@ interface AdminSidebarUser {
   name: string;
   handle: string;
   avatarSrc: string;
+  role: string;
 }
 
 export interface AdminSidebarProps {
@@ -49,6 +50,109 @@ export interface AdminSidebarProps {
   onActiveChange?: (page: string) => void;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
+}
+
+// ─── Role label helper ───────────────────────────────────────────────────────
+
+function getRoleLabel(role: string): string {
+  if (role === 'SUPER_ADMIN') return 'Super Admin';
+  if (role === 'CONTENT_ADMIN') return 'Content Admin';
+  if (role === 'FINANCE_ADMIN') return 'Finance Admin';
+  if (role === 'SUPPORT_ADMIN') return 'Support Admin';
+  if (role === 'ADMIN') return 'Admin';
+  return role || 'Admin';
+}
+
+function getRolePermissions(role: string): string[] {
+  if (role === 'SUPER_ADMIN') return [
+    '\u2714 Full platform control',
+    '\u2714 Invite & remove admins',
+    '\u2714 User management & bans',
+    '\u2714 Content review & approvals',
+    '\u2714 Dispute resolution',
+    '\u2714 Treasury & withdrawals',
+    '\u2714 Platform configuration',
+    '\u2714 Analytics & audit logs',
+  ];
+  if (role === 'CONTENT_ADMIN') return [
+    '\u2714 Content review & queue',
+    '\u2714 Creator approvals',
+    '\u2718 Cannot manage disputes',
+    '\u2718 Cannot access Treasury',
+    '\u2718 Cannot invite/remove admins',
+  ];
+  if (role === 'FINANCE_ADMIN') return [
+    '\u2714 Treasury & withdrawals',
+    '\u2714 Analytics & reports',
+    '\u2718 Cannot review content',
+    '\u2718 Cannot manage disputes',
+    '\u2718 Cannot invite/remove admins',
+  ];
+  if (role === 'SUPPORT_ADMIN') return [
+    '\u2714 User management & bans',
+    '\u2714 Dispute resolution',
+    '\u2718 Cannot access Treasury',
+    '\u2718 Cannot review content',
+    '\u2718 Cannot invite/remove admins',
+  ];
+  return [
+    '\u2714 User management & bans',
+    '\u2714 Content review & approvals',
+    '\u2714 Dispute resolution',
+    '\u2718 Cannot invite/remove admins',
+  ];
+}
+
+// ─── Role Permission Tooltip ────────────────────────────────────────────────
+
+function RolePermissionTooltip({ role }: { role: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const perms = getRolePermissions(role);
+  const label = getRoleLabel(role);
+
+  return (
+    <div
+      ref={ref}
+      className="relative inline-flex"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      {/* ? icon */}
+      <button
+        type="button"
+        aria-label={`${label} permissions`}
+        className="flex size-4 items-center justify-center rounded-full bg-foreground/10 text-[0.5625rem] font-bold text-muted hover:bg-[#8C5CFF]/20 hover:text-[#8C5CFF] transition-colors leading-none"
+      >
+        ?
+      </button>
+
+      {/* Tooltip popover */}
+      {open && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-[200] w-[13.5rem] rounded-[0.875rem] border border-border bg-card shadow-2xl p-3">
+          {/* Arrow */}
+          <div className="absolute left-1/2 -translate-x-1/2 bottom-[-5px] size-2.5 rotate-45 border-r border-b border-border bg-card" />
+
+          <p className="font-sans text-[0.6875rem] font-bold text-foreground mb-2 uppercase tracking-wider">
+            {label} Access
+          </p>
+          <ul className="flex flex-col gap-[3px]">
+            {perms.map(p => (
+              <li
+                key={p}
+                className={[
+                  'font-sans text-[0.6875rem] leading-4',
+                  p.startsWith('\u2718') ? 'text-muted' : 'text-foreground/80',
+                ].join(' ')}
+              >
+                {p}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Nav configuration ───────────────────────────────────────────────────────
@@ -260,11 +364,12 @@ interface ProfileRowProps {
   name: string;
   handle: string;
   avatarSrc: string;
+  role: string;
   onLogout?: () => void;
   showLabel?: boolean;
 }
 
-function AdminProfileRow({ name, handle, avatarSrc, onLogout, showLabel = true }: ProfileRowProps) {
+function AdminProfileRow({ name, handle, avatarSrc, role, onLogout, showLabel = true }: ProfileRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   if (!showLabel) {
@@ -287,7 +392,7 @@ function AdminProfileRow({ name, handle, avatarSrc, onLogout, showLabel = true }
               <p className="font-sans text-[0.6875rem] text-muted truncate">{handle}</p>
             </div>
             <span className="shrink-0 rounded-full bg-[#8C5CFF]/10 px-2 py-0.5 font-sans text-[0.625rem] font-semibold text-[#8C5CFF]">
-              Admin
+              {getRoleLabel(role)}
             </span>
           </div>
           <div className="py-[0.375rem]">
@@ -319,7 +424,7 @@ function AdminProfileRow({ name, handle, avatarSrc, onLogout, showLabel = true }
             <div className="flex items-center gap-1.5">
               <p className="whitespace-nowrap font-sans text-[0.6875rem] font-normal leading-4 text-muted truncate">{handle}</p>
               <span className="shrink-0 rounded-full bg-[#8C5CFF]/10 px-1.5 py-0.5 font-sans text-[0.5625rem] font-semibold text-[#8C5CFF]">
-                Admin
+                {getRoleLabel(role)}
               </span>
             </div>
           </div>
@@ -362,11 +467,12 @@ function AdminDesktopSidebar({ activePage, setActivePage, user, onLogout }: Shar
         <SidebarDivider />
       </div>
 
-      {/* Admin badge */}
+      {/* Admin badge — shows the signed-in admin's actual role */}
       <div className="mt-3 mb-1 flex items-center gap-2 px-[1.5rem]">
         <span className="rounded-full bg-[#8C5CFF]/10 px-2.5 py-1 font-sans text-[0.625rem] font-bold uppercase tracking-wider text-[#8C5CFF]">
-          Admin Console
+          {getRoleLabel(user.role)} Console
         </span>
+        <RolePermissionTooltip role={user.role} />
       </div>
 
       {/* Scrollable nav */}
@@ -395,6 +501,7 @@ function AdminDesktopSidebar({ activePage, setActivePage, user, onLogout }: Shar
           name={user.name}
           handle={user.handle}
           avatarSrc={user.avatarSrc}
+          role={user.role}
           onLogout={onLogout}
         />
       </div>
@@ -420,12 +527,13 @@ function AdminTabletSidebar({ activePage, setActivePage, user, onLogout }: Share
       </div>
       <SidebarDivider />
 
-      {/* Admin label when expanded */}
+      {/* Role label when expanded */}
       {expanded && (
         <div className="mt-3 mb-1 flex items-center gap-2 px-[1.5rem]">
           <span className="rounded-full bg-[#8C5CFF]/10 px-2.5 py-1 font-sans text-[0.625rem] font-bold uppercase tracking-wider text-[#8C5CFF]">
-            Admin Console
+            {getRoleLabel(user.role)} Console
           </span>
+          <RolePermissionTooltip role={user.role} />
         </div>
       )}
 
@@ -458,6 +566,7 @@ function AdminTabletSidebar({ activePage, setActivePage, user, onLogout }: Share
             name={user.name}
             handle={user.handle}
             avatarSrc={user.avatarSrc}
+            role={user.role}
             onLogout={onLogout}
             showLabel={expanded}
           />
@@ -508,8 +617,9 @@ function AdminMobileSidebar({
               <p className="truncate font-sans text-[0.6875rem] leading-4 text-muted">{user.handle}</p>
             </div>
             <span className="shrink-0 rounded-full bg-[#8C5CFF]/10 px-2 py-0.5 font-sans text-[0.625rem] font-semibold text-[#8C5CFF]">
-              Admin
+              {getRoleLabel(user.role)}
             </span>
+            <RolePermissionTooltip role={user.role} />
             <button
               type="button"
               aria-label="Close navigation menu"
@@ -547,17 +657,13 @@ function AdminMobileSidebar({
           <div className="flex-1" />
           <SidebarDivider />
 
-          {/* Log Out */}
-          <button
-            type="button"
-            onClick={() => { onClose(); onLogout?.(); }}
-            className="flex w-full items-center gap-[0.625rem] rounded-[0.75rem] px-[1.5rem] py-[0.625rem] font-sans text-[0.8125rem] text-red-400 transition-colors hover:bg-foreground/5 hover:text-red-300"
-          >
-            <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
-            </svg>
-            Log Out
-          </button>
+          <AdminProfileRow
+            name={user.name}
+            handle={user.handle}
+            avatarSrc={user.avatarSrc}
+            role={user.role}
+            onLogout={onLogout}
+          />
         </div>
       </aside>
     </>
@@ -570,6 +676,7 @@ const DEFAULT_ADMIN_USER: AdminSidebarUser = {
   name: 'Admin User',
   handle: '@admin',
   avatarSrc: '/images/default-avatar.png',
+  role: 'ADMIN',
 };
 
 export default function AdminSidebar({
@@ -591,6 +698,7 @@ export default function AdminSidebar({
     name: user.name,
     handle: user.handle ?? '@admin',
     avatarSrc: user.avatarSrc ?? DEFAULT_ADMIN_USER.avatarSrc,
+    role: user.role ?? 'ADMIN',
   };
 
   const sharedProps: SharedAdminSidebarProps = {
