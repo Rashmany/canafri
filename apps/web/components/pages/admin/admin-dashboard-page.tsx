@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   Users,
   Briefcase,
@@ -206,7 +206,7 @@ function StatCard({ label, value, change, up, icon, accent, onClick }: StatCardP
     <button
       type="button"
       onClick={onClick}
-      className={`flex flex-col gap-4 rounded-[1.25rem] border border-border bg-[#0b0b0b] p-6 shadow-sm text-left transition-all ${
+      className={`flex flex-col gap-4 rounded-[1.25rem] border border-border bg-[#F5F8FB] dark:bg-[#0b0b0b] p-6 shadow-sm text-left transition-all ${
         onClick ? 'hover:border-[#8C5CFF]/30 hover:bg-[#8C5CFF]/[0.03] cursor-pointer' : 'cursor-default'
       }`}
     >
@@ -249,7 +249,7 @@ function MiniMetric({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-4 rounded-[1rem] border border-border bg-[#0b0b0b] p-4 text-left transition-all ${
+      className={`flex items-center gap-4 rounded-[1rem] border border-border bg-[#F5F8FB] dark:bg-[#0b0b0b] p-4 text-left transition-all ${
         onClick ? 'hover:border-[#8C5CFF]/30 hover:bg-[#8C5CFF]/[0.03] cursor-pointer' : 'cursor-default'
       }`}
     >
@@ -270,7 +270,9 @@ function MiniMetric({
 
 // ─── SVG Donut Chart ──────────────────────────────────────────────────────────
 
-function PlatformDonutChart({ size = 180 }: { size?: number }) {
+// ─── SVG Donut Chart ──────────────────────────────────────────────────────────
+
+function PlatformDonutChart({ data = DONUT_DATA, size = 180 }: { data?: DonutSlice[]; size?: number }) {
   const [hovered, setHovered] = useState<number | null>(null);
   const cx = size / 2;
   const cy = size / 2;
@@ -278,11 +280,11 @@ function PlatformDonutChart({ size = 180 }: { size?: number }) {
   const innerR = size * 0.32;
   const gap = 3;
 
-  const total = DONUT_DATA.reduce((s, d) => s + d.value, 0);
+  const total = data.reduce((s, d) => s + d.value, 0);
   let cursor = -90;
 
-  const slices = DONUT_DATA.map((d, i) => {
-    const sweep = (d.value / total) * (360 - gap * DONUT_DATA.length);
+  const slices = data.map((d, i) => {
+    const sweep = total > 0 ? (d.value / total) * (360 - gap * data.length) : 0;
     const start = cursor + gap / 2;
     const end = cursor + sweep;
     cursor = end + gap / 2;
@@ -363,7 +365,7 @@ function PlatformDonutChart({ size = 180 }: { size?: number }) {
           {hovered !== null ? 'Percentage' : 'Total'}
         </span>
         <span className="font-sans text-[1.125rem] font-bold text-white leading-none mt-0.5 tracking-tight">
-          {hovered !== null ? `${DONUT_DATA[hovered].pct}%` : '22.8K'}
+          {hovered !== null ? `${data[hovered]?.pct}%` : total.toLocaleString()}
         </span>
       </div>
     </div>
@@ -372,18 +374,18 @@ function PlatformDonutChart({ size = 180 }: { size?: number }) {
 
 // ─── SVG Solid Pie Chart ──────────────────────────────────────────────────────
 
-function PlatformPieChart({ size = 180 }: { size?: number }) {
+function PlatformPieChart({ data = PIE_DATA, size = 180 }: { data?: PieSlice[]; size?: number }) {
   const [hovered, setHovered] = useState<number | null>(null);
   const cx = size / 2;
   const cy = size / 2;
   const outerR = size * 0.44;
   const gap = 2; // small degrees gap between segments for clean spacing
 
-  const total = PIE_DATA.reduce((s, d) => s + d.value, 0);
+  const total = data.reduce((s, d) => s + d.value, 0);
   let cursor = -90;
 
-  const slices = PIE_DATA.map((d, i) => {
-    const sweep = (d.value / total) * (360 - gap * PIE_DATA.length);
+  const slices = data.map((d, i) => {
+    const sweep = total > 0 ? (d.value / total) * (360 - gap * data.length) : 0;
     const start = cursor + gap / 2;
     const end = cursor + sweep;
     cursor = end + gap / 2;
@@ -450,10 +452,10 @@ function PlatformPieChart({ size = 180 }: { size?: number }) {
 
       {/* Floating Center Overlay Text */}
       <div className="absolute flex flex-col items-center justify-center text-center pointer-events-none select-none">
-        {hovered !== null && (
+        {hovered !== null && data[hovered] && (
           <div className="bg-[rgba(15,15,17,0.92)] border border-[rgba(255,255,255,0.08)] px-2 py-1 rounded-md flex flex-col items-center shadow-xl">
-            <span className="font-sans text-[8px] text-muted-foreground uppercase tracking-wider">{PIE_DATA[hovered].label}</span>
-            <span className="font-sans text-[11px] font-bold text-white mt-0.5">{PIE_DATA[hovered].pct}%</span>
+            <span className="font-sans text-[8px] text-muted-foreground uppercase tracking-wider">{data[hovered].label}</span>
+            <span className="font-sans text-[11px] font-bold text-white mt-0.5">{data[hovered].pct}%</span>
           </div>
         )}
       </div>
@@ -463,7 +465,7 @@ function PlatformPieChart({ size = 180 }: { size?: number }) {
 
 // ─── SVG User Trend Chart ────────────────────────────────────────────────────
 
-function UserTrendChart({ trendType }: { trendType: 'Daily' | 'Weekly' | 'Monthly' }) {
+function UserTrendChart({ trendType, dailyData }: { trendType: 'Daily' | 'Weekly' | 'Monthly'; dailyData?: TrendPoint[] }) {
   const [activePoint, setActivePoint] = useState<number | null>(null);
   const width = 500;
   const height = 180;
@@ -476,10 +478,11 @@ function UserTrendChart({ trendType }: { trendType: 'Daily' | 'Weekly' | 'Monthl
   const activeDataset = useMemo(() => {
     if (trendType === 'Weekly') return TREND_DATA_WEEKLY;
     if (trendType === 'Monthly') return TREND_DATA_MONTHLY;
-    return TREND_DATA_DAILY;
-  }, [trendType]);
+    return dailyData && dailyData.length > 0 ? dailyData : TREND_DATA_DAILY;
+  }, [trendType, dailyData]);
 
-  const maxVal = Math.max(...activeDataset.map(d => d.users));
+  const rawMax = Math.max(...activeDataset.map(d => d.users), 0);
+  const maxVal = rawMax === 0 ? 10 : rawMax;
   const minVal = 0;
 
   const points = useMemo(() => {
@@ -642,6 +645,7 @@ function ActivityTrendChart({
   period,
   chartId,
   isDual,
+  customMetrics,
 }: {
   keys: string[];
   colors: string[];
@@ -649,6 +653,7 @@ function ActivityTrendChart({
   period: MetricPeriod;
   chartId: string;
   isDual?: boolean;
+  customMetrics?: Record<string, Record<MetricPeriod, MetricPoint[]>>;
 }) {
   const [activePoint, setActivePoint] = useState<number | null>(null);
   const width = 500;
@@ -657,8 +662,9 @@ function ActivityTrendChart({
   const chartWidth  = width  - padding.left - padding.right;
   const chartHeight = height - padding.top  - padding.bottom;
 
-  const dataset1 = ACTIVITY_METRICS[keys[0]][period];
-  const dataset2 = isDual ? ACTIVITY_METRICS[keys[1]][period] : null;
+  const datasetSource = customMetrics || ACTIVITY_METRICS;
+  const dataset1 = datasetSource[keys[0]]?.[period] || ACTIVITY_METRICS[keys[0]]?.[period] || [];
+  const dataset2 = isDual ? (datasetSource[keys[1]]?.[period] || ACTIVITY_METRICS[keys[1]]?.[period] || null) : null;
 
   const maxVal = useMemo(() => {
     const v1 = Math.max(...dataset1.map(d => d.value));
@@ -846,7 +852,117 @@ function ActivityTrendChart({
 
 export default function AdminDashboardPage({ onNavigate }: AdminDashboardPageProps) {
   const nav = (page: AdminPage) => onNavigate?.(page);
-  const [logs] = useState<AdminActivityLog[]>(INITIAL_ACTIVITY_LOGS);
+  const [logs, setLogs] = useState<AdminActivityLog[]>(INITIAL_ACTIVITY_LOGS);
+  const [stats, setStats] = useState<{
+    totalUsers: number;
+    creatorsCount: number;
+    sellersCount: number;
+    buyersCount: number;
+    suspendedCount: number;
+    bannedCount: number;
+    activeJobsCount: number;
+    disputesCount: number;
+    pendingContentCount: number;
+    riskFlagsCount: number;
+    sellerApplicationsCount: number;
+    jobsCompletedCount: number;
+    jobsPostedCount: number;
+    contentPublishedCount: number;
+    delistedContentCount: number;
+    totalWalletBalance: number;
+  }>({
+    totalUsers: 0,
+    creatorsCount: 0,
+    sellersCount: 0,
+    buyersCount: 0,
+    suspendedCount: 0,
+    bannedCount: 0,
+    activeJobsCount: 0,
+    disputesCount: 0,
+    pendingContentCount: 0,
+    riskFlagsCount: 0,
+    sellerApplicationsCount: 0,
+    jobsCompletedCount: 0,
+    jobsPostedCount: 0,
+    contentPublishedCount: 0,
+    delistedContentCount: 0,
+    totalWalletBalance: 0,
+  });
+
+  const [dailyTrend, setDailyTrend] = useState<TrendPoint[]>([]);
+  const [activityMetrics, setActivityMetrics] = useState<Record<string, Record<MetricPeriod, MetricPoint[]>> | undefined>(undefined);
+
+  const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('canafri_admin_access_token') ?? '' : '';
+
+  // Load real-time dashboard stats and audit logs from backend
+  const loadDashboardStats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/dashboard-stats', {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.stats) {
+        setStats(data.stats);
+      }
+      if (Array.isArray(data.registrationTrendDaily)) {
+        setDailyTrend(data.registrationTrendDaily);
+      }
+      if (data.activityMetrics) {
+        setActivityMetrics(data.activityMetrics);
+      }
+      if (Array.isArray(data.recentLogs) && data.recentLogs.length > 0) {
+        const mappedLogs: AdminActivityLog[] = data.recentLogs.map((l: any) => ({
+          id: l.id,
+          operatorName: l.admin?.displayName || l.admin?.username || 'Admin System',
+          operatorHandle: `@${l.admin?.username || 'admin'}`,
+          operatorRole: (l.admin?.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Content Admin') as any,
+          action: l.action.replace(/_/g, ' ').toLowerCase(),
+          target: l.target || 'System Object',
+          timestamp: new Date(l.createdAt),
+        }));
+        setLogs(mappedLogs);
+      }
+    } catch {
+      // Ignore network failure fallback
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDashboardStats();
+  }, [loadDashboardStats]);
+
+  // Compute dynamic Donut chart data based on real DB stats
+  const dynamicDonutData = useMemo<DonutSlice[]>(() => {
+    const verified = Math.max(0, stats.totalUsers - stats.suspendedCount - stats.bannedCount);
+    const pending = stats.pendingContentCount;
+    const suspended = stats.suspendedCount + stats.bannedCount;
+    const sellerApps = stats.sellerApplicationsCount;
+    const total = verified + pending + suspended + sellerApps || 1;
+
+    return [
+      { label: 'Verified Accounts',  value: verified,   pct: Math.round((verified / total) * 100),   color: '#10B981', amount: verified.toLocaleString(),   page: 'All Users' },
+      { label: 'Pending Review',     value: pending,    pct: Math.round((pending / total) * 100),    color: '#F59E0B', amount: pending.toLocaleString(),    page: 'Review Queue' },
+      { label: 'Suspended Accounts', value: suspended,  pct: Math.round((suspended / total) * 100),  color: '#EF4444', amount: suspended.toLocaleString(),  page: 'All Users' },
+      { label: 'Seller Applications',value: sellerApps, pct: Math.round((sellerApps / total) * 100), color: '#3B82F6', amount: sellerApps.toLocaleString(), page: 'Seller Apps' },
+    ];
+  }, [stats]);
+
+  // Compute dynamic Pie chart data based on real DB stats
+  const dynamicPieData = useMemo<PieSlice[]>(() => {
+    const buyers = stats.buyersCount;
+    const sellers = stats.sellersCount;
+    const creators = stats.creatorsCount;
+    const activeJobs = stats.activeJobsCount;
+    const total = buyers + sellers + creators + activeJobs || 1;
+
+    return [
+      { label: 'Buyers',           value: buyers,     pct: Math.round((buyers / total) * 100),     color: '#3B82F6', amount: buyers.toLocaleString(),     page: 'Buyers' },
+      { label: 'Sellers',          value: sellers,    pct: Math.round((sellers / total) * 100),    color: '#10B981', amount: sellers.toLocaleString(),    page: 'Sellers' },
+      { label: 'Content Creators', value: creators,   pct: Math.round((creators / total) * 100),   color: '#8C5CFF', amount: creators.toLocaleString(),   page: 'Content Creators' },
+      { label: 'Active Jobs',      value: activeJobs, pct: Math.round((activeJobs / total) * 100), color: '#F59E0B', amount: activeJobs.toLocaleString(), page: 'Active Jobs' },
+    ];
+  }, [stats]);
 
   // User registration trend select state
   const [trendType, setTrendType] = useState<'Daily' | 'Weekly' | 'Monthly'>('Daily');
@@ -896,24 +1012,24 @@ export default function AdminDashboardPage({ onNavigate }: AdminDashboardPagePro
 
         {/* Primary Stat Cards */}
         <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
-          <StatCard label="Total Users"   value="24,831" change="+3.2% this week"    up={true}  icon={<Users size={18} />}         accent="#8C5CFF" onClick={() => nav('All Users')} />
-          <StatCard label="Active Jobs"   value="1,204"  change="+12% this week"     up={true}  icon={<Briefcase size={18} />}     accent="#3B82F6" onClick={() => nav('Active Jobs')} />
-          <StatCard label="Open Disputes" value="47"     change="+8 since yesterday" up={false} icon={<Scale size={18} />}         accent="#F59E0B" onClick={() => nav('Disputes')} />
-          <StatCard label="Risk Flags"    value="13"     change="-4 since yesterday" up={true}  icon={<AlertTriangle size={18} />} accent="#EF4444" onClick={() => nav('Risk Scores')} />
+          <StatCard label="Total Users"   value={stats.totalUsers.toLocaleString()} change="Registered members"      up={true}  icon={<Users size={18} />}         accent="#8C5CFF" onClick={() => nav('All Users')} />
+          <StatCard label="Active Jobs"   value={stats.activeJobsCount.toLocaleString()}  change="Jobs in progress"     up={true}  icon={<Briefcase size={18} />}     accent="#3B82F6" onClick={() => nav('Active Jobs')} />
+          <StatCard label="Open Disputes" value={stats.disputesCount.toLocaleString()}     change="Awaiting resolution" up={false} icon={<Scale size={18} />}         accent="#F59E0B" onClick={() => nav('Disputes')} />
+          <StatCard label="Risk Flags"    value={stats.riskFlagsCount.toLocaleString()}     change="Account risk alerts" up={true}  icon={<AlertTriangle size={18} />} accent="#EF4444" onClick={() => nav('Risk Scores')} />
         </div>
 
         {/* Secondary Mini Metrics */}
         <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
-          <MiniMetric label="Content Creators" value="3,218"  sub="142 pending verification" icon={<Video size={16} />}        accent="#8C5CFF" onClick={() => nav('Content Creators')} />
-          <MiniMetric label="Buyers"           value="14,607" sub="23 spend limit alerts"    icon={<ShoppingCart size={16} />} accent="#3B82F6" onClick={() => nav('Buyers')} />
-          <MiniMetric label="Sellers"          value="7,006"  sub="31 new applications"      icon={<Store size={16} />}        accent="#10B981" onClick={() => nav('Sellers')} />
-          <MiniMetric label="Treasury Balance" value="845K"   sub="CAF tokens in reserve"    icon={<Coins size={16} />}        accent="#F59E0B" onClick={() => nav('Treasury')} />
+          <MiniMetric label="Content Creators" value={stats.creatorsCount.toLocaleString()}  sub="Active creators" icon={<Video size={16} />}        accent="#8C5CFF" onClick={() => nav('Content Creators')} />
+          <MiniMetric label="Buyers"           value={stats.buyersCount.toLocaleString()} sub="Active job posters"    icon={<ShoppingCart size={16} />} accent="#3B82F6" onClick={() => nav('Buyers')} />
+          <MiniMetric label="Sellers"          value={stats.sellersCount.toLocaleString()}  sub="Approved sellers"      icon={<Store size={16} />}        accent="#10B981" onClick={() => nav('Sellers')} />
+          <MiniMetric label="Treasury Balance" value={`${stats.totalWalletBalance.toLocaleString()} CC`} sub="CC tokens in circulation" icon={<Coins size={16} />} accent="#F59E0B" onClick={() => nav('Treasury')} />
         </div>
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* User Registration Trend */}
-          <div className="lg:col-span-2 rounded-[1.25rem] border border-border bg-[#0b0b0b] p-6 flex flex-col gap-5">
+          <div className="lg:col-span-2 rounded-[1.25rem] border border-border bg-[#F5F8FB] dark:bg-[#0b0b0b] p-6 flex flex-col gap-5">
             <div className="flex items-center justify-between border-b border-border/40 pb-4">
               <div className="flex flex-col">
                 <span className="font-sans text-[14px] font-semibold text-foreground">User Registration Trend</span>
@@ -931,7 +1047,7 @@ export default function AdminDashboardPage({ onNavigate }: AdminDashboardPagePro
                   <ChevronDown className={`size-3 transition-transform ${showTrendDropdown ? 'rotate-180' : ''}`} />
                 </button>
                 {showTrendDropdown && (
-                  <div className="absolute right-0 top-full mt-1 z-50 bg-[#0b0b0b] border border-border rounded-xl shadow-2xl min-w-[120px] py-1 overflow-hidden">
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-[#F5F8FB] dark:bg-[#0b0b0b] border border-border rounded-xl shadow-2xl min-w-[120px] py-1 overflow-hidden">
                     {(['Daily', 'Weekly', 'Monthly'] as const).map(t => (
                       <button
                         key={t}
@@ -949,12 +1065,12 @@ export default function AdminDashboardPage({ onNavigate }: AdminDashboardPagePro
               </div>
             </div>
             <div className="flex-1 min-h-[180px]">
-              <UserTrendChart trendType={trendType} />
+              <UserTrendChart trendType={trendType} dailyData={dailyTrend} />
             </div>
           </div>
 
           {/* User KYC / Verification Status Donut Chart */}
-          <div className="rounded-[1.25rem] border border-border bg-[#0b0b0b] p-6 flex flex-col gap-5">
+          <div className="rounded-[1.25rem] border border-border bg-[#F5F8FB] dark:bg-[#0b0b0b] p-6 flex flex-col gap-5">
             <div className="flex items-center justify-between border-b border-border/40 pb-4">
               <div className="flex flex-col">
                 <span className="font-sans text-[14px] font-semibold text-foreground">Verification Analytics</span>
@@ -962,11 +1078,11 @@ export default function AdminDashboardPage({ onNavigate }: AdminDashboardPagePro
               </div>
             </div>
             <div className="flex flex-col items-center justify-center gap-6">
-              <PlatformDonutChart size={160} />
+              <PlatformDonutChart size={160} data={dynamicDonutData} />
               
               {/* Legend List */}
               <div className="w-full flex flex-col gap-2 pt-1">
-                {DONUT_DATA.map(d => (
+                {dynamicDonutData.map(d => (
                   <button
                     key={d.label}
                     type="button"
@@ -988,9 +1104,9 @@ export default function AdminDashboardPage({ onNavigate }: AdminDashboardPagePro
         {/* Activity Logs & Quick Actions Row */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           
-          {/* Admin Recent Activity Logs (Scrollbars hidden using CSS classes) */}
-          <div className="lg:col-span-2 rounded-[1.25rem] border border-border bg-[#0b0b0b] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-border/40 bg-[#0b0b0b]">
+          {/* Admin Recent Activity Logs */}
+          <div className="lg:col-span-2 rounded-[1.25rem] border border-border bg-[#F5F8FB] dark:bg-[#0b0b0b] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-border/40 bg-[#F5F8FB] dark:bg-[#0b0b0b]">
               <div className="flex flex-col">
                 <span className="font-sans text-[14px] font-semibold text-foreground">Admin Activity Logs</span>
                 <span className="font-sans text-[11px] text-muted-foreground">Recent operations performed by admin operators</span>
@@ -1004,7 +1120,6 @@ export default function AdminDashboardPage({ onNavigate }: AdminDashboardPagePro
               </button>
             </div>
             
-            {/* Scrollbars completely hidden using scrollbar-width: none (no-scrollbar class) */}
             <div className="divide-y divide-border/40 max-h-[350px] overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {logs.map(log => (
                 <div key={log.id} className="flex items-start gap-4 px-6 py-4 hover:bg-background/20 transition-colors">
@@ -1032,19 +1147,19 @@ export default function AdminDashboardPage({ onNavigate }: AdminDashboardPagePro
           </div>
 
           {/* Quick Actions */}
-          <div className="rounded-[1.25rem] border border-border bg-[#0b0b0b] overflow-hidden">
+          <div className="rounded-[1.25rem] border border-border bg-[#F5F8FB] dark:bg-[#0b0b0b] overflow-hidden">
             <div className="px-6 py-5 border-b border-border/40">
               <span className="font-sans text-[14px] font-semibold text-foreground block">Quick Actions</span>
               <span className="font-sans text-[11px] text-muted-foreground block mt-0.5">Quickly jump to admin tasks</span>
             </div>
             <div className="flex flex-col gap-2.5 p-4">
               {[
-                { label: 'Review Queue',      desc: '3 pending reviews',        accent: '#8C5CFF', page: 'Review Queue'     as AdminPage, icon: <ClipboardList size={16} /> },
-                { label: 'Seller Apps',       desc: '31 new applications',      accent: '#10B981', page: 'Seller Apps'      as AdminPage, icon: <Store size={16} /> },
-                { label: 'Open Disputes',     desc: '47 awaiting resolution',   accent: '#F59E0B', page: 'Disputes'         as AdminPage, icon: <Scale size={16} /> },
-                { label: 'Risk Score Alerts', desc: '13 flagged accounts',      accent: '#EF4444', page: 'Risk Scores'      as AdminPage, icon: <Shield size={16} /> },
-                { label: 'Content Creators',  desc: '142 pending verification', accent: '#A855F7', page: 'Content Creators' as AdminPage, icon: <Video size={16} /> },
-                { label: 'Buyer Alerts',      desc: '23 spend limit breaches',  accent: '#3B82F6', page: 'Buyers'           as AdminPage, icon: <ShoppingCart size={16} /> },
+                { label: 'Review Queue',      desc: `${stats.pendingContentCount} pending reviews`,        accent: '#8C5CFF', page: 'Review Queue'     as AdminPage, icon: <ClipboardList size={16} /> },
+                { label: 'Seller Apps',       desc: `${stats.sellerApplicationsCount} new applications`,      accent: '#10B981', page: 'Seller Apps'      as AdminPage, icon: <Store size={16} /> },
+                { label: 'Open Disputes',     desc: `${stats.disputesCount} awaiting resolution`,   accent: '#F59E0B', page: 'Disputes'         as AdminPage, icon: <Scale size={16} /> },
+                { label: 'Risk Score Alerts', desc: `${stats.riskFlagsCount} flagged accounts`,      accent: '#EF4444', page: 'Risk Scores'      as AdminPage, icon: <Shield size={16} /> },
+                { label: 'Content Creators',  desc: `${stats.creatorsCount} active creators`, accent: '#A855F7', page: 'Content Creators' as AdminPage, icon: <Video size={16} /> },
+                { label: 'Buyers',            desc: `${stats.buyersCount} registered buyers`,  accent: '#3B82F6', page: 'Buyers'           as AdminPage, icon: <ShoppingCart size={16} /> },
               ].map(item => (
                 <button
                   key={item.page}
@@ -1070,19 +1185,19 @@ export default function AdminDashboardPage({ onNavigate }: AdminDashboardPagePro
 
         </div>
 
-        {/* Platform Utilization Health Pie Chart (Solid segment layout) */}
-        <div className="rounded-[1.25rem] border border-border bg-[#0b0b0b] overflow-hidden flex flex-col p-6 gap-5">
+        {/* Platform Utilization Health Pie Chart */}
+        <div className="rounded-[1.25rem] border border-border bg-[#F5F8FB] dark:bg-[#0b0b0b] overflow-hidden flex flex-col p-6 gap-5">
           <div className="flex flex-col border-b border-border/40 pb-4">
             <span className="font-sans text-[14px] font-semibold text-foreground">Platform Utilization Health</span>
             <span className="font-sans text-[11px] text-muted-foreground">Distribution share of active platform accounts and jobs</span>
           </div>
 
           <div className="flex flex-col md:flex-row items-center justify-center gap-10 py-2">
-            <PlatformPieChart size={160} />
+            <PlatformPieChart size={160} data={dynamicPieData} />
 
             {/* legend grid */}
             <div className="flex-1 grid grid-cols-2 gap-4 max-w-md w-full">
-              {PIE_DATA.map(s => (
+              {dynamicPieData.map(s => (
                 <button
                   key={s.label}
                   type="button"
@@ -1104,7 +1219,7 @@ export default function AdminDashboardPage({ onNavigate }: AdminDashboardPagePro
         </div>
 
         {/* ── Platform Activity Trends ─────────────────────────────────────── */}
-        <ActivityTrendsSection />
+        <ActivityTrendsSection customMetrics={activityMetrics} />
 
       </div>
     </div>
@@ -1113,7 +1228,11 @@ export default function AdminDashboardPage({ onNavigate }: AdminDashboardPagePro
 
 // ─── Platform Activity Trends Section ────────────────────────────────────────
 
-function ActivityTrendsSection() {
+function ActivityTrendsSection({
+  customMetrics,
+}: {
+  customMetrics?: Record<string, Record<MetricPeriod, MetricPoint[]>>;
+}) {
   const [periods, setPeriods] = useState<Record<string, MetricPeriod>>(
     Object.fromEntries(ACTIVITY_METRIC_META.map(m => [m.key, 'Daily' as MetricPeriod]))
   );
@@ -1136,6 +1255,8 @@ function ActivityTrendsSection() {
     setOpenDropdown(null);
   };
 
+  const datasetSource = customMetrics || ACTIVITY_METRICS;
+
   return (
     <div ref={sectionRef} className="flex flex-col gap-6">
       {/* Section header */}
@@ -1156,7 +1277,7 @@ function ActivityTrendsSection() {
 
           // Calculate summary totals (handles single or dual metrics)
           const primaryKey = meta.keys[0];
-          const dataset1   = ACTIVITY_METRICS[primaryKey]?.[period] || [];
+          const dataset1   = datasetSource[primaryKey]?.[period] || ACTIVITY_METRICS[primaryKey]?.[period] || [];
           const total1     = dataset1.reduce((s, d) => s + d.value, 0);
 
           let summaryText = '';
@@ -1165,7 +1286,7 @@ function ActivityTrendsSection() {
 
           if (meta.isDual) {
             const secondaryKey = meta.keys[1];
-            const dataset2     = ACTIVITY_METRICS[secondaryKey]?.[period] || [];
+            const dataset2     = datasetSource[secondaryKey]?.[period] || ACTIVITY_METRICS[secondaryKey]?.[period] || [];
             const total2       = dataset2.reduce((s, d) => s + d.value, 0);
             
             const formatVal = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toLocaleString();
@@ -1199,7 +1320,7 @@ function ActivityTrendsSection() {
           return (
             <div
               key={meta.key}
-              className="rounded-[1.25rem] border border-border bg-[#0b0b0b] p-6 flex flex-col gap-4"
+              className="rounded-[1.25rem] border border-border bg-[#F5F8FB] dark:bg-[#0b0b0b] p-6 flex flex-col gap-4"
             >
               {/* Card header */}
               <div className="flex items-start justify-between">
@@ -1232,7 +1353,7 @@ function ActivityTrendsSection() {
                     <ChevronDown className={`size-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                   </button>
                   {isOpen && (
-                    <div className="absolute right-0 top-full mt-1 z-50 bg-[#0b0b0b] border border-border rounded-xl shadow-2xl min-w-[110px] py-1 overflow-hidden">
+                    <div className="absolute right-0 top-full mt-1 z-50 bg-[#F5F8FB] dark:bg-[#0b0b0b] border border-border rounded-xl shadow-2xl min-w-[110px] py-1 overflow-hidden">
                       {(['Daily', 'Weekly', 'Monthly'] as const).map(t => (
                         <button
                           key={t}
@@ -1279,6 +1400,7 @@ function ActivityTrendsSection() {
                 period={period}
                 chartId={meta.key.replace(/\s+/g, '-').toLowerCase()}
                 isDual={meta.isDual}
+                customMetrics={customMetrics}
               />
             </div>
           );

@@ -333,7 +333,7 @@ export default function AnalysisPage({ sellerMode = false, onBack }: AnalysisPag
   const sellerData = MOCK_ANALYTICS_DATA.seller;
 
   return (
-    <div className="flex h-full w-full flex-col bg-background overflow-y-auto no-scrollbar">
+    <div className="flex min-h-full w-full flex-col bg-background overflow-y-auto no-scrollbar">
       <div className="flex flex-1 flex-col p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto w-full gap-8">
         
         {/* Developer comment concerning future API integration (Option A comment) */}

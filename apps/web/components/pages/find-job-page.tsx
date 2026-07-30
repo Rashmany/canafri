@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { Star, ChevronDown, Wrench } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import ApplyJobPage from '@/components/pages/apply-job-page';
 import { FindJobPageSkeleton } from '@/components/ui/skeleton';
 import Footer from '@/components/layout/footer';
+import { usePlatformConfig } from '@/lib/platform-config-context';
 
 // ─── Types & Mock Data ────────────────────────────────────────────────────────
 
@@ -21,85 +24,78 @@ export interface Job {
   paymentVerified: boolean;
   proposals: number;
   rating: number;
+  reviewsCount: number;
   spent: string;
   location: string;
   proposalsInReview?: boolean;
   questions?: string[];
+  client?: {
+    displayName?: string;
+    username?: string;
+    avatarUrl?: string;
+    country?: string;
+    trustScore?: number;
+    createdAt?: string;
+  };
 }
 
-export const JOBS: Job[] = [
-  {
-    id: 10001,
-    title: "Full Stack Web Developer",
-    timeAgo: "2 days ago",
-    pay: "$20-30",
-    payType: "Hourly",
-    payUnit: "Worth of CC",
-    level: "Expert",
-    estimate: "Est - Time: More than 3months, 30+ hrs/week",
-    description:
-      "We are building a Canton wallet dashboard for our DeFi platform and need an experienced React and Next.js developer to build the complete frontend. The dashboard should connect to a Canton participant node via the Ledger API and display real-time CC balances, transaction history, and staking information.",
-    tags: ["smart contract", "Daml developer", "React", "TypeScript"],
-    paymentVerified: true,
-    proposals: 5,
-    rating: 4,
-    spent: "20k+ CC Spent",
-    location: "Turkey",
-    proposalsInReview: true,
-    questions: [
-      "Describe your recent experience with similar React/Next.js projects.",
-      "What is your experience with Canton network or Ledger API?",
-      "Include a link to your GitHub profile or portfolio.",
-    ],
-  },
-  {
-    id: 10002,
-    title: "Senior Daml Smart Contract Developer",
-    timeAgo: "3 days ago",
-    pay: "$40-60",
-    payType: "Hourly",
-    payUnit: "Worth of CC",
-    level: "Expert",
-    estimate: "Est - Time: 1 to 3 months, 20+ hrs/week",
-    description:
-      "Looking for a specialized Daml developer to write secure multi-party agreements and asset tokenization contracts on the Canton network.",
-    tags: ["smart contract", "Daml", "Canton network", "Ledger API"],
-    paymentVerified: true,
-    proposals: 12,
-    rating: 5,
-    spent: "50k+ CC Spent",
-    location: "United Kingdom",
-    proposalsInReview: false,
-    questions: [
-      "Describe your experience writing Daml smart contracts.",
-      "Have you deployed on Canton mainnet or testnet? Provide details.",
-      "What security auditing tools have you used for smart contracts?",
-    ],
-  },
-  {
-    id: 10003,
-    title: "Frontend Integration Engineer (Next.js)",
-    timeAgo: "5 days ago",
-    pay: "$1,500",
+export const JOBS: Job[] = [];
+
+export const mapBackendJobToFindJob = (j: any): Job => {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const dateObj = new Date(j.createdAt || Date.now());
+  const dateStr = `${months[dateObj.getMonth()]}. ${dateObj.getDate()}`;
+  
+  const diffHours = Math.floor((Date.now() - dateObj.getTime()) / (1000 * 60 * 60));
+  const timeAgo = diffHours < 1 ? "Just now" : diffHours < 24 ? `${diffHours} hour${diffHours > 1 ? 's' : ''} ago` : `Posted ${dateStr}`;
+
+  // Use real buyer rating from Review table if available, else 0
+  const rating = typeof j.buyerRating === 'number' && j.buyerRating > 0
+    ? Math.round(j.buyerRating * 10) / 10
+    : 0;
+  const reviewsCount = typeof j.buyerReviewsCount === 'number' ? j.buyerReviewsCount : 0;
+
+  return {
+    id: j.id,
+    title: j.title,
+    timeAgo,
+    pay: `${j.amountCC || 0} CC`,
     payType: "Fixed-price",
     payUnit: "CC Budget",
     level: "Intermediate",
-    estimate: "Est - Time: Less than 1 month",
-    description:
-      "Integrate predefined Tailwind components with backend Fastify WebSockets to deliver real-time order matching updates.",
-    tags: ["React", "Next.js", "Tailwind CSS", "WebSockets"],
-    paymentVerified: false,
-    proposals: 8,
-    rating: 3,
-    spent: "5k+ CC Spent",
-    location: "Turkey",
-    proposalsInReview: true,
-    questions: [
-      "Describe your experience integrating Tailwind CSS with WebSocket-driven UIs.",
-      "Have you worked with Fastify before? Share an example.",
-    ],
-  },
-];
+    estimate: j.deadlineDays ? `Est. Deadline: ${j.deadlineDays} days` : "Fixed Budget",
+    description: j.description || "No description provided.",
+    tags: (() => {
+      const cleanSkills = Array.isArray(j.skills)
+        ? j.skills.filter((s: string) =>
+            typeof s === 'string' &&
+            s.trim().length > 0 &&
+            s.trim().length <= 40 &&
+            !s.trim().endsWith('?') &&
+            !/\s{4,}/.test(s)
+          )
+        : [];
+      return cleanSkills.length > 0
+        ? cleanSkills
+        : [j.category, 'Fixed-price'].filter(Boolean);
+    })(),
+    paymentVerified: true,
+    proposals: Array.isArray(j.proposals) ? j.proposals.length : (j._count?.proposals || 0),
+    rating,
+    reviewsCount,
+    spent: "Escrow Locked",
+    location: j.client?.country || "Global",
+    questions: j.questions || [],
+    client: j.client ? {
+      displayName: j.client.displayName,
+      username: j.client.username,
+      avatarUrl: j.client.avatarUrl,
+      country: j.client.country,
+      trustScore: j.client.trustScore,
+      createdAt: j.client.createdAt,
+    } : undefined,
+  };
+};
 
 // ─── Custom UI Icons ──────────────────────────────────────────────────────────
 
@@ -341,128 +337,206 @@ interface JobListPanelProps {
 
 function JobListPanel({ onBack, selectedJobId, onSelectJob, savedJobIds, onToggleSaveJob, jobsList }: JobListPanelProps) {
   const [expandedJobIds, setExpandedJobIds] = useState<Record<number, boolean>>({});
+  const [activeTab, setActiveTab] = useState<'Top Matches' | 'Just Posted' | 'Saved jobs' | 'Invites'>('Top Matches');
+
+  const filteredJobs = useMemo(() => {
+    if (activeTab === 'Saved jobs') {
+      return jobsList.filter(j => savedJobIds[j.id]);
+    }
+    if (activeTab === 'Just Posted') {
+      return [...jobsList].reverse();
+    }
+    if (activeTab === 'Invites') {
+      return jobsList.filter(j => j.proposalsInReview || j.id === 10001);
+    }
+    return jobsList; // Top Matches default
+  }, [jobsList, activeTab, savedJobIds]);
+
   return (
     <div className="flex flex-col h-full bg-[#FAFAFD] dark:bg-[#0B0B0B]">
       {/* Page header */}
       <div className="px-5 pt-6 pb-4 border-b border-[#D8D8D8] dark:border-[#121212]">
         <div className="flex items-center gap-[7px] mb-1">
           <h1 className="text-[#010101] dark:text-white text-lg font-semibold leading-7">
-            Marketplace
+            Job list
           </h1>
         </div>
         <p className="text-muted text-sm leading-5">
-          Find blockchain & Canton development jobs
+          find matched jobs here
         </p>
+      </div>
+
+      {/* Quick Navigation Link Buttons */}
+      <div className="flex items-center gap-1.5 px-4 py-3 border-b border-[#D8D8D8] dark:border-[#121212] overflow-x-auto no-scrollbar bg-background/50">
+        {(['Top Matches', 'Just Posted', 'Saved jobs', 'Invites'] as const).map((tab) => {
+          const isActive = activeTab === tab;
+          const count = tab === 'Saved jobs' 
+            ? jobsList.filter(j => savedJobIds[j.id]).length 
+            : tab === 'Invites' 
+            ? jobsList.filter(j => j.proposalsInReview || j.id === 10001).length
+            : null;
+
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={`px-3 py-1.5 rounded-lg text-[12px] font-medium whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                isActive
+                  ? 'bg-[#8C5CFF] text-white shadow-sm font-semibold'
+                  : 'bg-black/5 dark:bg-white/5 text-muted hover:text-foreground hover:bg-black/10 dark:hover:bg-white/10'
+              }`}
+            >
+              <span>{tab}</span>
+              {count !== null && count > 0 && (
+                <span className={`px-1.5 py-0.2 text-[10px] rounded-full font-bold ${
+                  isActive ? 'bg-white/25 text-white' : 'bg-[#8C5CFF]/15 text-[#8C5CFF]'
+                }`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Job list */}
       <div className="flex-1 overflow-y-auto no-scrollbar">
-        {jobsList.map((job, index) => {
-          const isSelected = selectedJobId === job.id;
-          return (
-            <div
-              key={`${job.id}-${index}`}
-              onClick={() => onSelectJob(job)}
-              className={`flex flex-col gap-4 px-5 py-6 cursor-pointer border-b border-[#D8D8D8] dark:border-[#121212] transition-colors ${
-                isSelected
-                  ? "bg-[#F0EDFC] dark:bg-[#161626]"
-                  : "bg-transparent hover:bg-black/[0.02] dark:hover:bg-[#111]"
-              }`}
-            >
-              <div className="flex flex-col gap-2">
-                <div className="flex justify-between items-start gap-2">
-                  <span className="text-[#010101] dark:text-white text-[13px] font-medium leading-[18px] flex-1">
-                    {job.title}
-                  </span>
-                  <span className="text-muted text-[10px] leading-[13px] flex-shrink-0">
-                    {job.timeAgo}
-                  </span>
-                </div>
-
-                {/* Pay info */}
-                <div className="flex flex-col gap-[5px]">
-                  <div className="flex items-center gap-[7px]">
-                    <span className="text-muted text-[10px] leading-[13px]">
-                      {job.payType}:
+        {filteredJobs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-8 text-center gap-2">
+            <span className="text-muted text-xs font-medium">
+              {activeTab === 'Saved jobs' ? 'No saved jobs yet.' : 'No jobs found for this filter.'}
+            </span>
+          </div>
+        ) : (
+          filteredJobs.map((job: Job, index: number) => {
+            const isSelected = selectedJobId === job.id;
+            return (
+              <div
+                key={`${job.id}-${index}`}
+                onClick={() => onSelectJob(job)}
+                className={`flex flex-col gap-4 px-5 py-6 cursor-pointer border-b border-[#D8D8D8] dark:border-[#121212] transition-colors ${
+                  isSelected
+                    ? "bg-[#F0EDFC] dark:bg-[#161626]"
+                    : "bg-transparent hover:bg-black/[0.02] dark:hover:bg-[#111]"
+                }`}
+              >
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-start gap-2">
+                    <span className="text-[#010101] dark:text-white text-[13px] font-medium leading-[18px] flex-1">
+                      {job.title}
                     </span>
-                    <span className="text-[#010101] dark:text-white font-medium text-[10px] leading-[13px]">
-                      {job.pay}
-                    </span>
-                    <span className="text-muted text-[10px] leading-[13px]">
-                      {job.payUnit}
+                    <span className="text-muted text-[10px] leading-[13px] flex-shrink-0">
+                      {job.timeAgo}
                     </span>
                   </div>
-                  <div className="flex items-center gap-[9px]">
-                    <span className="text-muted text-[10px] leading-[13px]">
-                      {job.level}
-                    </span>
-                    <div className="flex items-center gap-[3px] flex-1 min-w-0">
-                      <ClockIcon />
-                      <span className="text-muted text-[10px] leading-[13px] truncate">
-                        {job.estimate}
+
+                  {/* Pay info */}
+                  <div className="flex flex-col gap-[5px]">
+                    <div className="flex items-center gap-[7px]">
+                      <span className="text-muted text-[10px] leading-[13px]">
+                        {job.payType}:
+                      </span>
+                      <span className="text-[#010101] dark:text-white font-medium text-[10px] leading-[13px]">
+                        {job.pay}
+                      </span>
+                      <span className="text-muted text-[10px] leading-[13px]">
+                        {job.payUnit}
                       </span>
                     </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Description */}
-              <div className="flex flex-col gap-2">
-                <p className={`text-[#010101]/85 dark:text-white/85 text-sm leading-[22px] ${
-                  expandedJobIds[job.id] ? "" : "line-clamp-2"
-                }`}>
-                  {job.description}
-                </p>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpandedJobIds((prev) => ({
-                      ...prev,
-                      [job.id]: !prev[job.id],
-                    }));
-                  }}
-                  className="text-primary text-[11px] font-semibold underline text-left hover:text-primary-hover transition-colors w-fit"
-                >
-                  {expandedJobIds[job.id] ? "Read less" : "Read more"}
-                </button>
-
-                {/* Tags row */}
-                <ScrollableTags tags={job.tags} />
-              </div>
-
-              {/* Card Footer Section */}
-              <div className="flex flex-col gap-3 mt-1">
-                {/* Proposals and Ratings */}
-                <div className="flex justify-between items-center">
-                  <VerifiedBadge />
-                  <div className="flex items-center gap-[5px]">
-                    <PeopleIcon />
-                    <span className="text-muted text-[11px] leading-4">
-                      {job.proposals} Proposals
-                    </span>
-                  </div>
-                  
-                  {/* Proposals in review status replacing StarRating */}
-                  {job.proposalsInReview && (
-                    <div className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
-                      <span className="text-[10px] leading-[13px] font-medium">Proposals in review</span>
-                      <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="animate-pulse"
-                      >
-                        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-                      </svg>
+                    <div className="flex items-center gap-[9px]">
+                      <span className="text-muted text-[10px] leading-[13px]">
+                        {job.level}
+                      </span>
+                      <div className="flex items-center gap-[3px] flex-1 min-w-0">
+                        <ClockIcon />
+                        <span className="text-muted text-[10px] leading-[13px] truncate">
+                          {job.estimate}
+                        </span>
+                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
+
+                {/* Description */}
+                <div className="flex flex-col gap-2">
+                  <p className={`text-[#010101]/85 dark:text-white/85 text-sm leading-[22px] ${
+                    expandedJobIds[job.id] ? "" : "line-clamp-2"
+                  }`}>
+                    {job.description}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedJobIds((prev) => ({
+                        ...prev,
+                        [job.id]: !prev[job.id],
+                      }));
+                    }}
+                    className="text-primary text-[11px] font-semibold underline text-left hover:text-primary-hover transition-colors w-fit"
+                  >
+                    {expandedJobIds[job.id] ? "Read less" : "Read more"}
+                  </button>
+
+                  {/* Tags row */}
+                  <ScrollableTags tags={job.tags} />
+                </div>
+
+                {/* Card Footer Section */}
+                <div className="flex flex-col gap-3 mt-1">
+                  {/* Proposals, Buyer Star Rating, and Reviews */}
+                  <div className="flex justify-between items-center flex-wrap gap-2">
+                    <VerifiedBadge />
+
+                    {/* Buyer Rating Stars */}
+                    {job.rating > 0 ? (
+                      <div className="flex items-center gap-1 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full">
+                        <StarRating filled={Math.round(job.rating)} />
+                        <span className="text-[10px] font-semibold text-[#FF9529] pl-0.5">
+                          {job.rating.toFixed(1)}
+                        </span>
+                        {job.reviewsCount > 0 && (
+                          <span className="text-[10px] text-muted/70 pl-0.5">
+                            · {job.reviewsCount} {job.reviewsCount === 1 ? 'review' : 'reviews'}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full">
+                        <span className="text-[10px] font-medium text-muted">
+                          No rating yet
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-[5px]">
+                      <PeopleIcon />
+                      <span className="text-muted text-[11px] leading-4">
+                        {job.proposals} Proposals
+                      </span>
+                    </div>
+                    
+                    {/* Proposals in review status */}
+                    {job.proposalsInReview && (
+                      <div className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
+                        <span className="text-[10px] leading-[13px] font-medium">In review</span>
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="animate-pulse"
+                        >
+                          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
 
                 {/* Divider */}
                 <div className="h-px w-full bg-[#D8D8D8]/50 dark:bg-[#121212]/50" />
@@ -525,7 +599,7 @@ function JobListPanel({ onBack, selectedJobId, onSelectJob, savedJobIds, onToggl
               </div>
             </div>
           );
-        })}
+        }))}
       </div>
     </div>
   );
@@ -576,6 +650,10 @@ function ClientStat({ top, bottom }: { top: string; bottom: string }) {
 }
 
 function JobDetailPanel({ job, onClose, onApply }: { job: Job | null; onClose: () => void; onApply: () => void }) {
+  const [ratingHistoryOpen, setRatingHistoryOpen] = useState(false);
+  const [clientReviews, setClientReviews] = useState<any[] | null>(null);
+  const [loadingReviews, setLoadingReviews] = useState(false);
+
   if (!job) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center bg-[#FDFDFD] dark:bg-[#080808] px-4 py-6 overflow-y-auto no-scrollbar">
@@ -631,120 +709,81 @@ function JobDetailPanel({ job, onClose, onApply }: { job: Job | null; onClose: (
 
       <Divider />
 
-      {/* Requirements */}
-      <div className="flex flex-col gap-2">
-        <p className="text-[13px] font-medium leading-[18px] text-[#010101] dark:text-white">Requirements</p>
-        <ol className="list-decimal list-inside space-y-1">
-          {[
-            "React and Next.js developer experience",
-            "Typescript proficiency required",
-            "Tailwind CSS styling capabilities",
-            "Web3 / Blockchain integration experience",
-          ].map((req, i) => (
-            <li key={i} className="text-[13px] font-normal leading-5 text-[#010101]/80 dark:text-white/80">
-              {req}
-            </li>
+      {/* Skills / Expertise */}
+      <div className="flex flex-col gap-3">
+        <p className="text-[13px] font-medium leading-[18px] text-[#010101] dark:text-white">Required Skills</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          {job.tags.map((tag, i) => (
+            <span key={i} className="flex items-center justify-center px-[10px] py-[5px] rounded-[3px] bg-[#8C5CFF]/10 dark:bg-[rgba(140,92,255,0.15)] text-[#8C5CFF] text-[12px] font-normal leading-[16px]">
+              {tag}
+            </span>
           ))}
-        </ol>
-      </div>
-
-      <Divider />
-
-      {/* Project type */}
-      <p className="text-[13px] leading-5 text-[#010101]/85 dark:text-white/85">
-        <span className="font-semibold text-[#010101] dark:text-white">Project type:</span>
-        <span className="font-normal text-muted"> Ongoing project</span>
-      </p>
-
-      <Divider />
-
-      {/* Job questions */}
-      <div className="flex flex-col gap-[6px]">
-        <p className="text-[13px] font-medium leading-[18px] text-[#010101] dark:text-white">Job questions:</p>
-        <div className="flex flex-col gap-2.5">
-          <p className="text-[13px] font-normal leading-5 text-muted">
-            1. Describe your recent experience with similar projects
-          </p>
-          <p className="text-[13px] font-normal leading-5 text-muted">
-            2. What framework have you worked with?
-          </p>
-          <p className="text-[13px] font-normal leading-5 text-muted">
-            3. Include a link to GitHub profile and/ or website
-          </p>
         </div>
       </div>
 
-      <Divider />
-
-      {/* Expertise */}
-      <div className="flex flex-col gap-4">
-        <p className="text-[13px] font-medium leading-[18px] text-[#010101] dark:text-white">Expertise</p>
-
-        <div className="flex flex-col gap-[6px]">
-          <p className="text-[11px] font-normal leading-4 text-muted">Mandatory skills</p>
-          <div className="flex items-center gap-3 flex-wrap">
-            {["Web development", "Javascript", "Next.js"].map((skill, i) => (
-              <span key={i} className="flex items-center justify-center px-[10px] py-[5px] rounded-[3px] bg-[#8C5CFF]/10 dark:bg-[rgba(140,92,255,0.15)] text-[#8C5CFF] text-[12px] font-normal leading-[16px]">
-                {skill}
-              </span>
-            ))}
+      {/* Screening Questions (if any) */}
+      {job.questions && job.questions.length > 0 && (
+        <>
+          <Divider />
+          <div className="flex flex-col gap-[6px]">
+            <p className="text-[13px] font-medium leading-[18px] text-[#010101] dark:text-white">Applicant Questions:</p>
+            <div className="flex flex-col gap-2">
+              {job.questions.map((q, i) => (
+                <p key={i} className="text-[12px] font-normal leading-5 text-muted bg-[#FAFAFD] dark:bg-[#111] p-2.5 rounded-lg border border-border">
+                  {i + 1}. {q}
+                </p>
+              ))}
+            </div>
           </div>
-        </div>
-
-        <div className="flex flex-col gap-[6px] mt-2">
-          <p className="text-[11px] font-normal leading-4 text-muted">Other preferred</p>
-          <div className="flex items-center gap-3 flex-wrap">
-            {["Smart contract", "Daml", "escrow", "Canton"].map((skill, i) => (
-              <span key={i} className="flex items-center justify-center px-[10px] py-[5px] rounded-[3px] bg-[#8C5CFF]/10 dark:bg-[rgba(140,92,255,0.15)] text-[#8C5CFF] text-[12px] font-normal leading-[16px]">
-                {skill}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
+        </>
+      )}
 
       <Divider />
 
       {/* Activity section */}
-      <div className="flex flex-col gap-6 py-4">
+      <div className="flex flex-col gap-4 py-2">
         <div className="flex flex-col gap-[6px]">
           <p className="text-[13px] font-medium leading-[18px] text-[#010101] dark:text-white">Activity on this job</p>
           <div className="flex flex-col">
-            <ActivityRow label="Proposals:" value={`${job.proposals}+`} showIcon />
-            <ActivityRow label="Invite sent:" value="3" showIcon />
-            <ActivityRow label="Unanswered invites:" value="0" />
-            <ActivityRow label="Interviewing:" value="1" />
-            <ActivityRow label="Last view:" value="5min ago" />
+            <ActivityRow label="Proposals:" value={`${job.proposals} received`} showIcon />
+            <ActivityRow label="Job Timeline:" value={job.estimate} />
+            <ActivityRow label="Escrow Status:" value="Locked in Canton Escrow" />
           </div>
         </div>
 
         <Divider />
 
         {/* Project value */}
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-[5px]">
-            <p className="text-[13px] font-medium leading-[18px] text-[#010101] dark:text-white">Total project value</p>
-            <p className="text-[13px] font-normal leading-5 text-[#010101]/80 dark:text-white/80">
-              1,200 CC<br />
-              <span className="text-muted text-[11px]">$228.00 at current rate</span>
-            </p>
-          </div>
+        {(() => {
+          const rawCc = parseInt((job.pay || "").replace(/[^0-9]/g, ""), 10) || 100;
+          const platformFee = Math.round(rawCc * 0.05);
+          const youReceive = rawCc - platformFee;
+          return (
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-[5px]">
+                <p className="text-[13px] font-medium leading-[18px] text-[#010101] dark:text-white">Total project budget</p>
+                <p className="text-[15px] font-bold leading-5 text-primary">
+                  {rawCc} CC
+                </p>
+              </div>
 
-          <div className="flex flex-col gap-1.5 bg-[#FAFAFD] dark:bg-[#111] p-3.5 rounded-2xl border border-[#D8D8D8] dark:border-[#121212]">
-            <div className="flex justify-between items-center py-[2px]">
-              <span className="text-[12px] font-normal text-[#010101] dark:text-white">Per milestone</span>
-              <span className="text-[12px] font-normal text-muted">240 CC × 5</span>
+              <div className="flex flex-col gap-1.5 bg-[#FAFAFD] dark:bg-[#111] p-3.5 rounded-2xl border border-[#D8D8D8] dark:border-[#121212]">
+                <div className="flex justify-between items-center py-[2px]">
+                  <span className="text-[12px] font-normal text-[#010101] dark:text-white">Total Budget</span>
+                  <span className="text-[12px] font-semibold text-muted">{rawCc} CC</span>
+                </div>
+                <div className="flex justify-between items-center py-[2px]">
+                  <span className="text-[12px] font-normal text-[#010101] dark:text-white">Platform fee 5%</span>
+                  <span className="text-[12px] font-normal text-red-500">-{platformFee} CC</span>
+                </div>
+                <div className="flex justify-between items-center py-[2px] border-t border-[#D8D8D8] dark:border-[#121212] pt-1.5 mt-1">
+                  <span className="text-[12px] font-semibold text-[#010101] dark:text-white">Net Payout</span>
+                  <span className="text-[12px] font-semibold text-green-500">{youReceive} CC</span>
+                </div>
+              </div>
             </div>
-            <div className="flex justify-between items-center py-[2px]">
-              <span className="text-[12px] font-normal text-[#010101] dark:text-white">Platform fee 5%</span>
-              <span className="text-[12px] font-normal text-red-500">-60 CC</span>
-            </div>
-            <div className="flex justify-between items-center py-[2px] border-t border-[#D8D8D8] dark:border-[#121212] pt-1.5 mt-1">
-              <span className="text-[12px] font-semibold text-[#010101] dark:text-white">You receive</span>
-              <span className="text-[12px] font-semibold text-green-500">1,140 CC</span>
-            </div>
-          </div>
-        </div>
+          );
+        })()}
 
         <Divider />
 
@@ -756,36 +795,138 @@ function JobDetailPanel({ job, onClose, onApply }: { job: Job | null; onClose: (
         <Divider />
 
         {/* About the client */}
-        <div className="flex flex-col gap-[6px]">
-          <div className="flex flex-col gap-2">
-            <p className="text-[13px] font-medium leading-[18px] text-[#010101] dark:text-white">About the client</p>
-            <div className="flex justify-between items-center">
-              <div className="w-8 h-8 rounded-full overflow-hidden bg-[#8C5CFF]/10 flex-shrink-0">
-                <img
-                  src="https://api.builder.io/api/v1/image/assets/TEMP/33048cc161e585938ca07278f072c117e1df8df4?width=32"
-                  alt="John Trek"
-                  className="w-full h-full object-cover"
-                />
+        <div className="flex flex-col gap-3 rounded-2xl border border-border/40 bg-card/50 p-4">
+          <p className="text-[13px] font-semibold tracking-tight text-foreground/90">About the client</p>
+          
+          <div className="flex items-center gap-3">
+            {job.client?.avatarUrl ? (
+              <img
+                src={job.client.avatarUrl}
+                alt={job.client.displayName || job.client.username || "Client"}
+                className="w-10 h-10 rounded-full object-cover border border-primary/20 shrink-0"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs border border-primary/30 shrink-0">
+                {((job.client?.displayName || job.client?.username || "Client")
+                  .trim()
+                  .split(/\s+/)
+                  .map((n: string) => n[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase() || "CL")}
               </div>
-              <div className="text-right">
-                <p className="text-[13px] font-normal leading-5 text-[#010101] dark:text-white">John Trek</p>
-                <p className="text-[10px] font-normal leading-[13px] text-muted">@johntrek</p>
-              </div>
+            )}
+
+            <div className="flex flex-col min-w-0">
+              <p className="text-xs font-bold text-foreground/90 truncate">
+                {job.client?.displayName || job.client?.username || "Verified Client"}
+              </p>
+              <p className="text-[11px] text-muted truncate">
+                {job.client?.username ? `@${job.client.username.replace(/^@/, '')}` : "@client"}
+              </p>
             </div>
           </div>
 
           <Divider />
 
           {/* Client stats */}
-          <div className="flex flex-col gap-4 mt-2">
-            <div className="flex justify-between items-center px-4">
-              <ClientStat top="14" bottom="Jobs posted" />
-              <ClientStat top="92%" bottom="Hire rate" />
+          <div className="grid grid-cols-2 gap-2 mt-1">
+            <div className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-primary/10 border border-primary/15">
+              <span className="text-[11px] font-bold text-primary truncate max-w-full">{job.location || "Global"}</span>
+              <span className="text-[9px] text-muted uppercase tracking-wider mt-0.5">Location</span>
             </div>
-            <div className="flex justify-between items-center px-4">
-              <ClientStat top="Trust Score" bottom="96" />
-              <ClientStat top="6mo" bottom="On platform" />
+
+            <div className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-primary/10 border border-primary/15">
+              <span className="text-[11px] font-bold text-primary flex items-center gap-1">
+                {job.rating > 0 ? (
+                  <>
+                    <Star size={11} className="fill-[#FF9529] text-[#FF9529]" />
+                    {job.rating.toFixed(1)} ({job.reviewsCount})
+                  </>
+                ) : (
+                  "No rating"
+                )}
+              </span>
+              <span className="text-[9px] text-muted uppercase tracking-wider mt-0.5">Rating</span>
             </div>
+
+            <div className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-primary/10 border border-primary/15">
+              <span className="text-[11px] font-bold text-primary">
+                {job.client?.createdAt
+                  ? new Date(job.client.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                  : "Recent"}
+              </span>
+              <span className="text-[9px] text-muted uppercase tracking-wider mt-0.5">Member Since</span>
+            </div>
+
+            <div className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-primary/10 border border-primary/15">
+              <span className="text-[11px] font-bold text-primary">Verified</span>
+              <span className="text-[9px] text-muted uppercase tracking-wider mt-0.5">Payment</span>
+            </div>
+          </div>
+
+          {/* Client Rating & Review History Accordion Dropdown */}
+          <div className="mt-2 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const nextState = !ratingHistoryOpen;
+                setRatingHistoryOpen(nextState);
+                if (nextState && !clientReviews && job.client?.username) {
+                  setLoadingReviews(true);
+                  const rawUsername = job.client.username.replace(/^@/, '');
+                  fetch(`/api/users/${rawUsername}`)
+                    .then(r => r.json())
+                    .then(data => {
+                      if (data?.user?.buyerReviews) {
+                        setClientReviews(data.user.buyerReviews);
+                      } else {
+                        setClientReviews([]);
+                      }
+                    })
+                    .catch(() => setClientReviews([]))
+                    .finally(() => setLoadingReviews(false));
+                }
+              }}
+              className="flex items-center justify-between w-full p-2.5 rounded-xl bg-primary/5 hover:bg-primary/10 border border-primary/15 transition-colors cursor-pointer text-left"
+            >
+              <div className="flex items-center gap-1.5">
+                <Star size={13} className="fill-[#FF9529] text-[#FF9529]" />
+                <span className="text-[11px] font-semibold text-foreground">Client Rating History</span>
+                <span className="text-[10px] text-muted font-normal">
+                  ({job.reviewsCount > 0 ? `${job.reviewsCount} reviews` : '0 reviews'})
+                </span>
+              </div>
+              <ChevronDown size={14} className={cn("text-muted transition-transform duration-200", ratingHistoryOpen && "rotate-180")} />
+            </button>
+
+            {ratingHistoryOpen && (
+              <div className="flex flex-col gap-2 p-3 rounded-xl bg-background border border-border/40 text-[11px] animate-in fade-in duration-150">
+                {loadingReviews ? (
+                  <span className="text-muted text-[11px] text-center py-2">Loading client reviews...</span>
+                ) : clientReviews && clientReviews.length > 0 ? (
+                  clientReviews.map((rev: any) => (
+                    <div key={rev.id} className="flex flex-col gap-1 p-2.5 rounded-lg bg-card/60 border border-border/30">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-foreground">{rev.reviewer?.displayName || rev.reviewer?.username || 'Freelancer'}</span>
+                        <div className="flex items-center gap-1 text-[#FF9529] font-bold">
+                          <Star size={11} className="fill-[#FF9529] text-[#FF9529]" />
+                          {rev.rating}
+                        </div>
+                      </div>
+                      {rev.job?.title && (
+                        <span className="text-[10px] text-muted truncate">{rev.job.title}</span>
+                      )}
+                      {rev.comment && (
+                        <p className="text-[11px] text-muted-foreground italic mt-0.5">"{rev.comment}"</p>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <span className="text-muted text-[11px] text-center py-2">No rating history yet for this client.</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -816,44 +957,42 @@ interface FindJobPageProps {
 }
 
 export default function FindJobPage({ onBack, onMobileViewChange, savedJobIds: externalSavedJobIds, onToggleSaveJob: externalToggleSaveJob }: FindJobPageProps) {
-  const [jobsList] = useState<Job[]>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("canafri_posted_jobs");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          const parsedMapped = parsed.map((j: any) => ({
-            id: j.id,
-            title: j.title,
-            timeAgo: j.date === "Today" ? "1 hour ago" : `Posted ${j.date}`,
-            pay: j.budget,
-            payType: "Fixed-price",
-            payUnit: "CC Budget",
-            level: "Intermediate",
-            estimate: "Est - Time: 1 to 3 months",
-            description: j.description || "No description provided.",
-            tags: j.category.split(" & ").flatMap((s: any) => s.split(" ")).filter((s: any) => s.length > 2),
-            paymentVerified: true,
-            proposals: j.proposals || 0,
-            rating: 5,
-            spent: "0 CC Spent",
-            location: "United States",
-            questions: j.questions || [],
-          }));
-          return [...parsedMapped, ...JOBS];
-        } catch (e) {
-          console.error(e);
-        }
-      }
-    }
-    return JOBS;
-  });
-
+  const [jobsList, setJobsList] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedJob, setSelectedJob] = useState<Job | null>(() => jobsList[0] || null);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "detail">("list");
   const [applyingJob, setApplyingJob] = useState<Job | null>(null);
   const [internalSavedJobIds, setInternalSavedJobIds] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadJobs() {
+      try {
+        setLoading(true);
+        let res = await fetch('/api/jobs');
+        if (!res.ok) {
+          res = await fetch('/api/jobs');
+        }
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.jobs && Array.isArray(data.jobs) && isMounted) {
+            const mapped = data.jobs.map(mapBackendJobToFindJob);
+            setJobsList(mapped);
+            if (mapped.length > 0) {
+              setSelectedJob(mapped[0]);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error loading available jobs:', e);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    loadJobs();
+    return () => { isMounted = false; };
+  }, []);
 
   // Use external state if provided, otherwise use internal
   const savedJobIds = externalSavedJobIds ?? internalSavedJobIds;
@@ -884,21 +1023,45 @@ export default function FindJobPage({ onBack, onMobileViewChange, savedJobIds: e
     setApplyingJob(null);
   };
 
-  // ── Apply form: full-page overlay within the SPA ──
-  // Skeleton loading: clears after mount; swap setTimeout for API finally() when real data arrives
-  useEffect(() => { const t = setTimeout(() => setLoading(false), 800); return () => clearTimeout(t); }, []);
+  const { config } = usePlatformConfig();
+
+  // Show skeleton while API loads
   if (loading) return <FindJobPageSkeleton />;
+
+  // Freelancing maintenance overlay
+  if (config.freelancingMaintenance) {
+    return (
+      <div className="min-h-full w-full bg-background flex flex-col items-center justify-center gap-6 px-4 py-20">
+        <div className="flex flex-col items-center gap-5 max-w-md text-center">
+          <div className="flex size-16 items-center justify-center rounded-2xl bg-[#8C5CFF]/10 border border-[#8C5CFF]/30">
+            <Wrench size={30} strokeWidth={1.5} className="text-[#8C5CFF]" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <h2 className="font-sans text-xl font-bold text-foreground">Freelancing Under Maintenance</h2>
+            <p className="font-sans text-sm text-muted leading-relaxed">
+              {config.freelancingMaintenanceReason || 'The freelancing service is currently under maintenance. Job applications and posting are temporarily unavailable. Please check back later.'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3">
+            <span className="size-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <span className="font-sans text-xs text-muted">Our team is working to restore the service as soon as possible.</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (applyingJob) {
     return <ApplyJobPage job={applyingJob} jobQuestions={applyingJob.questions} onBack={handleBackFromApply} />;
   }
 
   return (
-    <div className="h-full w-full bg-background flex flex-col overflow-y-auto no-scrollbar">
-      <div className="flex flex-1 w-full max-w-[1400px] mx-auto">
+    <div className="min-h-full w-full bg-background flex flex-col">
+      {/* 100% Viewport Split Pane */}
+      <div className="flex flex-1 min-h-[calc(100vh-70px)] w-full max-w-[1400px] mx-auto">
         {/* Left: Job List */}
         <div
-          className={`flex-col w-full lg:w-[380px] lg:flex-shrink-0 lg:h-auto lg:overflow-visible h-full overflow-hidden border-r border-[#D8D8D8] dark:border-[#121212] ${
+          className={`flex-col w-full lg:w-[380px] lg:flex-shrink-0 h-auto overflow-y-auto no-scrollbar border-r border-[#D8D8D8] dark:border-[#121212] ${
             mobileView === "detail" ? "hidden lg:flex" : "flex"
           }`}
         >
@@ -912,9 +1075,9 @@ export default function FindJobPage({ onBack, onMobileViewChange, savedJobIds: e
           />
         </div>
 
-        {/* Right: Job details */}
+        {/* Right: Job Details */}
         <div
-          className={`flex-col flex-1 min-w-0 h-full lg:h-auto lg:overflow-visible ${
+          className={`flex-col flex-1 min-w-0 h-auto overflow-y-auto no-scrollbar ${
             mobileView === "list" ? "hidden lg:flex" : "flex"
           }`}
         >
@@ -922,7 +1085,8 @@ export default function FindJobPage({ onBack, onMobileViewChange, savedJobIds: e
         </div>
       </div>
 
-      <div className="hidden md:block w-full">
+      {/* Single Full-Width Footer */}
+      <div className="hidden md:block w-full mt-[24px] shrink-0 border-t border-[#D8D8D8] dark:border-[#121212]">
         <Footer />
       </div>
     </div>

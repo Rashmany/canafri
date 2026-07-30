@@ -1,11 +1,51 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Search, Bell, X } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  Search, Bell, X, Check, Trash2, Inbox,
+  // Freelancing
+  Briefcase, FileText, CheckCircle2, XCircle, UserCheck, UploadCloud, ShieldCheck, RefreshCw, ShieldAlert, Star,
+  // Messaging
+  Mail, MailCheck, MessageCircle, MessageSquare,
+  // Community
+  Heart, UserPlus,
+  // Wallet
+  ArrowDownToLine, ArrowUpFromLine, CreditCard, DollarSign, AlertCircle, Lock, Key,
+  // Account
+  Smartphone, User, BadgeCheck,
+  // Platform
+  Wrench, Megaphone, AlertTriangle, Info,
+  type LucideIcon,
+} from 'lucide-react';
 import { Logo } from '@/components/ui/logo';
 import { AvatarOnline } from '@/components/ui/avatar-online';
 import { SearchDropdown } from '@/components/ui/search-dropdown';
 import { addToSearchHistory } from '@/lib/search-service';
+import {
+  useNotifications,
+  formatNotificationTime,
+  getNotificationMeta,
+  type AppNotification,
+} from '@/hooks/use-notifications';
+
+// Centralised Lucide icon lookup — keyed by the icon name string in NOTIFICATION_ICON_MAP
+const LUCIDE_ICON_MAP: Record<string, LucideIcon> = {
+  Briefcase, FileText, CheckCircle2, XCircle, UserCheck, UploadCloud,
+  ShieldCheck, RefreshCw, ShieldAlert, Star, Mail, MailCheck, MessageCircle, MessageSquare,
+  Heart, UserPlus, ArrowDownToLine, ArrowUpFromLine, CreditCard, DollarSign,
+  AlertCircle, Lock, Key, Smartphone, User, BadgeCheck, Wrench, Megaphone, AlertTriangle, Info, Bell,
+};
+
+/** Renders the correct Lucide icon for a notification type with badge styling */
+function NotificationIcon({ type, size = 15 }: { type: string; size?: number }) {
+  const meta = getNotificationMeta(type);
+  const IconComponent = LUCIDE_ICON_MAP[meta.icon] ?? Bell;
+  return (
+    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${meta.bg}`}>
+      <IconComponent size={size} className={meta.color} strokeWidth={1.75} />
+    </div>
+  );
+}
 
 // NOTE: AvatarOnline is defined in '@/components/ui/avatar-online' and shared
 // with the Sidebar. It is intentionally NOT re-exported from here.
@@ -18,41 +58,21 @@ interface TopNavUser {
   avatarSrc?: string;
 }
 
-interface Notification {
-  id: number;
-  text: string;
-  time: string;
-  read: boolean;
-}
-
 interface TopNavProps {
-  /** Number shown on the notification badge */
-  notificationCount?: number;
   user?: TopNavUser;
   /** Called when the mobile hamburger (avatar) is tapped to open the drawer */
   onMenuOpen?: () => void;
   /** Active page label — determines centre content on mobile */
   activePage?: string;
   onSearchNavigate?: (query: string) => void;
+  /** Called when a notification deep-link is clicked */
+  onNavigate?: (page: string) => void;
 }
-
-// ─── Mock notification data ───────────────────────────────────────────────────
-// TODO: Replace with real data from useQuery (TanStack Query) when the
-//       notifications API endpoint is ready.
-
-const MOCK_NOTIFICATIONS: Notification[] = [
-  { id: 1, text: 'Josh Trek sent you a message', time: '2m ago',  read: false },
-  { id: 2, text: 'Your order #4821 was confirmed', time: '15m ago', read: false },
-  { id: 3, text: 'New job match: Senior Designer', time: '1h ago', read: true },
-];
 
 const DEFAULT_AVATAR = '/images/default-avatar.png';
 
 // ─── Search bar ───────────────────────────────────────────────────────────────
 
-/**
- * Pill-shaped search input with interactive search history and live suggestions.
- */
 function SearchBar({
   className = '',
   onSearchNavigate,
@@ -65,7 +85,6 @@ function SearchBar({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Close dropdown on click outside
   useEffect(() => {
     function handleOutsideClick(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -168,7 +187,7 @@ function NotificationBell({
       {count > 0 && (
         <span
           aria-hidden="true"
-          className="absolute right-0 top-0 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#8C5CFF] px-[0.1875rem] font-sans text-[0.5rem] font-medium leading-none text-white"
+          className="absolute right-0 top-0 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#8C5CFF] px-[0.1875rem] font-sans text-[0.5rem] font-medium leading-none text-white animate-in zoom-in-75 duration-200"
         >
           {count > 99 ? '99+' : count}
         </span>
@@ -177,70 +196,188 @@ function NotificationBell({
   );
 }
 
+// ─── Single notification row ───────────────────────────────────────────────────
+
+function NotificationRow({
+  notification,
+  onRead,
+  onDelete,
+  onNavigate,
+}: {
+  notification: AppNotification;
+  onRead: (id: string) => void;
+  onDelete: (id: string) => void;
+  onNavigate?: (page: string) => void;
+}) {
+  const handleClick = useCallback(() => {
+    if (!notification.read) onRead(notification.id);
+    if (notification.link && onNavigate) {
+      const linkMap: Record<string, string> = {
+        '/orders': 'Orders',
+        '/dashboard': 'Dashboard',
+        '/community': 'Community',
+        '/wallet': 'Wallet',
+        '/become-seller': 'Become a Seller',
+        '/find-jobs': 'Find Jobs',
+      };
+      const page = linkMap[notification.link] ?? 'Dashboard';
+      onNavigate(page);
+    }
+  }, [notification, onRead, onNavigate]);
+
+  return (
+    <div
+      className={`group relative flex items-start gap-3.5 border-b border-border/50 px-4 py-3.5 transition-colors cursor-pointer hover:bg-foreground/[0.03] ${
+        !notification.read ? 'bg-primary/[0.03] dark:bg-primary/[0.05]' : ''
+      }`}
+      onClick={handleClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && handleClick()}
+    >
+      {/* Dynamic Lucide icon badge */}
+      <NotificationIcon type={notification.type} />
+
+      <div className="min-w-0 flex-1 pr-6">
+        <div className="flex items-center justify-between gap-2">
+          <p className={`font-sans text-[0.8125rem] leading-snug truncate ${
+            !notification.read ? 'font-semibold text-foreground' : 'font-medium text-foreground/85'
+          }`}>
+            {notification.title}
+          </p>
+          <span className="shrink-0 font-sans text-[0.6875rem] text-muted-foreground/70">
+            {formatNotificationTime(notification.createdAt)}
+          </span>
+        </div>
+        <p className="mt-1 font-sans text-[0.75rem] leading-relaxed text-foreground/65 line-clamp-2">
+          {notification.body}
+        </p>
+      </div>
+
+      {/* Unread dot */}
+      {!notification.read && (
+        <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary" />
+      )}
+
+      {/* Hover actions */}
+      <div
+        className="absolute right-3 top-3 hidden gap-1.5 group-hover:flex bg-background/95 backdrop-blur-sm p-0.5 rounded-full border border-border/40 shadow-sm"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {!notification.read && (
+          <button
+            type="button"
+            title="Mark as read"
+            onClick={(e) => { e.stopPropagation(); onRead(notification.id); }}
+            className="flex h-6 w-6 items-center justify-center rounded-full text-foreground/60 hover:text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Check size={12} />
+          </button>
+        )}
+        <button
+          type="button"
+          title="Delete"
+          onClick={(e) => { e.stopPropagation(); onDelete(notification.id); }}
+          className="flex h-6 w-6 items-center justify-center rounded-full text-foreground/60 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Notification panel ───────────────────────────────────────────────────────
 
-/**
- * Dropdown panel that lists recent notifications.
- * Rendered inside a `position: relative` ancestor so it anchors correctly.
- */
 function NotificationPanel({
-  notifications,
   onClose,
+  onNavigate,
 }: {
-  notifications: Notification[];
   onClose: () => void;
+  onNavigate?: (page: string) => void;
 }) {
+  const { notifications, loading, hasMore, markAsRead, markAllRead, deleteNotification, loadMore, refresh } =
+    useNotifications();
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Refresh data every time the panel mounts (opens)
+  useEffect(() => {
+    refresh();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Infinite scroll: load next page when user scrolls near bottom
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < 60 && hasMore && !loading) {
+        loadMore();
+      }
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [hasMore, loading, loadMore]);
+
   return (
     <div
       role="dialog"
       aria-label="Notifications"
-      className="absolute right-0 top-full z-50 mt-2 w-[20rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[0.75rem] border border-border bg-background shadow-xl"
+      className="absolute right-0 top-full z-50 mt-2 w-[23rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[0.875rem] border border-border/80 bg-background/95 backdrop-blur-md shadow-2xl shadow-black/10 dark:shadow-black/40 animate-in fade-in slide-in-from-top-2 duration-150"
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-[0.875rem]">
-        <p className="font-sans text-[0.875rem] font-medium text-foreground">Notifications</p>
+      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3 bg-muted/20">
+        <p className="font-sans text-[0.875rem] font-semibold text-foreground">Notifications</p>
         <button
           type="button"
-          onClick={onClose}
-          className="font-sans text-[0.6875rem] text-[#8C5CFF] transition-colors hover:text-[#AC8EF3]"
+          onClick={() => { markAllRead(); }}
+          className="font-sans text-[0.6875rem] font-medium text-primary hover:text-primary/80 transition-colors cursor-pointer"
         >
           Mark all read
         </button>
       </div>
 
-      {/* Notification list */}
-      <ul>
-        {notifications.map((n) => (
-          <li key={n.id}>
-            <button
-              type="button"
-              className="flex w-full cursor-pointer items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors hover:bg-foreground/5"
-            >
-              {/* Unread dot indicator */}
-              <span
-                aria-label={n.read ? undefined : 'Unread'}
-                className={`mt-[0.375rem] size-[0.4375rem] shrink-0 rounded-full ${
-                  n.read ? 'bg-transparent' : 'bg-[#8C5CFF]'
-                }`}
+      {/* Scrollable list */}
+      <div ref={scrollRef} className="max-h-[26rem] overflow-y-auto overscroll-contain divide-y-0">
+        {loading && notifications.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-10">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <p className="text-[0.75rem] text-muted-foreground">Loading notifications…</p>
+          </div>
+        ) : notifications.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2.5 py-12 px-4 text-center">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-foreground/5">
+              <Inbox size={20} className="text-foreground/40" />
+            </div>
+            <p className="text-[0.8125rem] font-medium text-foreground/80">All caught up!</p>
+            <p className="text-[0.75rem] text-muted-foreground max-w-[15rem]">
+              You don't have any notifications right now.
+            </p>
+          </div>
+        ) : (
+          <>
+            {notifications.map((n) => (
+              <NotificationRow
+                key={n.id}
+                notification={n}
+                onRead={markAsRead}
+                onDelete={deleteNotification}
+                onNavigate={(page) => { onNavigate?.(page); onClose(); }}
               />
-              <div className="min-w-0 flex-1">
-                <p className="font-sans text-[0.8125rem] leading-5 text-foreground/90">{n.text}</p>
-                <p className="mt-0.5 font-sans text-[0.6875rem] text-[#A0A0A0]">{n.time}</p>
+            ))}
+            {loading && (
+              <div className="flex items-center justify-center py-4">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
               </div>
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      {/* Footer */}
-      <div className="px-4 py-[0.625rem]">
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full py-1 text-center font-sans text-[0.75rem] text-[#8C5CFF] transition-colors hover:text-[#AC8EF3]"
-        >
-          View all notifications
-        </button>
+            )}
+            {!hasMore && notifications.length > 0 && (
+              <p className="py-3 text-center font-sans text-[0.6875rem] text-muted-foreground/60">
+                You're all caught up ✓
+              </p>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -250,29 +387,21 @@ function NotificationPanel({
 
 /**
  * CanaFri top navigation bar.
- *
- * **Layouts**
- * - **Mobile (<md):** 3-column grid — avatar (opens drawer) | logo or page name | bell
- * - **Tablet / Desktop (md+):** search bar on the left, notification bell on the right
- *
- * @example
- * ```tsx
- * <TopNav
- *   activePage="Dashboard"
- *   notificationCount={3}
- *   onMenuOpen={() => setDrawerOpen(true)}
- * />
- * ```
  */
 export default function TopNav({
-  notificationCount = 0,
-  user = { name: 'Josh Trek' },
+  user = { name: 'User' },
   onMenuOpen,
   activePage = 'Dashboard',
   onSearchNavigate,
+  onNavigate,
 }: TopNavProps) {
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const { unreadCount } = useNotifications();
+
+  const handleBellToggle = useCallback(() => {
+    setNotifOpen((v) => !v);
+  }, []);
 
   // Close notification panel when clicking outside
   useEffect(() => {
@@ -303,7 +432,7 @@ export default function TopNav({
             online
             onClick={onMenuOpen}
           />
-          {/* Search icon: only on Dashboard (other pages have content-specific actions) */}
+          {/* Search icon: only on Dashboard */}
           {activePage === 'Dashboard' && (
             <button
               type="button"
@@ -330,13 +459,13 @@ export default function TopNav({
         {/* Right: notification bell */}
         <div ref={notifRef} className="relative flex justify-end">
           <NotificationBell
-            count={notificationCount}
-            onClick={() => setNotifOpen((v) => !v)}
+            count={unreadCount}
+            onClick={handleBellToggle}
           />
           {notifOpen && (
             <NotificationPanel
-              notifications={MOCK_NOTIFICATIONS}
               onClose={() => setNotifOpen(false)}
+              onNavigate={onNavigate}
             />
           )}
         </div>
@@ -348,13 +477,13 @@ export default function TopNav({
 
         <div ref={notifRef} className="relative">
           <NotificationBell
-            count={notificationCount}
-            onClick={() => setNotifOpen((v) => !v)}
+            count={unreadCount}
+            onClick={handleBellToggle}
           />
           {notifOpen && (
             <NotificationPanel
-              notifications={MOCK_NOTIFICATIONS}
               onClose={() => setNotifOpen(false)}
+              onNavigate={onNavigate}
             />
           )}
         </div>

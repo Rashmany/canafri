@@ -71,7 +71,7 @@ export default function OtpVerificationPage({
     setError('');
 
     try {
-      const res = await fetch('http://localhost:3001/auth/resend-otp', {
+      const res = await fetch('/api/auth/resend-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -105,8 +105,8 @@ export default function OtpVerificationPage({
 
     try {
       const endpoint = isForgotPassword
-        ? 'http://localhost:3001/auth/verify-forgot-otp'
-        : 'http://localhost:3001/auth/verify-email';
+        ? '/api/auth/verify-forgot-otp'
+        : '/api/auth/verify-email';
 
       const res = await fetch(endpoint, {
         method: 'POST',

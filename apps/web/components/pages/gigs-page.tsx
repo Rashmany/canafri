@@ -67,7 +67,7 @@ export default function GigsPage({ onBack }: GigsPageProps) {
   const filteredGigs = MOCK_GIGS.filter(g => g.status === activeTab);
 
   return (
-    <div className="flex h-full w-full flex-col bg-background overflow-y-auto no-scrollbar">
+    <div className="flex min-h-full w-full flex-col bg-background overflow-y-auto no-scrollbar">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border bg-background px-6 py-5 shrink-0">
         <div className="flex items-center gap-3">

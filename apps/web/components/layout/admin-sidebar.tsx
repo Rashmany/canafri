@@ -22,10 +22,15 @@ import {
   Wrench,
   ShieldHalf,
   Lock,
+  Palette,
+  Moon,
+  Sun,
+  Laptop,
   type LucideIcon,
 } from 'lucide-react';
 import { AvatarOnline } from '@/components/ui/avatar-online';
 import { Logo } from '@/components/ui/logo';
+import { useTheme } from '@/components/theme-provider';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -497,6 +502,8 @@ function AdminDesktopSidebar({ activePage, setActivePage, user, onLogout }: Shar
         <div className="flex-1" />
 
         <SidebarDivider />
+        <AdminThemeNavItem showLabel={true} />
+        <SidebarDivider className="my-1" />
         <AdminProfileRow
           name={user.name}
           handle={user.handle}
@@ -560,8 +567,10 @@ function AdminTabletSidebar({ activePage, setActivePage, user, onLogout }: Share
 
         <div className="flex-1" />
         <SidebarDivider className="mt-6" />
+        <AdminThemeNavItem showLabel={expanded} />
+        <SidebarDivider className="my-1" />
 
-        <div className={`mt-[1.875rem] ${expanded ? '' : 'flex justify-center px-0'}`}>
+        <div className={`mt-[0.5rem] ${expanded ? '' : 'flex justify-center px-0'}`}>
           <AdminProfileRow
             name={user.name}
             handle={user.handle}
@@ -654,7 +663,7 @@ function AdminMobileSidebar({
             />
           </nav>
 
-          <div className="flex-1" />
+          <AdminThemeNavItem />
           <SidebarDivider />
 
           <AdminProfileRow
@@ -729,5 +738,84 @@ export default function AdminSidebar({
         <AdminDesktopSidebar {...sharedProps} />
       </div>
     </>
+  );
+}
+
+// ─── Theme Toggle Component for Admin Sidebar ────────────────────────────────
+
+function AdminThemeNavItem({ showLabel = true }: { showLabel?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
+
+  const options: { label: string; mode: 'dark' | 'light' | 'system'; icon: LucideIcon }[] = [
+    { label: 'Dark mode', mode: 'dark', icon: Moon },
+    { label: 'Light mode', mode: 'light', icon: Sun },
+    { label: 'System mode', mode: 'system', icon: Laptop },
+  ];
+
+  return (
+    <div className="relative px-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title={!showLabel ? 'Theme' : undefined}
+        className={[
+          'flex h-[3rem] w-full items-center gap-[0.625rem] rounded-[0.75rem]',
+          'cursor-pointer transition-colors duration-300 ease-out text-left',
+          showLabel ? 'px-[1.5rem]' : 'justify-center px-0',
+          open ? 'bg-foreground/10' : 'hover:bg-border/50',
+        ].join(' ')}
+      >
+        <span className="relative shrink-0 opacity-80 flex items-center justify-center">
+          <Palette size={19} strokeWidth={1.5} className="text-foreground" />
+        </span>
+        {showLabel && (
+          <>
+            <span className="flex-1 whitespace-nowrap font-sans text-[0.8125rem] font-normal leading-[1.125rem] text-foreground opacity-80 capitalize">
+              Theme ({theme})
+            </span>
+            <ChevronDown
+              size={14}
+              strokeWidth={2}
+              className={[
+                'shrink-0 text-foreground/50 transition-transform duration-200',
+                open ? 'rotate-180' : '',
+              ].join(' ')}
+            />
+          </>
+        )}
+      </button>
+
+      {/* Dropdown options */}
+      {open && (
+        <ul className={[
+          'mt-1 flex flex-col gap-[2px] rounded-[0.75rem] border border-border bg-card py-[0.375rem] px-[0.25rem] z-50 shadow-xl',
+          showLabel ? 'ml-4' : 'ml-0',
+        ].join(' ')}>
+          {options.map(({ label, mode, icon: Icon }) => {
+            const active = theme === mode;
+            return (
+              <li key={mode}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTheme(mode);
+                    setOpen(false);
+                  }}
+                  className={[
+                    'flex h-[2.375rem] w-full items-center gap-[0.625rem] rounded-[0.5rem] px-[0.75rem]',
+                    'cursor-pointer text-left transition-colors duration-150',
+                    active ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold' : 'text-foreground/80 hover:bg-border/40',
+                  ].join(' ')}
+                >
+                  <Icon size={16} strokeWidth={1.75} className="shrink-0" />
+                  <span className="font-sans text-[0.75rem] leading-none">{label}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

@@ -1,10 +1,11 @@
 'use client';
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ChevronLeft, ChevronDown, ChevronUp, X, UploadCloud, AlertCircle } from "lucide-react";
 import { SuccessModal } from "@/components/ui/success-modal";
 import { JobSummaryModal } from "@/components/ui/job-summary-modal";
 
 interface SubmitProjectPageProps {
+  jobId?: string;
   onBack?: () => void;
   onSubmitSuccess?: () => void;
 }
@@ -16,16 +17,54 @@ interface FileUpload {
   dataUrl?: string;
 }
 
-export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitProjectPageProps) {
+export default function SubmitProjectPage({ jobId, onBack, onSubmitSuccess }: SubmitProjectPageProps) {
+  const [job, setJob] = useState<any>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [description, setDescription] = useState("");
   const [responseDropdownOpen, setResponseDropdownOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<FileUpload[]>([
-    { name: "Week 2 progress....zip", size: "15.5KB", progress: 65 },
+    { name: "Project_Deliverable_v1.zip", size: "15.5KB", progress: 100 },
   ]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+
+    async function loadJob() {
+      try {
+        let targetId = jobId;
+        if (!targetId && token) {
+          const res = await fetch('/api/jobs/seller/my-orders', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await res.json();
+          if (data.success && Array.isArray(data.jobs) && data.jobs.length > 0) {
+            targetId = data.jobs[0].id;
+          }
+        }
+
+        if (targetId) {
+          const res = await fetch(`/api/jobs/${targetId}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          const data = await res.json();
+          if (data.success && data.job && isMounted) {
+            setJob(data.job);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load job for submission:', err);
+      }
+    }
+
+    loadJob();
+    return () => { isMounted = false; };
+  }, [jobId]);
 
   const handleUploadClick = () => fileInputRef.current?.click();
 
@@ -50,48 +89,52 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
     setResponseDropdownOpen(false);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!description.trim()) {
       alert("Please describe your delivery before submitting.");
       return;
     }
-    if (typeof window !== "undefined") {
-      const profileRaw = localStorage.getItem("canafri_user_profile");
-      let freelancerName = "Josh Trek";
-      let freelancerHandle = "@joshtrek";
-      let initials = "JT";
-      if (profileRaw) {
-        try {
-          const p = JSON.parse(profileRaw);
-          freelancerName = p.fullName || freelancerName;
-          freelancerHandle = `@${(p.username || "joshtrek").toLowerCase()}`;
-          initials = freelancerName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
-        } catch (e) { console.error(e); }
-      }
-      const delivery = {
-        id: Date.now(),
-        jobTitle: "Create a landing page for my web3 blog",
-        freelancerName,
-        freelancerHandle,
-        initials,
-        avatarBg: "bg-blue-600",
-        message: description,
-        submittedAt: new Date().toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }),
-        files: uploadedFiles.map(file => ({
-          name: file.name,
-          size: file.size,
-          dataUrl: file.dataUrl || null,
-          icon: file.name.endsWith(".pdf") ? "pdf" : file.name.endsWith(".zip") ? "zip" : "img",
-          iconBg: file.name.endsWith(".pdf") ? "bg-red-500/10" : file.name.endsWith(".zip") ? "bg-amber-500/10" : "bg-blue-500/10",
-        })),
-        status: "pending",
-        review: null,
-      };
-      const existing: unknown[] = (() => { try { return JSON.parse(localStorage.getItem("canafri_job_deliveries") || "[]"); } catch { return []; } })();
-      existing.unshift(delivery);
-      localStorage.setItem("canafri_job_deliveries", JSON.stringify(existing));
+
+    if (!job?.id) {
+      alert("No active contract found to submit delivery to.");
+      return;
     }
-    setShowSuccess(true);
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+    if (!token) {
+      alert("You must be logged in to submit a project delivery.");
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMsg("");
+
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/deliver`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          notes: description,
+          files: uploadedFiles.map(f => ({ name: f.name, size: f.size, dataUrl: f.dataUrl || null })),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to submit project delivery.');
+      }
+
+      setShowSuccess(true);
+    } catch (err: any) {
+      console.error('Submission failed:', err);
+      setErrorMsg(err.message || 'Project submission failed.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const suggestedResponses = [
@@ -99,6 +142,9 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
     "Project delivery: I have completed all milestone objectives as per our agreement. Files attached.",
     "Milestone update: Deliverables completed. Looking forward to your review and feedback.",
   ];
+
+  const jobTitle = job?.title || "Create a landing page for my web3 blog";
+  const buyerHandle = job?.client?.username ? `@${job.client.username.replace(/^@/, '')}` : "@keneweight";
 
   return (
     <div className="flex h-full w-full flex-col bg-background overflow-y-auto no-scrollbar">
@@ -221,21 +267,27 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
                 </div>
               </div>
             </div>
+
+            {errorMsg && (
+              <p className="text-xs text-rose-500 font-medium">{errorMsg}</p>
+            )}
           </div>
 
           {/* Card Footer */}
           <div className="bg-[#F5F8FB] dark:bg-[#0b0b0b] flex items-center justify-between px-6 py-4 border-t border-[#D8D8D8] dark:border-[#121212] w-full">
             <button
               onClick={onBack}
-              className="cursor-pointer border border-[#8C5CFF]/30 hover:bg-[#8C5CFF]/5 text-[#8C5CFF] text-[13px] font-semibold px-4 py-2 rounded-xl transition-all active:scale-[0.98]"
+              disabled={submitting}
+              className="cursor-pointer border border-[#8C5CFF]/30 hover:bg-[#8C5CFF]/5 text-[#8C5CFF] text-[13px] font-semibold px-4 py-2 rounded-xl transition-all active:scale-[0.98] disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
-              className="cursor-pointer bg-[#8C5CFF] hover:bg-[#8C5CFF]/90 text-white text-[13px] font-semibold px-5 py-2 rounded-xl transition-all active:scale-[0.98]"
+              disabled={submitting}
+              className="cursor-pointer bg-[#8C5CFF] hover:bg-[#8C5CFF]/90 text-white text-[13px] font-semibold px-5 py-2 rounded-xl transition-all active:scale-[0.98] disabled:opacity-50"
             >
-              Submit
+              {submitting ? "Submitting..." : "Submit"}
             </button>
           </div>
         </div>
@@ -247,9 +299,9 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
             <div className="flex flex-col items-start gap-1 w-full">
               <span className="text-[10px] text-primary font-bold uppercase tracking-wider">Active Contract</span>
               <p className="text-[13px] font-bold text-foreground leading-normal">
-                Create a landing page for my web3 blog
+                {jobTitle}
               </p>
-              <span className="text-[10px] text-muted">Buyer: @keneweight</span>
+              <span className="text-[10px] text-muted">Buyer: {buyerHandle}</span>
             </div>
             <button
               onClick={() => setShowSummary(true)}
@@ -293,6 +345,7 @@ export default function SubmitProjectPage({ onBack, onSubmitSuccess }: SubmitPro
       <JobSummaryModal
         open={showSummary}
         onClose={() => setShowSummary(false)}
+        job={job}
       />
     </div>
   );

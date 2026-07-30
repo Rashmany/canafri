@@ -22,6 +22,8 @@ interface BottomNavProps {
   activePage: string;
   /** Navigation callback to the parent component */
   onNavigate: (page: string) => void;
+  /** Live unread message count — shows a badge on the Message tab */
+  unreadMessageCount?: number;
 }
 
 // ─── Navigation Items ─────────────────────────────────────────────────────────
@@ -62,7 +64,7 @@ const BOTTOM_NAV_ITEMS: BottomNavItem[] = [
  *
  * Import path: `@/components/layout/bottom-nav`
  */
-export default function BottomNav({ activePage, onNavigate }: BottomNavProps) {
+export default function BottomNav({ activePage, onNavigate, unreadMessageCount = 0 }: BottomNavProps) {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-between bg-background px-[0.625rem] py-[1rem] md:hidden">
       {BOTTOM_NAV_ITEMS.map((item) => {
@@ -91,6 +93,12 @@ export default function BottomNav({ activePage, onNavigate }: BottomNavProps) {
                 size={24}
                 strokeWidth={isActive ? 2 : 1.5}
               />
+              {/* Unread message badge */}
+              {item.page === 'Messages' && unreadMessageCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-[1rem] min-w-[1rem] items-center justify-center rounded-full bg-[#8C5CFF] px-[0.2rem] font-sans text-[0.5625rem] font-semibold leading-none text-white">
+                  {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                </span>
+              )}
             </span>
 
             {/* Label */}

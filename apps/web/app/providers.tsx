@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { ToastProvider } from '@/components/ui/toast';
 import { ThemeProvider } from '@/components/theme-provider';
+import { PlatformConfigProvider, usePlatformConfig } from '@/lib/platform-config-context';
+import { MaintenanceBanner } from '@/components/ui/maintenance-banner';
 
 // Animated spanner/wrench SVG
 function SpannerIcon({ className }: { className?: string }) {
@@ -141,9 +143,11 @@ function MaintenanceScreen({ msg }: { msg: string }) {
 }
 
 function MaintenanceWrapper({ children }: { children: React.ReactNode }) {
-  const [isMaintenance, setIsMaintenance] = useState(false);
-  const [maintenanceMsg, setMaintenanceMsg] = useState('');
+  const { config } = usePlatformConfig();
   const [isAdminPath, setIsAdminPath] = useState(true);
+  // Legacy localStorage override (preserved for backward compat)
+  const [legacyMaintenance, setLegacyMaintenance] = useState(false);
+  const [legacyMsg, setLegacyMsg] = useState('');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -153,15 +157,15 @@ function MaintenanceWrapper({ children }: { children: React.ReactNode }) {
     };
     checkPath();
 
-    const checkMaintenance = () => {
+    const checkLegacy = () => {
       const active = localStorage.getItem('canafri_maintenance_active') === 'true';
       const msg = localStorage.getItem('canafri_maintenance_message') || '';
-      setIsMaintenance(active);
-      setMaintenanceMsg(msg);
+      setLegacyMaintenance(active);
+      setLegacyMsg(msg);
     };
-    checkMaintenance();
+    checkLegacy();
 
-    const handleStorageChange = () => checkMaintenance();
+    const handleStorageChange = () => checkLegacy();
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('canafri_maintenance_change', handleStorageChange);
 
@@ -174,6 +178,12 @@ function MaintenanceWrapper({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Maintenance active if DB flag OR legacy localStorage flag is set
+  const isMaintenance = config.globalMaintenance || legacyMaintenance;
+  const maintenanceMsg = config.globalMaintenance
+    ? (config.globalMaintenanceReason || '')
+    : legacyMsg;
+
   if (isMaintenance && !isAdminPath) {
     return <MaintenanceScreen msg={maintenanceMsg} />;
   }
@@ -185,7 +195,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <ToastProvider>
-        <MaintenanceWrapper>{children}</MaintenanceWrapper>
+        <PlatformConfigProvider>
+          <MaintenanceBanner />
+          <MaintenanceWrapper>{children}</MaintenanceWrapper>
+        </PlatformConfigProvider>
       </ToastProvider>
     </ThemeProvider>
   );

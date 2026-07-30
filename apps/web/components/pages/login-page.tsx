@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { Eye, EyeOff, User, Lock, ArrowLeft } from 'lucide-react';
+import { updateSocketToken } from '@/lib/socket';
+import { getOrCreateDeviceId } from '@/lib/api-client';
 
 interface LoginPageProps {
   onRegisterClick?: () => void;
@@ -21,6 +23,7 @@ interface InputFieldProps {
   onBlur?: () => void;
   rightSlot?: React.ReactNode;
   error?: string;
+  autoComplete?: string;
 }
 
 function InputField({
@@ -34,6 +37,7 @@ function InputField({
   onBlur,
   rightSlot,
   error,
+  autoComplete,
 }: InputFieldProps) {
   return (
     <div className="w-full flex flex-col gap-1.5">
@@ -51,6 +55,7 @@ function InputField({
           onChange={(e) => onChange(e.target.value)}
           onFocus={onFocus}
           onBlur={onBlur}
+          autoComplete={autoComplete}
           className="flex-1 bg-transparent text-xs text-[#e0e0e0] placeholder:text-[#a0a0a0]/40 font-normal leading-[16px] outline-none min-w-0"
         />
         {rightSlot && <span className="shrink-0 flex items-center text-[#a0a0a0]/60">{rightSlot}</span>}
@@ -113,9 +118,15 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
     setIsSubmitting(true);
 
     try {
-      const res = await fetch('http://localhost:3001/auth/login', {
+      const deviceId = getOrCreateDeviceId();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (deviceId) {
+        headers['X-Device-ID'] = deviceId;
+      }
+
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           identifier: cleanIdentifier,
           password: password,
@@ -136,7 +147,10 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
           email: data.user.email,
           role: data.user.role,
           memberSince: "April 2026",
+          isSeller: data.user.isSeller ?? false,
+          sellerApproved: data.user.sellerApproved ?? false,
         }));
+        updateSocketToken(data.accessToken);
       }
 
       onLoginSuccess?.();
@@ -200,6 +214,7 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
                 value={identifier}
                 onChange={(val) => handleFieldChange('identifier', val)}
                 error={errors.identifier}
+                autoComplete="username"
               />
 
               <div className="w-full flex flex-col gap-1">
@@ -211,6 +226,7 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
                   value={password}
                   onChange={(val) => handleFieldChange('password', val)}
                   error={errors.password}
+                  autoComplete="current-password"
                   rightSlot={
                     <button
                       type="button"

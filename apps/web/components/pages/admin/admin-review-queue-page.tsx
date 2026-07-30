@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { ChevronLeft, Check, X, FileText, Edit3, Trash2, CheckCircle2, User } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ChevronLeft, Check, X, FileText, Edit3, Trash2, CheckCircle2, User, RefreshCw } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -9,7 +9,7 @@ type SubmissionTab = 'Pending' | 'Flagged' | 'Recent';
 type PublishStatus = 'Pending' | 'Approved' | 'Rejected' | 'Revision Requested';
 
 interface ReviewSubmission {
-  id: number;
+  id: string | number;
   title: string;
   creatorName: string;
   creatorHandle: string;
@@ -205,7 +205,7 @@ function ActionFeedbackModal({
 interface DetailViewProps {
   submission: ReviewSubmission;
   onBack?: () => void;
-  onStatusChange: (id: number, status: PublishStatus, note?: string) => void;
+  onStatusChange: (id: string | number, status: PublishStatus, note?: string) => void;
 }
 
 function DetailView({ submission, onBack, onStatusChange }: DetailViewProps) {
@@ -322,9 +322,16 @@ function DetailView({ submission, onBack, onStatusChange }: DetailViewProps) {
           <h2 className="font-sans text-[1.125rem] font-bold text-white leading-snug">
             {submission.title}
           </h2>
-          <div className="font-sans text-[0.875rem] text-foreground/80 leading-[1.65] whitespace-pre-wrap pt-2">
-            {submission.contentBody}
-          </div>
+          {/<[a-z][\s\S]*>/i.test(submission.contentBody) ? (
+            <div
+              className="font-sans text-[0.875rem] text-foreground/80 leading-[1.65] pt-2 prose dark:prose-invert max-w-none [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+              dangerouslySetInnerHTML={{ __html: submission.contentBody }}
+            />
+          ) : (
+            <div className="font-sans text-[0.875rem] text-foreground/80 leading-[1.65] whitespace-pre-wrap pt-2">
+              {submission.contentBody}
+            </div>
+          )}
         </div>
 
         {/* Professional Information 1 */}
@@ -351,8 +358,8 @@ function DetailView({ submission, onBack, onStatusChange }: DetailViewProps) {
           <h3 className="font-sans text-[0.875rem] font-semibold text-foreground">Creator Performance Profile</h3>
           <div className="rounded-xl border border-border bg-card overflow-hidden">
             {[
-              { label: 'Published pieces', value: `${submission.creatorPublishedCount} pieces` },
-              { label: 'Rejected pieces', value: `${submission.creatorRejectedCount} piece` },
+              { label: 'Published pieces', value: `${submission.creatorPublishedCount} ${submission.creatorPublishedCount === 1 ? 'piece' : 'pieces'}` },
+              { label: 'Rejected pieces', value: `${submission.creatorRejectedCount} ${submission.creatorRejectedCount === 1 ? 'piece' : 'pieces'}` },
               { label: 'Avg rating', value: submission.creatorAvgRating }
             ].map((row, i) => (
               <div key={row.label} className={`flex justify-between items-center px-5 py-3 text-[0.8125rem] ${i > 0 ? 'border-t border-border/40' : ''}`}>
@@ -370,30 +377,159 @@ function DetailView({ submission, onBack, onStatusChange }: DetailViewProps) {
 
 // ─── Main Review Queue Component ──────────────────────────────────────────────
 
+function mapBackendContentToSubmission(c: any): ReviewSubmission {
+  const creatorName = c.creator?.displayName || c.creator?.username || 'Creator';
+  const creatorHandle = c.creator?.username ? `@${c.creator.username.replace(/^@/, '')}` : '@creator';
+  const plainText = (c.bodyIpfsHash || c.body || c.title || '').replace(/<[^>]*>/g, '');
+  const wordCount = plainText.trim() ? plainText.trim().split(/\s+/).length : 0;
+  const readTimeMin = Math.max(1, Math.ceil(wordCount / 200));
+
+  const d = new Date(c.createdAt || Date.now());
+  const now = Date.now();
+  const diffMs = now - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const agoStr = diffMin < 1 ? 'Just now'
+    : diffMin < 60 ? `${diffMin}m ago`
+    : diffMin < 1440 ? `${Math.floor(diffMin / 60)}h ago`
+    : `${Math.floor(diffMin / 1440)}d ago`;
+
+  let tab: SubmissionTab = 'Pending';
+  let status: PublishStatus = 'Pending';
+  if (c.status === 'LIVE') {
+    tab = 'Recent';
+    status = 'Approved';
+  } else if (c.status === 'REJECTED') {
+    tab = 'Recent';
+    status = 'Rejected';
+  } else {
+    tab = 'Pending';
+    status = 'Pending';
+  }
+
+  const isPremiumType = (c.type && String(c.type).toUpperCase() === 'PREMIUM') || (c.priceCC && Number(c.priceCC) > 0);
+
+  const creatorContent = Array.isArray(c.creator?.content) ? c.creator.content : [];
+  const creatorPublishedCount = creatorContent.filter((item: any) => item.status === 'LIVE').length;
+  const creatorRejectedCount = creatorContent.filter((item: any) => item.status === 'REJECTED').length;
+
+  const ratedPieces = creatorContent.filter((item: any) => typeof item.avgRating === 'number' && item.avgRating > 0);
+  const avgRatingVal = ratedPieces.length > 0
+    ? (ratedPieces.reduce((acc: number, item: any) => acc + item.avgRating, 0) / ratedPieces.length).toFixed(1)
+    : null;
+  const creatorAvgRating = avgRatingVal ? `${avgRatingVal} / 5.0` : 'Unrated';
+
+  const rawBody = c.body || c.bodyIpfsHash || c.title || '';
+  const imgMatches = (rawBody.match(/<img\s+/gi) || []).length;
+  const imageCount = imgMatches + (c.coverImageUrl ? 1 : 0);
+
+  const linkMatches = (rawBody.match(/<a\s+[^>]*href=/gi) || []).length;
+  const linksText = linkMatches > 0 ? `${linkMatches} external` : 'None';
+
+  return {
+    id: c.id,
+    title: c.title,
+    creatorName,
+    creatorHandle,
+    creatorTrustScore: c.creator?.trustScore ?? 50,
+    type: isPremiumType ? 'Premium' : 'Free',
+    submittedAgo: agoStr,
+    wordCount: wordCount.toLocaleString(),
+    readTime: `${readTimeMin} min`,
+    category: c.topic || 'Article',
+    plagiarismStatus: (c.aiScore || 0) > 85 ? 'Failed' : 'Passed',
+    imageCount,
+    linksText,
+    creatorPublishedCount,
+    creatorRejectedCount,
+    creatorAvgRating,
+    contentBody: rawBody,
+    tab,
+    status,
+  };
+}
+
 export default function AdminReviewQueuePage() {
-  const [submissions, setSubmissions] = useState<ReviewSubmission[]>(MOCK_SUBMISSIONS);
-  const [activeTab, setActiveTab]     = useState<SubmissionTab>('Pending');
-  const [selectedId, setSelectedId]   = useState<number>(1);
-  const [mobileView, setMobileView]   = useState<'list' | 'detail'>('list');
+  const [activeTab, setActiveTab] = useState<SubmissionTab>('Pending');
+  const [submissions, setSubmissions] = useState<ReviewSubmission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | number | null>(null);
+  const [mobileView, setMobileView] = useState<'list' | 'detail'>('list');
+
+  // Fetch real submissions from API
+  const fetchSubmissions = useCallback(async (isManual = false) => {
+    const token = typeof window !== 'undefined'
+      ? localStorage.getItem('canafri_admin_access_token') || localStorage.getItem('canafri_access_token')
+      : null;
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    if (isManual) setRefreshing(true);
+    try {
+      const r = await fetch('/api/admin/content-submissions', { headers });
+      const data = r.ok ? await r.json() : null;
+      if (data && data.success && Array.isArray(data.submissions)) {
+        const mapped = data.submissions.map(mapBackendContentToSubmission);
+        setSubmissions(mapped);
+        if (mapped.length > 0) setSelectedId(prev => prev ?? mapped[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load review queue:', err);
+    } finally {
+      setLoading(false);
+      if (isManual) setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSubmissions();
+    // Auto-refresh when a new post is published from the dashboard
+    const handleContentPublished = () => { fetchSubmissions(); };
+    window.addEventListener('canafri:content-published', handleContentPublished);
+    return () => window.removeEventListener('canafri:content-published', handleContentPublished);
+  }, [fetchSubmissions]);
 
   const visibleList = submissions.filter(s => s.tab === activeTab);
   const pendingCount = submissions.filter(s => s.tab === 'Pending').length;
-  const selected = submissions.find(s => s.id === selectedId) ?? submissions[0];
+  const selected = submissions.find(s => s.id === selectedId) ?? (visibleList[0] || submissions[0]);
 
-  const handleSelect = (id: number) => {
+  const handleSelect = (id: string | number) => {
     setSelectedId(id);
     setMobileView('detail');
   };
 
-  const handleStatusChange = (id: number, status: PublishStatus, note?: string) => {
+  const handleStatusChange = async (id: string | number, status: PublishStatus, note?: string) => {
+    const token = typeof window !== 'undefined'
+      ? localStorage.getItem('canafri_admin_access_token') || localStorage.getItem('canafri_access_token')
+      : null;
+
+    // Optimistic UI update
     setSubmissions(prev => prev.map(s => {
       if (s.id !== id) return s;
       return {
         ...s,
         status,
-        tab: status === 'Pending' ? s.tab : 'Recent' // Approved/Rejected goes to Recent or tab updates
+        tab: status === 'Pending' ? s.tab : 'Recent'
       };
     }));
+
+    if (token && typeof id === 'string') {
+      const endpoint = status === 'Approved'
+        ? `/api/admin/content-submissions/${id}/approve`
+        : `/api/admin/content-submissions/${id}/reject`;
+      try {
+        await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ note, reason: note }),
+        });
+      } catch (err) {
+        console.error('Failed to update submission status:', err);
+      }
+    }
   };
 
   return (
@@ -408,6 +544,15 @@ export default function AdminReviewQueuePage() {
 
         <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
           <h1 className="font-sans text-[1.125rem] font-bold text-foreground">Review Queue</h1>
+          <button
+            type="button"
+            onClick={() => fetchSubmissions(true)}
+            disabled={refreshing}
+            title="Refresh queue"
+            className="flex items-center justify-center size-7 rounded-lg text-muted hover:text-foreground hover:bg-foreground/5 transition disabled:opacity-40"
+          >
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+          </button>
         </div>
 
         {/* Sidebar tabs */}

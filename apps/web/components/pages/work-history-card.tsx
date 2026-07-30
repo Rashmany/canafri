@@ -4,54 +4,28 @@ import { useState } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 
-interface JobListing {
+export interface JobListing {
+  id?: string;
   title: string;
   startDate: string;
   endDate: string;
   feedback: string;
   amount: string;
-  rate: string;
-  hours: string;
 }
 
-const COMPLETED_JOBS: JobListing[] = [
-  {
-    title: 'Wordpress review sites SEO cleanup - help needed with Google Search console & general audit.',
-    startDate: 'Feb 6, 2023',
-    endDate: 'Feb 18, 2023',
-    feedback: 'No feedback given',
-    amount: '$300.00',
-    rate: '$60.00',
-    hours: '5 hours',
-  },
-  {
-    title: 'Wordpress review sites SEO cleanup - help needed with Google Search console & general audit.',
-    startDate: 'Feb 6, 2023',
-    endDate: 'Feb 18, 2023',
-    feedback: 'No feedback given',
-    amount: '$300.00',
-    rate: '$60.00',
-    hours: '5 hours',
-  },
-];
+interface WorkHistoryCardProps {
+  completedJobs?: JobListing[];
+  inProgressJobs?: JobListing[];
+}
 
-const IN_PROGRESS_JOBS: JobListing[] = [
-  {
-    title: 'Next.js Frontend optimization and API integration support.',
-    startDate: 'Jan 10, 2024',
-    endDate: 'Present',
-    feedback: 'In progress',
-    amount: '$1,200.00',
-    rate: '$75.00',
-    hours: '16 hours',
-  },
-];
-
-export default function WorkHistoryCard() {
+export default function WorkHistoryCard({
+  completedJobs = [],
+  inProgressJobs = [],
+}: WorkHistoryCardProps) {
   const [activeTab, setActiveTab] = useState<'completed' | 'progress'>('completed');
   const { toast } = useToast();
 
-  const jobs = activeTab === 'completed' ? COMPLETED_JOBS : IN_PROGRESS_JOBS;
+  const jobs = activeTab === 'completed' ? completedJobs : inProgressJobs;
 
   return (
     <div className="bg-card border border-card-border flex flex-col gap-[20px] items-start p-[24px] rounded-[12px] w-full shrink-0">
@@ -80,7 +54,7 @@ export default function WorkHistoryCard() {
           <p className={`font-semibold text-[14px] leading-normal transition-colors ${
             activeTab === 'completed' ? 'text-foreground' : 'text-muted hover:text-foreground'
           }`}>
-            Completed jobs (69)
+            Completed jobs ({completedJobs.length})
           </p>
           {activeTab === 'completed' && (
             <div className="bg-primary h-[2px] absolute bottom-0 left-0 w-full rounded-full z-10" />
@@ -95,7 +69,7 @@ export default function WorkHistoryCard() {
           <p className={`font-semibold text-[14px] leading-normal transition-colors ${
             activeTab === 'progress' ? 'text-foreground' : 'text-muted hover:text-foreground'
           }`}>
-            In progress (14)
+            In progress ({inProgressJobs.length})
           </p>
           {activeTab === 'progress' && (
             <div className="bg-primary h-[2px] absolute bottom-0 left-0 w-full rounded-full z-10" />
@@ -105,40 +79,41 @@ export default function WorkHistoryCard() {
 
       {/* Job Listing List */}
       <div className="flex flex-col w-full gap-[20px]">
-        {jobs.map((job, idx) => (
-          <div key={idx} className="w-full flex flex-col gap-[20px]">
-            {idx > 0 && <div className="h-px bg-card-border w-full" />}
-            <div className="flex flex-col gap-[12px] items-start w-full">
-              <p className="font-semibold leading-[1.4] text-[15px] text-foreground/80 w-full">
-                {job.title}
-              </p>
-              <div className="flex flex-col font-normal gap-[4px] items-start leading-normal text-muted text-[13px] w-full">
-                <p>
-                  {job.startDate} - {job.endDate}
+        {jobs.length === 0 ? (
+          <div className="py-8 text-center text-muted text-[13px] w-full">
+            {activeTab === 'completed' ? 'No completed jobs yet.' : 'No in-progress jobs.'}
+          </div>
+        ) : (
+          jobs.map((job, idx) => (
+            <div key={job.id || idx} className="w-full flex flex-col gap-[20px]">
+              {idx > 0 && <div className="h-px bg-card-border w-full" />}
+              <div className="flex flex-col gap-[12px] items-start w-full">
+                <p className="font-semibold leading-[1.4] text-[15px] text-foreground/80 w-full">
+                  {job.title}
                 </p>
-                <p className="italic">
-                  {job.feedback}
-                </p>
-              </div>
-              <div className="flex items-center justify-between leading-normal pt-[8px] w-full whitespace-nowrap">
-                <p className="font-bold text-foreground text-[14px]">
-                  {job.amount}
-                </p>
-                <div className="flex gap-[4px] items-baseline">
-                  <p className="font-bold text-foreground text-[14px]">
-                    {job.rate}
+                <div className="flex flex-col font-normal gap-[4px] items-start leading-normal text-muted text-[13px] w-full">
+                  <p>
+                    {job.startDate} - {job.endDate}
                   </p>
-                  <p className="font-normal text-muted text-[12px]">
-                    /hr
-                  </p>
+                  {job.feedback && (
+                    <p className="italic">
+                      {job.feedback}
+                    </p>
+                  )}
                 </div>
-                <p className="font-bold text-foreground text-[14px]">
-                  {job.hours}
-                </p>
+                <div className="flex items-center justify-between leading-normal pt-[8px] w-full whitespace-nowrap">
+                  <div className="flex flex-col">
+                    <span className="font-bold text-foreground text-[14px]">{job.amount}</span>
+                    <span className="text-[10px] text-muted font-normal">Fixed Price</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#8C5CFF]/10 text-[#8C5CFF] text-[11px] font-medium">
+                    Canton Escrow {activeTab === 'completed' ? 'Released' : 'Locked'}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
       
     </div>

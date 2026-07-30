@@ -62,7 +62,7 @@ const ROLE_COLORS: Record<AdminRole, string> = {
 
 // ─── API base ──────────────────────────────────────────────────────────────
 
-const API = 'http://localhost:3001';
+const API = '/api';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 

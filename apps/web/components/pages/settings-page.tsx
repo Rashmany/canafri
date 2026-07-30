@@ -6,7 +6,6 @@ import { ChangeEmailModal, ChangePhoneModal } from '@/components/ui/contact-moda
 import ChangePasswordModal from '@/components/ui/change-password-modal';
 import TwoFactorAuthModal from '@/components/ui/two-factor-auth-modal';
 import { useToast } from '@/components/ui/toast';
-import { useTheme } from '@/components/theme-provider';
 import Footer from '@/components/layout/footer';
 import {
   ChevronRight,
@@ -15,7 +14,6 @@ import {
   Bell,
   Lock,
   Wallet,
-  Palette,
   Globe,
   CreditCard,
   ChevronLeft,
@@ -62,7 +60,6 @@ const MENU_CONFIG: SettingsSection[] = [
     section: 'Platform',
     items: [
       { key: 'wallet',    label: 'Wallet',    icon: <Wallet size={20} className="text-foreground" /> },
-      { key: 'theme',     label: 'Theme',     icon: <Palette size={20} className="text-foreground" /> },
       { key: 'languages', label: 'Languages', icon: <Globe size={20} className="text-foreground" /> },
     ],
   },
@@ -114,7 +111,7 @@ function SettingsMenu({
   onSelect: (key: string) => void;
 }) {
   return (
-    <div className="flex h-full flex-col overflow-y-auto no-scrollbar bg-background">
+    <div className="flex min-h-full flex-col overflow-y-auto no-scrollbar bg-background">
       {/* Header */}
       <div className="px-4 py-[34px]">
         <h1 className="font-sans text-[36px] font-bold leading-[42px] tracking-[-0.18px] text-foreground">
@@ -925,135 +922,6 @@ function DeleteAccountPanel({ onBack, onDeleteConfirm }: DeleteAccountPanelProps
   );
 }
 
-
-// ─── Theme Settings Panel ─────────────────────────────────────────────────────
-
-type ThemeOption = 'dark' | 'light' | 'system';
-
-interface ThemeOptionCardProps {
-  id: ThemeOption;
-  selected: ThemeOption;
-  label: string;
-  description: string;
-  preview: React.ReactNode;
-  onSelect: (id: ThemeOption) => void;
-}
-
-function ThemeOptionCard({ id, selected, label, description, preview, onSelect }: ThemeOptionCardProps) {
-  const isSelected = selected === id;
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(id)}
-      className={[
-        'flex flex-col w-full rounded-xl border overflow-hidden text-left transition duration-300 ease-out',
-        isSelected ? 'border-[#8C5CFF] ring-1 ring-[#8C5CFF]/40' : 'border-border hover:border-foreground/20',
-      ].join(' ')}
-    >
-      {/* Preview area */}
-      <div className="w-full h-[4.5rem] shrink-0 overflow-hidden">
-        {preview}
-      </div>
-      {/* Label row */}
-      <div className="flex items-center justify-between px-4 py-3 bg-card">
-        <div className="flex flex-col gap-0.5">
-          <p className="font-sans text-[13px] font-semibold text-foreground/90">{label}</p>
-          <p className="font-sans text-[10px] text-foreground/50">{description}</p>
-        </div>
-        {/* Radio dot */}
-        <span
-          className={[
-            'flex size-4 shrink-0 items-center justify-center rounded-full border-2 transition duration-300 ease-out',
-            isSelected ? 'border-[#8C5CFF] bg-[#8C5CFF]' : 'border-foreground/30 bg-transparent',
-          ].join(' ')}
-        >
-          {isSelected && <span className="size-1.5 rounded-full bg-white" />}
-        </span>
-      </div>
-    </button>
-  );
-}
-
-function ThemeSettingsPanel({ onBack }: { onBack: () => void }) {
-  const { theme, setTheme } = useTheme();
-
-  return (
-    <div className="relative flex h-full w-full flex-col items-start overflow-hidden bg-background py-[2.125rem] px-0 gap-8">
-      {/* Header */}
-      <div className="flex items-center gap-4 py-0 pl-4 pr-0">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex size-8 items-center justify-center rounded-full bg-card hover:bg-foreground/5 transition-colors lg:hidden"
-          aria-label="Back"
-        >
-          <ChevronLeft size={20} className="text-foreground" />
-        </button>
-        <div className="flex flex-col gap-[0.375rem]">
-          <p className="font-sans font-medium text-foreground/85">Theme</p>
-          <p className="font-sans text-[10px] text-muted">Choose your preferred display style</p>
-        </div>
-      </div>
-
-      <div className="h-px w-full bg-border shrink-0" />
-
-      <div className="flex flex-col w-full gap-6 px-4 flex-1 overflow-y-auto no-scrollbar pb-8">
-        <p className="font-sans text-[11px] font-semibold text-muted uppercase tracking-wider">Appearance</p>
-
-        <div className="flex flex-col gap-3">
-          <ThemeOptionCard
-            id="dark"
-            selected={theme}
-            label="Dark"
-            description="Optimised for low-light environments"
-            onSelect={setTheme}
-            preview={
-              <div className="w-full h-full bg-[#080808] flex items-end px-3 pb-2 gap-2">
-                <div className="h-6 w-1/3 rounded-md bg-background" />
-                <div className="h-4 w-1/4 rounded-md bg-[#242424]" />
-                <div className="h-5 w-1/5 rounded-md bg-[#8C5CFF]/40" />
-              </div>
-            }
-          />
-
-          <ThemeOptionCard
-            id="light"
-            selected={theme}
-            label="Light"
-            description="Clean and bright for daytime use"
-            onSelect={setTheme}
-            preview={
-              <div className="w-full h-full bg-[#F5F8FB] flex items-end px-3 pb-2 gap-2">
-                <div className="h-6 w-1/3 rounded-md bg-[#E2E8F0]" />
-                <div className="h-4 w-1/4 rounded-md bg-[#CBD5E1]" />
-                <div className="h-5 w-1/5 rounded-md bg-[#8C5CFF]/60" />
-              </div>
-            }
-          />
-
-          <ThemeOptionCard
-            id="system"
-            selected={theme}
-            label="System"
-            description="Automatically follows your device preference"
-            onSelect={setTheme}
-            preview={
-              <div className="w-full h-full flex">
-                <div className="w-1/2 h-full bg-[#080808] flex items-end px-2 pb-2">
-                  <div className="h-5 w-3/4 rounded-md bg-background" />
-                </div>
-                <div className="w-1/2 h-full bg-[#F5F8FB] flex items-end px-2 pb-2">
-                  <div className="h-5 w-3/4 rounded-md bg-[#E2E8F0]" />
-                </div>
-              </div>
-            }
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Language & Region Settings Panel ─────────────────────────────────────────
 
 interface LanguageSettingsPanelProps {
@@ -1860,10 +1728,6 @@ export default function SettingsPage({ onBack, sellerMode = false }: PageProps) 
       );
     }
 
-    if (selected === 'theme') {
-      return <ThemeSettingsPanel onBack={handleBack} />;
-    }
-
     if (selected === 'languages') {
       return (
         <LanguageSettingsPanel
@@ -1982,7 +1846,7 @@ export default function SettingsPage({ onBack, sellerMode = false }: PageProps) 
           </div>
         </div>
 
-        <div className="hidden md:block w-full">
+        <div className="hidden md:block w-full mt-auto">
           <Footer />
         </div>
       </div>

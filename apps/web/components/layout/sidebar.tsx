@@ -14,10 +14,16 @@ import {
   Bookmark,
   Heart,
   UserPlus,
+  Palette,
+  Sun,
+  Moon,
+  Laptop,
+  Check,
   type LucideIcon,
 } from 'lucide-react';
 import { AvatarOnline } from '@/components/ui/avatar-online';
 import { Logo } from '@/components/ui/logo';
+import { useTheme } from '@/components/theme-provider';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,10 +59,14 @@ interface SidebarProps {
   onMobileClose?: () => void;
   /** Whether current user is a freelancer — enables dropdown on Bookmarks */
   isFreelancer?: boolean;
+  /** Whether the user is an approved seller — shows the Seller Mode toggle */
+  isSeller?: boolean;
   /** Controlled seller mode state */
   sellerMode?: boolean;
   /** Callback triggered when seller mode changes */
   onSellerModeChange?: (v: boolean) => void;
+  /** Live unread message count for the Messages badge */
+  unreadMessageCount?: number;
 }
 
 // ─── Design tokens (matched to CanaFri spec) ─────────────────────────────────
@@ -78,12 +88,11 @@ const TOKEN = {
 const PRIMARY_NAV: NavItemConfig[] = [
   { label: 'Dashboard',    icon: LayoutDashboard },
   { label: 'Saved',        icon: Bookmark },
-  { label: 'Favorites',    icon: Heart },
   { label: 'Wallet',       icon: Wallet },
   { label: 'Jobs',         icon: ClipboardList },
   { label: 'Selling',      icon: Briefcase },
   { label: 'Become a seller', icon: UserPlus },
-  { label: 'Messages',     icon: MessageSquare, badge: 5 },
+  { label: 'Messages',     icon: MessageSquare },
   { label: 'Analysis',     icon: BarChart3 },
 ];
 
@@ -94,7 +103,6 @@ const PRIMARY_NAV: NavItemConfig[] = [
  */
 const MOBILE_DRAWER_NAV: NavItemConfig[] = [
   { label: 'Saved',        icon: Bookmark },
-  { label: 'Favorites',    icon: Heart },
   { label: 'Jobs',         icon: ClipboardList },
   { label: 'Selling',      icon: Briefcase },
   { label: 'Become a seller', icon: UserPlus },
@@ -289,6 +297,7 @@ function JobsNavItem({ activePage, setActivePage, showLabel = true, onClose }: J
   const subItems = [
     { label: 'Post a Job',    page: 'Post a Job' },
     { label: 'My Posted Jobs', page: 'My Posted Jobs' },
+    { label: 'Find Sellers',   page: 'Find Sellers' },
   ];
 
   const isActive = subItems.some(item => activePage === item.page) || activePage === 'Jobs';
@@ -357,6 +366,99 @@ function JobsNavItem({ activePage, setActivePage, showLabel = true, onClose }: J
             </button>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Theme nav item with sub-items dropdown (Dark/Light/System) ───────────────
+
+interface ThemeNavItemProps {
+  showLabel?: boolean;
+  onClose?: () => void;
+}
+
+function ThemeNavItem({ showLabel = true, onClose }: ThemeNavItemProps) {
+  const [open, setOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
+
+  const options: { label: string; mode: 'dark' | 'light' | 'system'; icon: LucideIcon }[] = [
+    { label: 'Dark mode', mode: 'dark', icon: Moon },
+    { label: 'Light mode', mode: 'light', icon: Sun },
+    { label: 'System mode', mode: 'system', icon: Laptop },
+  ];
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title={!showLabel ? 'Theme' : undefined}
+        className={[
+          'flex h-[3rem] w-full items-center gap-[0.625rem] rounded-[0.75rem]',
+          'cursor-pointer transition-colors duration-300 ease-out text-left',
+          showLabel ? 'px-[1.5rem]' : 'justify-center px-0',
+          open ? 'bg-foreground/10' : 'hover:bg-border/50 dark:hover:bg-border/50',
+        ].join(' ')}
+      >
+        <span className="relative shrink-0 opacity-80">
+          <Palette size={20} strokeWidth={1.5} className="text-foreground" />
+        </span>
+        {showLabel && (
+          <>
+            <span className="flex-1 whitespace-nowrap font-sans text-[0.8125rem] font-normal leading-[1.125rem] text-foreground opacity-80">
+              Theme
+            </span>
+            <span className={[
+              'text-foreground/50 transition-transform duration-200',
+              open ? 'rotate-180' : '',
+            ].join(' ')}>
+              <svg className="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </span>
+          </>
+        )}
+      </button>
+
+      {/* Dropdown list (ul) */}
+      {open && (
+        <ul className={[
+          'mt-1 flex flex-col gap-[2px] rounded-[0.75rem] border border-border bg-card py-[0.375rem] px-[0.25rem]',
+          showLabel ? 'ml-4' : 'ml-0',
+        ].join(' ')}>
+          {options.map(({ label, mode, icon: Icon }) => {
+            const isSelected = theme === mode;
+            return (
+              <li key={mode}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTheme(mode);
+                    onClose?.();
+                  }}
+                  className={[
+                    'flex h-[2.25rem] w-full items-center justify-between gap-[0.5rem] rounded-[0.625rem] px-[0.75rem]',
+                    'cursor-pointer transition-colors duration-200 text-left',
+                    isSelected
+                      ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold'
+                      : 'hover:bg-foreground/5 text-foreground/80',
+                  ].join(' ')}
+                >
+                  <div className="flex items-center gap-2">
+                    <Icon size={14} className={isSelected ? 'text-[#8C5CFF]' : 'text-foreground/70'} />
+                    {showLabel && (
+                      <span className="font-sans text-[0.75rem] font-normal leading-[1.125rem]">
+                        {label}
+                      </span>
+                    )}
+                  </div>
+                  {isSelected && <Check size={14} className="text-[#8C5CFF]" />}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );
@@ -604,6 +706,10 @@ interface SharedSidebarProps {
   onViewProfile?: () => void;
   onViewSettings?: () => void;
   isFreelancer?: boolean;
+  /** Whether the user is an approved seller — controls toggle visibility */
+  isSeller?: boolean;
+  /** Live unread message count for the Messages badge */
+  unreadMessageCount?: number;
 }
 
 function DesktopSidebar({
@@ -616,6 +722,8 @@ function DesktopSidebar({
   onViewProfile,
   onViewSettings,
   isFreelancer = false,
+  isSeller = false,
+  unreadMessageCount = 0,
 }: SharedSidebarProps) {
   return (
     <aside className="flex h-screen w-[14rem] shrink-0 flex-col overflow-hidden bg-sidebar px-[0.9375rem] py-[2.5rem]">
@@ -672,7 +780,7 @@ function DesktopSidebar({
                 key={item.label}
                 label={item.label}
                 icon={item.icon}
-                badge={item.badge}
+                badge={item.label === 'Messages' ? (unreadMessageCount > 0 ? unreadMessageCount : undefined) : item.badge}
                 active={activePage === item.label}
                 onClick={() => setActivePage(item.label)}
               />
@@ -685,17 +793,21 @@ function DesktopSidebar({
         <SidebarDivider />
         <nav className="flex w-full flex-col gap-[0.3125rem]">
           {SECONDARY_NAV.map((item) => (
-            <NavItem
-              key={item.label}
-              label={item.label}
-              icon={item.icon}
-              active={activePage === item.label}
-              onClick={() => setActivePage(item.label)}
-            />
+            <div key={item.label} className="flex flex-col gap-[0.3125rem]">
+              <NavItem
+                label={item.label}
+                icon={item.icon}
+                active={activePage === item.label}
+                onClick={() => setActivePage(item.label)}
+              />
+              {item.label === 'Settings' && <ThemeNavItem />}
+            </div>
           ))}
         </nav>
         <div className="pl-[1.5rem]">
-          <SellerModeToggle enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
+          {isSeller && (
+            <SellerModeToggle enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
+          )}
         </div>
         <ProfileRow
           name={user.name}
@@ -722,29 +834,31 @@ function TabletSidebar({
   onViewProfile,
   onViewSettings,
   isFreelancer = false,
+  isSeller = false,
+  unreadMessageCount = 0,
 }: SharedSidebarProps) {
-  const [expanded, setExpanded] = useState(false);
-
-  const COLLAPSED_WIDTH = '4.5rem';
-  const EXPANDED_WIDTH  = '14rem';
+  const [hovered, setHovered] = useState(false);
+  const expanded = hovered;
 
   return (
     <aside
-      onMouseEnter={() => setExpanded(true)}
-      onMouseLeave={() => setExpanded(false)}
-      style={{ width: expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH }}
-      className="flex h-screen shrink-0 flex-col overflow-hidden bg-sidebar py-[2.5rem] transition-[width] duration-300 ease-in-out"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className={[
+        'hidden md:flex lg:hidden flex-col h-screen shrink-0 overflow-y-auto no-scrollbar bg-sidebar px-[0.9375rem] py-[2.5rem]',
+        'transition-[width] duration-300 ease-in-out',
+        expanded ? 'w-[14rem]' : 'w-[4.5rem]',
+      ].join(' ')}
     >
       {/* Logo — fixed header */}
-      <div className="mb-[1.875rem] flex shrink-0 items-center justify-center overflow-hidden px-4">
+      <div className="flex w-full flex-col items-center gap-[1.875rem]">
         <Logo collapsed={!expanded} />
+        <SidebarDivider />
       </div>
 
-      <SidebarDivider />
-
       {/* Everything else scrolls */}
-      <div className="flex-1 overflow-y-auto no-scrollbar mt-[1.875rem] flex flex-col">
-        <div className="flex w-full shrink-0 flex-col gap-[0.3125rem]">
+      <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-[1.875rem] mt-[1.875rem] w-full">
+        <div className="flex flex-col gap-[0.3125rem]">
           {PRIMARY_NAV.map((item) => {
             if (item.label === 'Saved') {
               const label = sellerMode ? 'Saved Jobs' : 'Saved';
@@ -792,7 +906,7 @@ function TabletSidebar({
                 key={item.label}
                 label={item.label}
                 icon={item.icon}
-                badge={item.badge}
+                badge={item.label === 'Messages' ? (unreadMessageCount > 0 ? unreadMessageCount : undefined) : item.badge}
                 active={activePage === item.label}
                 showLabel={expanded}
                 onClick={() => setActivePage(item.label)}
@@ -806,22 +920,26 @@ function TabletSidebar({
         <SidebarDivider className="mt-6" />
         <div className="flex flex-col gap-[0.3125rem]">
           {SECONDARY_NAV.map((item) => (
-            <NavItem
-              key={item.label}
-              label={item.label}
-              icon={item.icon}
-              active={activePage === item.label}
-              showLabel={expanded}
-              onClick={() => setActivePage(item.label)}
-            />
+            <div key={item.label} className="flex flex-col gap-[0.3125rem]">
+              <NavItem
+                label={item.label}
+                icon={item.icon}
+                active={activePage === item.label}
+                showLabel={expanded}
+                onClick={() => setActivePage(item.label)}
+              />
+              {item.label === 'Settings' && <ThemeNavItem showLabel={expanded} />}
+            </div>
           ))}
         </div>
 
         <div className="flex justify-center px-2 mt-[1.875rem]">
-          {expanded ? (
-            <SellerModeToggle enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
-          ) : (
-            <SellerModeTogglePill enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
+          {isSeller && (
+            expanded ? (
+              <SellerModeToggle enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
+            ) : (
+              <SellerModeTogglePill enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
+            )
           )}
         </div>
 
@@ -860,6 +978,7 @@ function MobileSidebar({
   user,
   onLogout,
   isFreelancer = false,
+  isSeller = false,
 }: MobileSidebarProps) {
   return (
     <>
@@ -903,13 +1022,15 @@ function MobileSidebar({
               </svg>
             </button>
           </div>
-          <SellerModeToggle enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
+          {isSeller && (
+            <SellerModeToggle enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
+          )}
         </div>
 
         <SidebarDivider />
 
-        {/* Nav + logout */}
-        <div className="mt-[1.5rem] flex flex-1 flex-col gap-6 overflow-y-auto">
+        {/* Navigation list */}
+        <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-[1.5rem] pt-[1.5rem]">
           <nav className="flex w-full flex-col gap-[0.3125rem]">
             {MOBILE_DRAWER_NAV.map((item) => {
               if (item.label === 'Saved') {
@@ -1032,8 +1153,10 @@ export default function Sidebar({
   mobileOpen = false,
   onMobileClose,
   isFreelancer = false,
+  isSeller = false,
   sellerMode: controlledSellerMode,
   onSellerModeChange,
+  unreadMessageCount = 0,
 }: SidebarProps) {
   const [activePage, setActivePage] = useState(activeItem);
   const [localSellerMode, setLocalSellerMode] = useState(false);
@@ -1062,6 +1185,8 @@ export default function Sidebar({
     onViewProfile,
     onViewSettings,
     isFreelancer,
+    isSeller,
+    unreadMessageCount,
   };
 
   return (

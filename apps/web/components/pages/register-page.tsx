@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Eye, EyeOff, User, Lock, Mail, Check, X, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, User, Lock, Mail, Check, X, ArrowLeft, ShieldAlert } from 'lucide-react';
+import { usePlatformConfig } from '@/lib/platform-config-context';
 
 interface RegisterPageProps {
   onLoginClick?: () => void;
@@ -21,6 +22,7 @@ interface InputFieldProps {
   rightSlot?: React.ReactNode;
   error?: string;
   prefixText?: string;
+  autoComplete?: string;
 }
 
 function InputField({
@@ -35,6 +37,7 @@ function InputField({
   rightSlot,
   error,
   prefixText,
+  autoComplete,
 }: InputFieldProps) {
   return (
     <div className="w-full flex flex-col gap-1.5">
@@ -57,6 +60,7 @@ function InputField({
           onChange={(e) => onChange(e.target.value)}
           onFocus={onFocus}
           onBlur={onBlur}
+          autoComplete={autoComplete}
           className="flex-1 bg-transparent text-xs text-[#e0e0e0] placeholder:text-[#a0a0a0]/40 font-normal leading-[16px] outline-none min-w-0"
         />
         {rightSlot && <span className="shrink-0 flex items-center text-[#a0a0a0]/60">{rightSlot}</span>}
@@ -87,7 +91,12 @@ function validateFullName(val: string): boolean {
   return nameRegex.test(val);
 }
 
-export default function RegisterPage({ onLoginClick, onRegisterSuccess, onBackClick }: RegisterPageProps) {
+export default function RegisterPage({
+  onLoginClick,
+  onRegisterSuccess,
+  onBackClick,
+}: RegisterPageProps) {
+  const { config } = usePlatformConfig();
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -196,7 +205,7 @@ export default function RegisterPage({ onLoginClick, onRegisterSuccess, onBackCl
     const cleanedUsername = sanitizeInput(username);
 
     try {
-      const res = await fetch('http://localhost:3001/auth/register', {
+      const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -280,6 +289,14 @@ export default function RegisterPage({ onLoginClick, onRegisterSuccess, onBackCl
               </p>
             </div>
 
+            {/* Platform Control Center Registration Paused Banner */}
+            {config.registrationPaused && (
+              <div className="flex items-center gap-3 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-medium w-full">
+                <ShieldAlert size={16} className="shrink-0 text-amber-400" />
+                <span className="flex-1">{config.registrationPausedReason || 'New user registrations are temporarily paused for maintenance.'}</span>
+              </div>
+            )}
+
             {/* Form Fields */}
             <form onSubmit={handleSubmit} className="flex flex-col gap-4 w-full">
 
@@ -323,6 +340,7 @@ export default function RegisterPage({ onLoginClick, onRegisterSuccess, onBackCl
                     value={email}
                     onChange={(val) => handleFieldChange('email', val)}
                     error={errors.email}
+                    autoComplete="email"
                   />
 
                   {/* Next button */}
@@ -349,6 +367,7 @@ export default function RegisterPage({ onLoginClick, onRegisterSuccess, onBackCl
                     onFocus={handlePasswordFocus}
                     onBlur={handlePasswordBlur}
                     error={errors.password}
+                    autoComplete="new-password"
                     rightSlot={
                       <button
                         type="button"
@@ -391,6 +410,7 @@ export default function RegisterPage({ onLoginClick, onRegisterSuccess, onBackCl
                       value={confirmPassword}
                       onChange={(val) => handleFieldChange('confirmPassword', val)}
                       error={errors.confirmPassword}
+                      autoComplete="new-password"
                       rightSlot={
                         <button
                           type="button"

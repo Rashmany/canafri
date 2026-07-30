@@ -1,130 +1,43 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   ChevronLeft, ChevronUp, ChevronDown,
-  Archive, Star, Bookmark, UserPlus, CheckCircle2, Send,
+  Archive, Star, Bookmark, UserPlus, CheckCircle2, Send, MessageSquare, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import Footer from '@/components/layout/footer';
 
 interface ReviewProposalsPageProps {
   onBack?: () => void;
+  onNavigateToMessages?: (recipientId?: string) => void;
 }
 
 // ─── Data types ───────────────────────────────────────────────────────────────
 
 interface FreelancerCard {
-  id: number;
+  id: string | number;
+  freelancerId: string;
   name: string;
+  username: string;
   title: string;
   location: string;
   rate: string;
+  rateCCNum: number;
+  deliveryDays: number;
   earned: string;
   rating: number;
   reviews: number;
   badge?: string;
   badgeColor?: 'green' | 'blue';
   coverLetter?: string;
+  approach?: string;
+  answers?: string[];
   skills: string[];
   status?: string;
   statusColor?: 'green' | 'purple' | 'amber' | 'red';
   hiredDate?: string;
   inviteSentDate?: string;
 }
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-
-const initialProposals: FreelancerCard[] = [
-  {
-    id: 1,
-    name: 'John Trek',
-    title: 'Dedicated web3 developer',
-    location: 'United Kingdom',
-    rate: '$25.00/hr',
-    earned: '$25k Earned',
-    rating: 4.9,
-    reviews: 32,
-    badge: 'Best Match',
-    badgeColor: 'green',
-    coverLetter: 'Dear client, I am very excited about the opportunity you are offering. I have extensive experience in smart contract development and web3 technologies. I will contribute my best effort to deliver an outstanding job.',
-    skills: ['Smart Contract', 'Daml Developer', 'Solidity', 'Web3'],
-  },
-  {
-    id: 2,
-    name: 'Alex Daml',
-    title: 'Full-stack blockchain engineer',
-    location: 'Germany',
-    rate: '$35.00/hr',
-    earned: '$42k Earned',
-    rating: 4.7,
-    reviews: 18,
-    badge: 'Good Match',
-    badgeColor: 'blue',
-    coverLetter: 'Hello, I specialize in payment gateway integrations and blockchain solutions. I have shipped 10+ successful DeFi projects and can deliver a robust smart contract for your gateway upgrade.',
-    skills: ['DeFi', 'Ethereum', 'Hardhat', 'TypeScript'],
-  },
-  {
-    id: 3,
-    name: 'Maria Solano',
-    title: 'Smart contract auditor',
-    location: 'Spain',
-    rate: '$45.00/hr',
-    earned: '$78k Earned',
-    rating: 5.0,
-    reviews: 47,
-    badge: 'Top Rated',
-    badgeColor: 'green',
-    coverLetter: 'Hi! My background is in auditing and writing production-grade Solidity contracts. I have a track record of catching critical vulnerabilities before deployment.',
-    skills: ['Solidity', 'Audit', 'EVM', 'Security'],
-  },
-];
-
-const initialInvites: FreelancerCard[] = [
-  {
-    id: 4,
-    name: 'Sam Kwon',
-    title: 'Blockchain protocol engineer',
-    location: 'South Korea',
-    rate: '$50.00/hr',
-    earned: '$110k Earned',
-    rating: 4.8,
-    reviews: 61,
-    skills: ['Rust', 'Layer 2', 'ZK Proofs'],
-    inviteSentDate: '2 days ago',
-    status: 'Pending',
-    statusColor: 'amber',
-  },
-  {
-    id: 5,
-    name: 'Lena Koch',
-    title: 'DeFi liquidity specialist',
-    location: 'Netherlands',
-    rate: '$40.00/hr',
-    earned: '$55k Earned',
-    rating: 4.6,
-    reviews: 29,
-    skills: ['Uniswap', 'AMM', 'Solidity'],
-    inviteSentDate: '5 days ago',
-    status: 'Declined',
-    statusColor: 'red',
-  },
-];
-
-const initialHired: FreelancerCard[] = [
-  {
-    id: 6,
-    name: 'Carlos Vega',
-    title: 'Web3 full-stack developer',
-    location: 'Mexico',
-    rate: '$30.00/hr',
-    earned: '$31k Earned',
-    rating: 4.9,
-    reviews: 40,
-    skills: ['Next.js', 'Solidity', 'GraphQL'],
-    hiredDate: 'Hired on Jun 12, 2025',
-    status: 'Working',
-    statusColor: 'green',
-  },
-];
 
 // ─── ProposalCard ─────────────────────────────────────────────────────────────
 
@@ -136,16 +49,23 @@ function ProposalCard({
   onToggleSave,
   onToggleArchive,
   onCancelInvite,
+  onMessage,
+  onHire,
+  hiring,
 }: {
   card: FreelancerCard;
   mode: 'proposals' | 'invite' | 'hired';
   isSaved: boolean;
   isArchived: boolean;
-  onToggleSave: (id: number) => void;
-  onToggleArchive: (id: number) => void;
-  onCancelInvite?: (id: number) => void;
+  onToggleSave: (id: string | number) => void;
+  onToggleArchive: (id: string | number) => void;
+  onCancelInvite?: (id: string | number) => void;
+  onMessage?: (card: FreelancerCard) => void;
+  onHire?: (card: FreelancerCard) => void;
+  hiring?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [showApproach, setShowApproach] = useState(false);
 
   const statusPill: Record<string, string> = {
     green: 'bg-[#304437] text-[#4ADE80]',
@@ -154,18 +74,28 @@ function ProposalCard({
     red: 'bg-[#3d1212] text-[#F87171]',
   };
 
+  const initials = card.name
+    .trim()
+    .split(/\s+/)
+    .map((n: string) => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <div className="bg-[#FAFAFD] dark:bg-[#0b0b0b] border-t border-[#E2E2E2] dark:border-[#242424] flex gap-4 items-start px-4 py-6 min-w-[700px] md:min-w-0 w-full last:rounded-b-2xl transition-colors">
       {/* Avatar */}
-      <div className="flex h-[45px] w-[45px] shrink-0 items-center justify-center rounded-full bg-[#291D46] text-white text-[14px] font-semibold">
-        {card.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+      <div className="flex h-[45px] w-[45px] shrink-0 items-center justify-center rounded-full bg-[#291D46] text-white text-[14px] font-semibold select-none">
+        {initials}
       </div>
 
       {/* Content */}
       <div className="flex flex-1 flex-col gap-3 min-w-0">
         {/* Name + badge + rating */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[13px] font-medium text-muted whitespace-nowrap">{card.name}</span>
+          <span className="text-[14px] font-semibold text-foreground/90 whitespace-nowrap">{card.name}</span>
+          <span className="text-[12px] text-muted">(@{card.username})</span>
+
           {card.badge && (
             <span className={cn(
               'flex items-center justify-center px-[8px] py-[3px] rounded-[3px] text-[10px] font-normal whitespace-nowrap',
@@ -174,6 +104,7 @@ function ProposalCard({
               {card.badge}
             </span>
           )}
+
           {card.status && (
             <span className={cn(
               'flex items-center justify-center px-[8px] py-[3px] rounded-[3px] text-[10px] font-normal whitespace-nowrap',
@@ -182,10 +113,11 @@ function ProposalCard({
               {card.status}
             </span>
           )}
+
           <div className="flex items-center gap-1 ml-auto">
             <Star size={11} className="text-[#DAC95A] fill-[#DAC95A]" />
             <span className="text-[11px] font-medium text-foreground/80">{card.rating}</span>
-            <span className="text-[10px] text-muted">({card.reviews})</span>
+            <span className="text-[10px] text-muted">Trust Score</span>
           </div>
         </div>
 
@@ -193,50 +125,81 @@ function ProposalCard({
         <p className="text-[13px] font-normal leading-[20px] text-foreground/80">{card.title}</p>
         <p className="text-[13px] font-medium text-muted leading-[18px]">{card.location}</p>
 
-        {/* Rate + earned */}
-        <div className="flex items-center gap-8 text-[13px] font-medium text-muted whitespace-nowrap">
-          <span>{card.rate}</span>
-          <span>{card.earned}</span>
+        {/* Rate + delivery timeline */}
+        <div className="flex items-center gap-6 text-[13px] font-medium text-muted whitespace-nowrap">
+          <span><strong className="text-foreground/90 font-semibold">Bid:</strong> {card.rate}</span>
+          <span><strong className="text-foreground/90 font-semibold">Delivery:</strong> {card.deliveryDays} days</span>
           {card.hiredDate && <span className="text-primary/80 text-[11px]">{card.hiredDate}</span>}
           {card.inviteSentDate && <span className="text-muted text-[11px]">Sent {card.inviteSentDate}</span>}
         </div>
 
-        {/* Cover letter (proposals only) */}
+        {/* Cover letter */}
         {card.coverLetter && (
           <>
             <p className={cn(
               'text-[13px] font-normal leading-[20px] text-foreground/80 transition-all duration-200',
               !expanded && 'line-clamp-2',
             )}>
-              <span className="font-semibold">Cover Letter: </span>
+              <span className="font-semibold text-foreground/90">Cover Letter: </span>
               {card.coverLetter}
             </p>
             <button
               onClick={() => setExpanded(v => !v)}
-              className="flex items-center gap-1 text-[11px] text-primary cursor-pointer self-start"
+              className="flex items-center gap-1 text-[11px] text-primary cursor-pointer self-start font-medium"
             >
-              {expanded ? <><ChevronUp size={12} /> Less</> : <><ChevronDown size={12} /> Read more</>}
+              {expanded ? <><ChevronUp size={12} /> Hide full cover letter</> : <><ChevronDown size={12} /> Read full cover letter</>}
             </button>
           </>
         )}
 
+        {/* Approach */}
+        {card.approach && (
+          <div className="flex flex-col gap-1 mt-1">
+            <button
+              onClick={() => setShowApproach(v => !v)}
+              className="flex items-center gap-1 text-[11px] text-primary/90 cursor-pointer self-start font-medium"
+            >
+              {showApproach ? <><ChevronUp size={12} /> Hide Technical Approach</> : <><ChevronDown size={12} /> View Technical Approach</>}
+            </button>
+            {showApproach && (
+              <div className="p-3.5 rounded-xl border border-border bg-card text-[12px] text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                <strong className="text-foreground font-semibold block mb-1">Proposed Technical Approach:</strong>
+                {card.approach}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Screening Answers */}
+        {Array.isArray(card.answers) && card.answers.length > 0 && (
+          <div className="flex flex-col gap-1.5 mt-1">
+            <span className="text-[11px] font-semibold text-foreground/80">Screening Answers:</span>
+            {card.answers.map((ans, idx) => (
+              <div key={idx} className="p-2.5 rounded-lg border border-border bg-card/60 text-[11px] text-foreground/75">
+                <span className="font-medium text-foreground">{idx + 1}.</span> {ans}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Skills */}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 mt-1">
           {card.skills.map(skill => (
-            <span key={skill} className="bg-[#EBE5FA] dark:bg-[#291D46] text-primary text-[10px] font-normal px-[10px] py-[5px] rounded-[3px] whitespace-nowrap">
+            <span key={skill} className="bg-[#EBE5FA] dark:bg-[#291D46] text-primary text-[10px] font-normal px-[10px] py-[4px] rounded-[4px] whitespace-nowrap">
               {skill}
             </span>
           ))}
         </div>
 
         {/* Divider */}
-        <div className="h-px w-full bg-[#E2E2E2] dark:bg-[#121212]" />
+        <div className="h-px w-full bg-[#E2E2E2] dark:bg-[#121212] my-1" />
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 flex-wrap">
-          {/* Saved / Pinned Toggle */}
+          {/* Bookmark / Pin */}
           <button
             onClick={() => onToggleSave(card.id)}
+            title={isSaved ? 'Unpin proposal' : 'Pin proposal'}
             className={cn(
               'flex h-[35px] w-[35px] items-center justify-center rounded-full border-[0.5px] transition-colors cursor-pointer shrink-0',
               isSaved ? 'border-primary bg-primary/10 text-primary' : 'border-primary/40 text-muted hover:text-primary hover:border-primary',
@@ -244,9 +207,10 @@ function ProposalCard({
           >
             <Bookmark size={14} fill={isSaved ? 'currentColor' : 'none'} />
           </button>
-          {/* Functional Archive button */}
+          {/* Archive */}
           <button
             onClick={() => onToggleArchive(card.id)}
+            title={isArchived ? 'Unarchive proposal' : 'Archive proposal'}
             className={cn(
               'flex h-[35px] w-[35px] items-center justify-center rounded-full border-[0.5px] transition-colors cursor-pointer shrink-0',
               isArchived ? 'border-primary bg-primary/10 text-primary' : 'border-primary/40 text-muted hover:text-primary hover:border-primary',
@@ -254,15 +218,26 @@ function ProposalCard({
           >
             <Archive size={14} />
           </button>
+
           <div className="flex items-center gap-2">
-            <button className="border border-primary/50 text-foreground/80 text-[13px] font-semibold h-[38px] px-4 rounded-xl hover:bg-primary/5 transition-colors cursor-pointer whitespace-nowrap">
-              Message
+            <button
+              onClick={() => onMessage?.(card)}
+              className="flex items-center gap-1.5 border border-primary/50 text-foreground/80 hover:text-primary text-[13px] font-semibold h-[38px] px-4 rounded-xl hover:bg-primary/5 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <MessageSquare size={14} /> Message
             </button>
+
             {mode === 'proposals' && (
-              <button className="bg-primary text-white text-[13px] font-semibold h-[38px] px-5 rounded-xl hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap">
-                Hire
+              <button
+                disabled={hiring || card.status === 'ACCEPTED' || card.status === 'Working'}
+                onClick={() => onHire?.(card)}
+                className="bg-primary text-white text-[13px] font-semibold h-[38px] px-5 rounded-xl hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {hiring ? <Loader2 size={14} className="animate-spin" /> : null}
+                {card.status === 'ACCEPTED' || card.status === 'Working' ? 'Hired' : 'Hire Freelancer'}
               </button>
             )}
+
             {mode === 'invite' && (
               <>
                 <button
@@ -276,9 +251,10 @@ function ProposalCard({
                 </button>
               </>
             )}
+
             {mode === 'hired' && (
               <button className="bg-[#304437] text-[#4ADE80] text-[13px] font-semibold h-[38px] px-5 rounded-xl hover:bg-[#304437]/80 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1">
-                <CheckCircle2 size={13} /> Working
+                <CheckCircle2 size={13} /> Active Contract
               </button>
             )}
           </div>
@@ -326,33 +302,16 @@ function FilterTabs({
   );
 }
 
-// ─── Invite placeholder card (for "Search & Invite" UX) ──────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
-function InviteSearchBox() {
-  return (
-    <div className="bg-[#FAFAFD] dark:bg-[#0b0b0b] border-t border-[#E2E2E2] dark:border-[#242424] flex flex-col items-center gap-4 px-6 py-10">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-        <UserPlus size={22} className="text-primary" />
-      </div>
-      <div className="text-center">
-        <p className="text-[14px] font-semibold text-foreground/80">Invite a freelancer</p>
-        <p className="text-[12px] text-muted mt-1">Search CanaFri's talent pool and send direct invitations to freelancers you think are a good fit.</p>
-      </div>
-      <button className="bg-primary text-white text-[13px] font-semibold h-[40px] px-6 rounded-xl hover:bg-primary/90 transition-colors cursor-pointer flex items-center gap-2">
-        <UserPlus size={14} /> Search & Invite
-      </button>
-    </div>
-  );
-}
-
-// ─── Main page ────────────────────────────────────────────────────────────────
-
-export default function ReviewProposalsPage({ onBack }: ReviewProposalsPageProps) {
+export default function ReviewProposalsPage({ onBack, onNavigateToMessages }: ReviewProposalsPageProps) {
   const [activeAction, setActiveAction] = useState('proposals');
   const [activeFilter, setActiveFilter] = useState('All');
+  const [loading, setLoading] = useState(true);
+  const [hiringId, setHiringId] = useState<string | number | null>(null);
 
-  // Load the job that was clicked in the Proposals tab of buyer-jobs-page
-  const selectedJob = (() => {
+  // Selected job from localStorage
+  const [selectedJob, setSelectedJob] = useState<any>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('canafri_selected_job_for_proposals');
       if (stored) {
@@ -360,77 +319,167 @@ export default function ReviewProposalsPage({ onBack }: ReviewProposalsPageProps
       }
     }
     return null;
-  })();
+  });
 
-  const jobTitle    = selectedJob?.title    ?? 'Web3 Specialist, and solidity smart contract expert to upgrade my payment gateway';
-  const jobCategory = selectedJob?.category ?? 'Smart Contracts';
-  const jobBudget   = selectedJob?.budget   ?? '400 CC';
-  const jobProposalCount = selectedJob?.proposals ?? 0;
+  const [proposals, setProposals] = useState<FreelancerCard[]>([]);
+  const [hired, setHired] = useState<FreelancerCard[]>([]);
+  const [savedIds, setSavedIds] = useState<Set<string | number>>(new Set());
+  const [archivedIds, setArchivedIds] = useState<Set<string | number>>(new Set());
 
-  // Dynamic state arrays
-  const [proposals, setProposals] = useState<FreelancerCard[]>(() => {
-    let list = [...initialProposals];
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("canafri_submitted_proposals");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          const mapped = parsed.map((p: any) => ({
-            id: p.id,
-            name: p.freelancerName || "Josh Trek",
-            title: "Blockchain developer",
-            location: "Turkey",
-            rate: p.bidAmount || "$25.00/hr",
-            earned: "$0 Earned",
-            rating: 5.0,
-            reviews: 0,
-            badge: "New Proposal",
-            badgeColor: "green",
-            coverLetter: p.coverLetter,
-            skills: ["Next.js", "Daml", "React"],
+  // Fetch real job details and proposals from API
+  const fetchJobProposals = useCallback(async () => {
+    if (!selectedJob?.id) {
+      setLoading(false);
+      return;
+    }
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/jobs/${selectedJob.id}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.job) {
+          const j = data.job;
+          setSelectedJob((prev: any) => ({
+            ...prev,
+            ...j,
+            budget: `${j.amountCC || 0} CC`,
           }));
-          list = [...mapped, ...list];
-        } catch (e) {
-          console.error(e);
+
+          if (Array.isArray(j.proposals)) {
+            const mapped: FreelancerCard[] = j.proposals.map((p: any) => {
+              const fl = p.freelancer || {};
+              const name = fl.displayName || fl.username || 'Freelance Seller';
+              const username = fl.username ? fl.username.replace(/^@/, '') : 'freelancer';
+              const rating = fl.trustScore ? parseFloat((fl.trustScore / 20).toFixed(1)) : 5.0;
+              const isAccepted = p.status === 'ACCEPTED' || j.freelancerId === fl.id;
+
+              return {
+                id: p.id,
+                freelancerId: fl.id || p.freelancerId,
+                name,
+                username,
+                title: fl.bio || 'Verified Canton Network Seller',
+                location: fl.country || 'Global',
+                rate: `${p.rateCC || 0} CC`,
+                rateCCNum: p.rateCC || 0,
+                deliveryDays: p.deliveryDays || 30,
+                earned: '$0 Earned',
+                rating,
+                reviews: 12,
+                badge: p.status === 'ACCEPTED' ? 'Hired' : 'Submitted Proposal',
+                badgeColor: p.status === 'ACCEPTED' ? 'green' : 'blue',
+                coverLetter: p.coverLetter || '',
+                approach: p.approach || '',
+                answers: p.answers || [],
+                skills: ['Smart Contracts', 'Web3', 'Canton Network'],
+                status: isAccepted ? 'Working' : 'Pending',
+                statusColor: isAccepted ? 'green' : 'purple',
+              };
+            });
+
+            setProposals(mapped.filter(p => p.status !== 'Working'));
+            setHired(mapped.filter(p => p.status === 'Working'));
+          }
         }
       }
+    } catch (err) {
+      console.error('Failed to fetch job proposals:', err);
+    } finally {
+      setLoading(false);
     }
-    return list;
-  });
-  const [invites, setInvites] = useState<FreelancerCard[]>(initialInvites);
-  const [hired, setHired] = useState<FreelancerCard[]>(initialHired);
-  const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
-  const [archivedIds, setArchivedIds] = useState<Set<number>>(new Set());
+  }, [selectedJob?.id]);
 
-  const handleToggleSave = (id: number) => {
+  useEffect(() => {
+    fetchJobProposals();
+  }, [fetchJobProposals]);
+
+  const handleToggleSave = (id: string | number) => {
     setSavedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
-  const handleToggleArchive = (id: number) => {
+  const handleToggleArchive = (id: string | number) => {
     setArchivedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
-  const handleCancelInvite = (id: number) => {
-    setInvites(prev => prev.filter(item => item.id !== id));
+  // Real Message Seller Hookup — navigate to chat thread with recipient pre-selected
+  const handleMessageSeller = (card: FreelancerCard) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('canafri_active_chat_recipient', JSON.stringify({
+        userId: card.freelancerId,
+        name: card.name,
+        username: card.username,
+      }));
+    }
+
+    if (onNavigateToMessages) {
+      onNavigateToMessages(card.freelancerId);
+    } else if (onBack) {
+      onBack();
+    }
   };
 
-  // Saved / Bookmarked = Pinned (excluding archived ones from active views)
+  // Real Hire Seller Hookup
+  const handleHireSeller = async (card: FreelancerCard) => {
+    if (!selectedJob?.id || !card.freelancerId) return;
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+    if (!token) return;
+
+    setHiringId(card.id);
+    try {
+      const res = await fetch(`/api/jobs/${selectedJob.id}/assign`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          freelancerId: card.freelancerId,
+          milestones: [
+            {
+              title: 'Project Delivery & Final Review',
+              description: card.approach || card.coverLetter || 'Complete project deliverables as specified in job requirements.',
+              amountCC: selectedJob?.amountCC || card.rateCCNum || 100,
+              order: 1,
+            },
+          ],
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Successfully hired ${card.name}! Locked ${selectedJob?.amountCC || card.rateCCNum || 100} CC in milestone escrow.`);
+        await fetchJobProposals();
+      } else {
+        alert(data.message || data.error || 'Failed to hire freelancer.');
+      }
+    } catch (err) {
+      console.error('Hiring error:', err);
+      alert('Network error while assigning freelancer.');
+    } finally {
+      setHiringId(null);
+    }
+  };
+
+  const jobTitle = selectedJob?.title ?? 'Job Proposals Review';
+  const jobCategory = selectedJob?.category ?? 'Development & IT';
+  const jobBudget = selectedJob?.budget ?? '0 CC';
+  const jobProposalCount = proposals.length + hired.length;
+
   const activeProposals = proposals.filter(p => !archivedIds.has(p.id));
   const proposalPinnedCount = proposals.filter(p => savedIds.has(p.id) && !archivedIds.has(p.id)).length;
   const proposalArchivedCount = proposals.filter(p => archivedIds.has(p.id)).length;
@@ -439,78 +488,46 @@ export default function ReviewProposalsPage({ onBack }: ReviewProposalsPageProps
     {
       key: 'proposals',
       label: 'Review Proposals',
-      stat1: `${activeProposals.length} proposals`,
+      stat1: `${activeProposals.length} proposal${activeProposals.length !== 1 ? 's' : ''}`,
       stat2: `${proposalPinnedCount} pinned`,
       icon: CheckCircle2,
     },
     {
-      key: 'invite',
-      label: 'Invite Freelancers',
-      stat1: `${invites.filter(i => i.status === 'Pending').length} unanswered`,
-      stat2: `${invites.length} total sent`,
-      icon: Send,
-    },
-    {
       key: 'hired',
       label: 'Hired',
-      stat1: `${hired.length} active hire`,
+      stat1: `${hired.length} active hire${hired.length !== 1 ? 's' : ''}`,
       stat2: 'On-contract',
       icon: CheckCircle2,
     },
   ];
 
-  // Filters computed based on state
   const proposalFilterTabs = [
     { label: 'All', count: activeProposals.length },
     { label: 'Pinned', count: proposalPinnedCount },
     { label: 'Archived', count: proposalArchivedCount },
-    { label: 'Messaged', count: 2 },
-    { label: 'Cancelled', count: 1 },
-  ];
-
-  const inviteFilterTabs = [
-    { label: 'All', count: invites.length },
-    { label: 'Pending', count: invites.filter(i => i.status === 'Pending').length },
-    { label: 'Declined', count: invites.filter(i => i.status === 'Declined').length },
   ];
 
   const hiredFilterTabs = [
     { label: 'All', count: hired.length },
-    { label: 'Working', count: hired.filter(h => h.status === 'Working').length },
-    { label: 'Completed', count: 0 },
+    { label: 'Working', count: hired.length },
   ];
 
-  const filterTabs =
-    activeAction === 'proposals' ? proposalFilterTabs :
-    activeAction === 'invite' ? inviteFilterTabs :
-    hiredFilterTabs;
+  const filterTabs = activeAction === 'proposals' ? proposalFilterTabs : hiredFilterTabs;
 
   const getFilteredCards = () => {
-    let currentSet =
-      activeAction === 'proposals' ? proposals :
-      activeAction === 'invite' ? invites :
-      hired;
+    let currentSet = activeAction === 'proposals' ? proposals : hired;
 
     if (activeAction === 'proposals') {
       if (activeFilter === 'Archived') {
         return currentSet.filter(card => archivedIds.has(card.id));
       }
-      // Hide archived from all other views
       currentSet = currentSet.filter(card => !archivedIds.has(card.id));
     }
 
     if (activeFilter === 'Pinned') {
       return currentSet.filter(card => savedIds.has(card.id));
     }
-    if (activeFilter === 'Pending') {
-      return currentSet.filter(card => card.status === 'Pending');
-    }
-    if (activeFilter === 'Declined') {
-      return currentSet.filter(card => card.status === 'Declined');
-    }
-    if (activeFilter === 'Working') {
-      return currentSet.filter(card => card.status === 'Working');
-    }
+
     return currentSet;
   };
 
@@ -519,11 +536,11 @@ export default function ReviewProposalsPage({ onBack }: ReviewProposalsPageProps
   return (
     <div className="flex h-full w-full flex-col bg-background overflow-y-auto no-scrollbar">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-[#D8D8D8]/40 dark:border-[#121212] bg-background px-6 py-5 shrink-0">
+      <div className="flex items-center gap-3 border-b border-border bg-background px-6 py-5 shrink-0">
         {onBack && (
           <button
             onClick={onBack}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#D8D8D8] dark:border-[#242424] bg-[#FAFAFD] dark:bg-[#0B0B0B] text-muted hover:text-foreground transition-colors cursor-pointer"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted hover:text-foreground transition-colors cursor-pointer"
           >
             <ChevronLeft size={16} />
           </button>
@@ -543,17 +560,13 @@ export default function ReviewProposalsPage({ onBack }: ReviewProposalsPageProps
             <span className="text-[13px] text-primary/85 font-normal">{jobCategory}</span>
             <span className="w-1 h-1 rounded-full bg-muted/60" />
             <span className="text-[13px] text-muted font-normal">Budget: {jobBudget}</span>
-            {selectedJob && (
-              <>
-                <span className="w-1 h-1 rounded-full bg-muted/60" />
-                <span className="text-[13px] text-muted font-normal">{jobProposalCount} proposal{jobProposalCount !== 1 ? 's' : ''} received</span>
-              </>
-            )}
+            <span className="w-1 h-1 rounded-full bg-muted/60" />
+            <span className="text-[13px] text-muted font-normal">{jobProposalCount} proposal{jobProposalCount !== 1 ? 's' : ''} received</span>
           </div>
         </div>
 
         {/* ── Action Tabs Card ── */}
-        <div className="w-full overflow-x-auto no-scrollbar rounded-xl border border-[#D8D8D8] dark:border-[#242424] bg-[#FAFAFD] dark:bg-[#0b0b0b] flex items-stretch">
+        <div className="w-full overflow-x-auto no-scrollbar rounded-xl border border-border bg-card flex items-stretch">
           {actionTabs.map((tab, idx) => {
             const isActive = activeAction === tab.key;
             return (
@@ -562,7 +575,7 @@ export default function ReviewProposalsPage({ onBack }: ReviewProposalsPageProps
                 onClick={() => { setActiveAction(tab.key); setActiveFilter('All'); }}
                 className={cn(
                   'flex flex-1 min-w-[10rem] sm:min-w-0 flex-col items-center justify-center gap-[2px] px-4 py-4 transition-all duration-200 cursor-pointer',
-                  idx !== 0 && 'border-l border-[#D8D8D8] dark:border-[#242424]',
+                  idx !== 0 && 'border-l border-border',
                   isActive ? 'bg-primary text-white' : 'text-foreground/80 hover:bg-primary/5',
                 )}
               >
@@ -590,7 +603,7 @@ export default function ReviewProposalsPage({ onBack }: ReviewProposalsPageProps
         </div>
 
         {/* ── Content Card ── */}
-        <div className="w-full flex flex-col rounded-2xl overflow-hidden border border-[#D8D8D8] dark:border-[#242424]">
+        <div className="w-full flex flex-col rounded-2xl overflow-hidden border border-border">
 
           {/* Filter tabs */}
           <FilterTabs
@@ -601,28 +614,39 @@ export default function ReviewProposalsPage({ onBack }: ReviewProposalsPageProps
 
           {/* Cards */}
           <div className="flex flex-col overflow-x-auto no-scrollbar">
-            {activeAction === 'invite' && <InviteSearchBox />}
-            {cards.map(card => (
-              <ProposalCard
-                key={card.id}
-                card={card}
-                mode={activeAction as 'proposals' | 'invite' | 'hired'}
-                isSaved={savedIds.has(card.id)}
-                isArchived={archivedIds.has(card.id)}
-                onToggleSave={handleToggleSave}
-                onToggleArchive={handleToggleArchive}
-                onCancelInvite={handleCancelInvite}
-              />
-            ))}
-            {cards.length === 0 && activeAction !== 'invite' && (
+            {loading ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted">
+                <Loader2 size={24} className="animate-spin text-primary" />
+                <p className="text-[13px]">Loading real submitted proposals...</p>
+              </div>
+            ) : cards.length > 0 ? (
+              cards.map(card => (
+                <ProposalCard
+                  key={card.id}
+                  card={card}
+                  mode={activeAction as 'proposals' | 'invite' | 'hired'}
+                  isSaved={savedIds.has(card.id)}
+                  isArchived={archivedIds.has(card.id)}
+                  onToggleSave={handleToggleSave}
+                  onToggleArchive={handleToggleArchive}
+                  onMessage={handleMessageSeller}
+                  onHire={handleHireSeller}
+                  hiring={hiringId === card.id}
+                />
+              ))
+            ) : (
               <div className="flex flex-col items-center gap-3 py-16 text-center text-muted">
                 <CheckCircle2 size={36} className="text-muted/40" />
-                <p className="text-[13px]">Nothing here yet.</p>
+                <p className="text-[13px] font-medium text-foreground">No proposals found</p>
+                <p className="text-[11px] text-muted">No seller proposals submitted in this view yet.</p>
               </div>
             )}
           </div>
 
         </div>
+      </div>
+      <div className="hidden md:block">
+        <Footer />
       </div>
     </div>
   );

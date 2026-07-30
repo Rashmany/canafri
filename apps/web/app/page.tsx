@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { LogOut, X } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
+import { initSocket, getSocket, disconnectSocket } from '@/lib/socket';
+import { apiFetch, verifyStartupSession, performLogout } from '@/lib/api-client';
 import Sidebar from '@/components/layout/sidebar';
 import TopNav from '@/components/layout/top-nav';
 import BottomNav from '@/components/layout/bottom-nav';
@@ -13,6 +15,7 @@ import DashboardPage from '@/components/pages/dashboard-page';
 import WalletPage from '@/components/pages/wallet-page';
 import MessagesPage from '@/components/pages/messages-page';
 import FindJobPage from '@/components/pages/find-job-page';
+import FindSellerPage from '@/components/pages/find-seller-page';
 import PostJobPage from '@/components/pages/post-job-page';
 import BecomeSellerPage from '@/components/pages/become-seller-page';
 import JobBookmarkedPage from '@/components/pages/job-bookmarked-page';
@@ -34,7 +37,7 @@ import ForgotPasswordPage from '@/components/pages/forgot-password-page';
 import ResetPasswordPage from '@/components/pages/reset-password-page';
 import PasswordUpdatedPage from '@/components/pages/password-updated-page';
 import SearchPage from '@/components/pages/search-page';
-
+import AlreadySellerPage from '@/components/pages/already-seller-page';
 
 /**
  * Root Client SPA Controller.
@@ -50,10 +53,12 @@ export default function Home() {
     name: string;
     handle: string;
     avatarSrc: string;
+    isSeller: boolean;
   }>({
     name: '',
     handle: '',
     avatarSrc: '/images/default-avatar.png',
+    isSeller: false,
   });
   const [savedJobIds, setSavedJobIds] = useState<Record<number, boolean>>({});
   const [pendingEmail, setPendingEmail] = useState('');
@@ -61,7 +66,15 @@ export default function Home() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [sellerMode, setSellerMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [messageTargetUser, setMessageTargetUser] = useState<{ id: string; name: string; username?: string; avatarUrl?: string } | null>(null);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const handleOpenChatWithUser = (user: { id: string; name: string; username?: string; avatarUrl?: string }) => {
+    setMessageTargetUser(user);
+    handleNavigate('Messages');
+  };
 
   const handleSearchNavigate = (query: string) => {
     setSearchQuery(query);
@@ -85,7 +98,7 @@ export default function Home() {
     handleNavigate('Dashboard');
   };
 
-  // Sync user details from local storage on load or whenever page changes (e.g. after login)
+  // Sync user details from local storage and live API on load or whenever page changes
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('canafri_user_profile');
@@ -96,30 +109,173 @@ export default function Home() {
             name: profile.fullName || 'User',
             handle: profile.username ? `@${profile.username}` : '@user',
             avatarSrc: profile.avatarSrc || '/images/default-avatar.png',
+            isSeller: !!(profile.isSeller && profile.sellerApproved),
           });
         } catch (e) {
           console.error('Failed to parse user profile', e);
         }
       }
+
+      // Fetch live authoritative profile from backend /users/me using centralized apiFetch
+      const token = localStorage.getItem('canafri_access_token');
+      if (token) {
+        apiFetch('/api/users/me')
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (data?.user) {
+              const u = data.user;
+              const isSellerApproved = !!(u.isSeller && u.sellerApproved);
+              setUserProfile({
+                name: u.displayName || u.username || 'User',
+                handle: u.username ? `@${u.username}` : '@user',
+                avatarSrc: u.avatarUrl || '/images/default-avatar.png',
+                isSeller: isSellerApproved,
+              });
+              // Sync back to local storage
+              try {
+                const existing = stored ? JSON.parse(stored) : {};
+                localStorage.setItem('canafri_user_profile', JSON.stringify({
+                  ...existing,
+                  fullName: u.displayName || existing.fullName || '',
+                  username: u.username || existing.username || '',
+                  email: u.email || existing.email || '',
+                  isSeller: u.isSeller,
+                  sellerApproved: u.sellerApproved,
+                  sellerApplied: u.sellerApplied,
+                }));
+              } catch {}
+            }
+          })
+          .catch(() => {});
+      }
     }
   }, [activePage]);
 
+  // Global Socket.IO real-time listener for instant unread message badge updates across all pages
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return;
+    const token = localStorage.getItem('canafri_access_token');
+    if (!token) return;
+
+    const fetchUnreadCount = async () => {
+      try {
+        const res = await apiFetch('/api/messages/unread-count');
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.unreadCount === 'number') {
+            setUnreadMessageCount(data.unreadCount);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch unread message count:', e);
+      }
+    };
+
+    fetchUnreadCount();
+
+    const socket = getSocket();
+    if (!socket) return;
+
+    const getMyUserId = () => {
+      const stored = localStorage.getItem('canafri_user_profile');
+      if (stored) {
+        try { return JSON.parse(stored).id || null; } catch {}
+      }
+      return null;
+    };
+
+    const handleGlobalNewMessage = (msg: any) => {
+      const myId = getMyUserId();
+      if (myId && msg.receiverId === myId) {
+        const activeChatUserId = (window as any).__canafri_active_chat_user_id;
+        if (!activeChatUserId || activeChatUserId !== msg.senderId) {
+          setUnreadMessageCount(prev => prev + 1);
+        }
+      }
+    };
+
+    const handleGlobalMessagesRead = (data: { readByUserId: string; senderId: string }) => {
+      const myId = getMyUserId();
+      if (myId && data.readByUserId === myId) {
+        fetchUnreadCount();
+      }
+    };
+
+    socket.on('connect', fetchUnreadCount);
+    socket.on('new_message', handleGlobalNewMessage);
+    socket.on('messages_read', handleGlobalMessagesRead);
+
+    return () => {
+      socket.off('connect', fetchUnreadCount);
+      socket.off('new_message', handleGlobalNewMessage);
+      socket.off('messages_read', handleGlobalMessagesRead);
+    };
+  }, []);
+
+  // Listen for global session expiration custom event
+  useEffect(() => {
+    const handleExpired = () => {
+      disconnectSocket();
+      setUserProfile({
+        name: '',
+        handle: '',
+        avatarSrc: '/images/default-avatar.png',
+        isSeller: false,
+      });
+      setActivePage('Login');
+      toast('Session expired. Please log in again.', 'error');
+    };
+
+    window.addEventListener('canafri:session-expired', handleExpired);
+    return () => {
+      window.removeEventListener('canafri:session-expired', handleExpired);
+    };
+  }, [toast]);
+
+  // App Startup authentication verification
+  useEffect(() => {
+    async function initAuth() {
+      if (typeof window === 'undefined') return;
+
       const saved = localStorage.getItem('canafri_active_page');
       const token = localStorage.getItem('canafri_access_token');
-      if (saved && saved !== 'MobileSplash' && saved !== 'MobileSplash2') {
-        // Restore previously visited page
-        setActivePage(saved);
-      } else if (!token) {
-        // Unauthenticated first-time visit → show onboarding splash on all screen sizes
+
+      if (!token && !saved) {
         setActivePage('MobileSplash');
+        setIsInitialized(true);
+        return;
+      }
+
+      // Validate session via centralized verifyStartupSession (handles silent refresh if needed)
+      const sessionData = await verifyStartupSession();
+
+      if (sessionData?.user) {
+        const u = sessionData.user;
+        setUserProfile({
+          name: u.displayName || u.username || 'User',
+          handle: u.username ? `@${u.username}` : '@user',
+          avatarSrc: u.avatarUrl || '/images/default-avatar.png',
+          isSeller: !!(u.isSeller && u.sellerApproved),
+        });
+
+        // Initialize Socket.IO connection ONLY AFTER startup verification completes with a valid token
+        initSocket();
+
+        if (saved && saved !== 'MobileSplash' && saved !== 'MobileSplash2' && saved !== 'Login') {
+          setActivePage(saved);
+        } else {
+          setActivePage('Dashboard');
+        }
       } else {
-        // Authenticated user → go to Login
+        // Token invalid or expired and could not be refreshed
+        disconnectSocket();
         setActivePage('Login');
       }
+
       setIsInitialized(true);
     }
+
+    initAuth();
   }, []);
 
   const handleToggleSaveJob = (id: number) => {
@@ -130,18 +286,15 @@ export default function Home() {
     setShowLogoutModal(true);
   };
 
-  const confirmLogout = () => {
+  const confirmLogout = async () => {
     setShowLogoutModal(false);
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('canafri_active_page');
-      localStorage.removeItem('canafri_access_token');
-      localStorage.removeItem('canafri_user_profile');
-    }
-    // Reset profile state — real data will reload from localStorage on next login
+    await performLogout();
+    // Reset profile state
     setUserProfile({
       name: '',
       handle: '',
       avatarSrc: '/images/default-avatar.png',
+      isSeller: false,
     });
     setActivePage('Login');
     toast('Logged out successfully', 'success');
@@ -261,15 +414,25 @@ export default function Home() {
       <Sidebar
         user={userProfile}
         activeItem={activePage}
-        onActiveChange={handleNavigate}
+        onActiveChange={(page) => {
+          // If an approved seller clicks "Become a seller" in buyer mode,
+          // redirect them to the "already a seller" info page instead.
+          if (page === 'Become a seller' && userProfile.isSeller) {
+            handleNavigate('Already a Seller');
+          } else {
+            handleNavigate(page);
+          }
+        }}
         onLogout={handleLogout}
         onViewProfile={() => handleNavigate('Profile')}
         onViewSettings={() => handleNavigate('Settings')}
         mobileOpen={mobileSidebarOpen}
         onMobileClose={() => setMobileSidebarOpen(false)}
         isFreelancer={true}
+        isSeller={userProfile.isSeller}
         sellerMode={sellerMode}
         onSellerModeChange={handleSellerModeChange}
+        unreadMessageCount={unreadMessageCount}
       />
 
       {/* ── Main Layout Column ── */}
@@ -277,33 +440,50 @@ export default function Home() {
         {/* Top Navbar */}
         <TopNav
           user={userProfile}
-          notificationCount={3}
           activePage={activePage}
           onMenuOpen={() => setMobileSidebarOpen(true)}
           onSearchNavigate={handleSearchNavigate}
+          onNavigate={handleNavigate}
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-hidden pb-16 md:pb-0">
+        <main className="flex-1 min-h-0 overflow-y-auto pb-16 md:pb-0 flex flex-col">
           {activePage === 'Analysis' ? (
             <AnalysisPage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Settings' ? (
             <SettingsPage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Profile' ? (
-            <ProfilePage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} />
+            <ProfilePage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} onOpenChat={handleOpenChatWithUser} />
           ) : activePage === 'Search' ? (
             <SearchPage query={searchQuery} onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Wallet' ? (
             <WalletPage onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Messages' ? (
-            <MessagesPage onBack={() => handleNavigate('Dashboard')} onMobileViewChange={(view) => setHideBottomNav(view === 'chat')} />
+            <div className="h-full min-h-0 overflow-hidden -mb-16 md:mb-0 flex flex-col">
+              <MessagesPage
+                onBack={() => handleNavigate('Dashboard')}
+                onMobileViewChange={(view) => setHideBottomNav(view === 'chat')}
+                initialTargetUser={messageTargetUser}
+                onUnreadCountChange={setUnreadMessageCount}
+              />
+            </div>
           ) : activePage === 'Find Job' ? (
-            <FindJobPage
-              onBack={() => handleNavigate('Dashboard')}
-              onMobileViewChange={(view) => setHideBottomNav(view === 'detail')}
-              savedJobIds={savedJobIds}
-              onToggleSaveJob={handleToggleSaveJob}
-            />
+            <div className="h-full overflow-y-auto no-scrollbar -mb-16 md:mb-0 flex flex-col">
+              <FindJobPage
+                onBack={() => handleNavigate('Dashboard')}
+                onMobileViewChange={(view) => setHideBottomNav(view === 'detail')}
+                savedJobIds={savedJobIds}
+                onToggleSaveJob={handleToggleSaveJob}
+              />
+            </div>
+          ) : activePage === 'Find Sellers' ? (
+            <div className="h-full overflow-y-auto no-scrollbar -mb-16 md:mb-0 flex flex-col">
+              <FindSellerPage
+                onBack={() => handleNavigate('Dashboard')}
+                onMobileViewChange={(view) => setHideBottomNav(view === 'detail')}
+                onOpenChat={handleOpenChatWithUser}
+              />
+            </div>
           ) : activePage === 'Proposals' ? (
             <ProposalsPage onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Gigs' ? (
@@ -312,6 +492,7 @@ export default function Home() {
             <BuyerRequestsPage onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'OrderDetail' ? (
             <OrderDetailPage
+              jobId={selectedJobId || undefined}
               onBack={() => handleNavigate('Dashboard')}
               onDeliverClick={() => handleNavigate('SubmitProject')}
               onResolveClick={() => {
@@ -322,7 +503,7 @@ export default function Home() {
               }}
             />
           ) : activePage === 'SubmitProject' ? (
-            <SubmitProjectPage onBack={() => handleNavigate('OrderDetail')} />
+            <SubmitProjectPage jobId={selectedJobId || undefined} onBack={() => handleNavigate('OrderDetail')} />
           ) : activePage === 'Resolution' ? (
             <ResolutionPage
               onBack={() => {
@@ -346,7 +527,10 @@ export default function Home() {
               }}
             />
           ) : activePage === 'ReviewProposals' ? (
-            <ReviewProposalsPage onBack={() => handleNavigate('My Posted Jobs')} />
+            <ReviewProposalsPage
+              onBack={() => handleNavigate('My Posted Jobs')}
+              onNavigateToMessages={() => handleNavigate('Messages')}
+            />
           ) : activePage === 'Bookmarks:Jobs' ? (
             <JobBookmarkedPage
               onBack={() => handleNavigate('Bookmarks')}
@@ -355,22 +539,37 @@ export default function Home() {
               onToggleSaveJob={handleToggleSaveJob}
             />
           ) : activePage === 'Post a Job' ? (
-            <PostJobPage onBack={() => handleNavigate('Dashboard')} />
+            <PostJobPage onBack={() => handleNavigate('Dashboard')} onJobPosted={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Become a seller' ? (
-            <BecomeSellerPage onBack={() => handleNavigate('Dashboard')} />
+            userProfile.isSeller ? (
+              // Already approved seller accidentally navigated here — redirect inline
+              <AlreadySellerPage onEnableSellerMode={() => { handleSellerModeChange(true); }} onBack={() => handleNavigate('Dashboard')} />
+            ) : (
+              <BecomeSellerPage onBack={() => handleNavigate('Dashboard')} onNavigateToSettings={() => handleNavigate('Settings')} />
+            )
+          ) : activePage === 'Already a Seller' ? (
+            <AlreadySellerPage onEnableSellerMode={() => { handleSellerModeChange(true); }} onBack={() => handleNavigate('Dashboard')} />
           ) : (
             sellerMode ? (
               // Seller Dashboard = Orders page
-              <OrdersPage onOrderClick={() => handleNavigate('OrderDetail')} onDisputeApproveClick={() => handleNavigate('BuyerJobs')} />
+              <OrdersPage
+                onOrderClick={(orderId) => {
+                  if (orderId) setSelectedJobId(String(orderId));
+                  handleNavigate('OrderDetail');
+                }}
+                onDisputeApproveClick={() => handleNavigate('BuyerJobs')}
+              />
             ) : (
-              <DashboardPage activePage={activePage} onNavigate={handleNavigate} />
+              <div className="h-full overflow-y-auto no-scrollbar -mb-16 md:mb-0 flex flex-col">
+                <DashboardPage activePage={activePage} onNavigate={handleNavigate} />
+              </div>
             )
           )}
         </main>
       </div>
 
       {/* ── Mobile Bottom Navigation Bar ── */}
-      {!hideBottomNav && <BottomNav activePage={activePage} onNavigate={handleNavigate} />}
+      {!hideBottomNav && <BottomNav activePage={activePage} onNavigate={handleNavigate} unreadMessageCount={unreadMessageCount} />}
 
       {/* ── LOG OUT CONFIRMATION MODAL ── */}
       {showLogoutModal && (

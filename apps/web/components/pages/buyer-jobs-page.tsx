@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { FileText, ChevronLeft, ChevronRight, Plus, Pencil, X, Copy, PauseCircle, XCircle, BarChart2, Flag, Check, CheckCircle2, RefreshCw, Download, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Footer from '@/components/layout/footer';
@@ -30,24 +30,8 @@ interface StatCard {
   subClassName: string;
 }
 
-const stats: StatCard[] = [
-  { label: "Active Contracts", value: "1", sub: "Working underway", subClassName: "text-muted/80" },
-  { label: "Locked Escrow",    value: "400 CC", sub: "Locked in contracts", subClassName: "text-[#4ADE80]/80" },
-  { label: "Open Postings",    value: "1", sub: "Accepting proposals", subClassName: "text-primary/80" },
-  { label: "Total Posted",     value: "4", sub: "All time postings", subClassName: "text-muted/80" },
-];
-
-const STATIC_TABS = [
-  { label: "All",       count: 5 },
-  { label: "Open",      count: 1 },
-  { label: "Working",   count: 1 },
-  { label: "To Review", count: 1 },
-  { label: "Drafts",    count: 1 },
-  { label: "Completed", count: 1 },
-];
-
 interface Job {
-  id: number;
+  id: string | number;
   title: string;
   category: string;
   proposals: number;
@@ -60,36 +44,174 @@ interface Job {
   initials: string;
   description?: string;
   questions?: string[];
+  clientName?: string;
+  clientHandle?: string;
+  clientAvatarUrl?: string;
+  clientInitials?: string;
+  clientCountry?: string;
+  hasReviewed?: boolean;
 }
 
-const mockJobs: Job[] = [
-  { id: 1, title: "Create a landing page for my web3 blog", category: "Web Programming & Design", proposals: 8, date: "Mar. 24", budget: "150 CC", status: "open", freelancerName: "No Selection Yet", freelancerHandle: "Accepting proposals", avatarClassName: "bg-muted text-muted-foreground border border-border", initials: "?" },
-  { id: 2, title: "Daml Smart Contract Escrow System", category: "Smart Contracts", proposals: 15, date: "Mar. 20", budget: "400 CC", status: "working", freelancerName: "Alex Daml", freelancerHandle: "@alexdaml", avatarClassName: "bg-[#291D46]", initials: "AD" },
-  { id: 3, title: "Next.js frontend theme refactor", category: "Frontend Dev", proposals: 12, date: "Mar. 15", budget: "250 CC", status: "completed", freelancerName: "Sina Front", freelancerHandle: "@sinafront", avatarClassName: "bg-[#291D46]", initials: "SF" },
-  { id: 4, title: "Tailwind layout alignment tweaks", category: "UI CSS Tweak", proposals: 0, date: "Mar. 28", budget: "50 CC", status: "draft", freelancerName: "Draft Status", freelancerHandle: "Not published", avatarClassName: "bg-[#291D46]", initials: "DS" },
-  { id: 5, title: "Develop a Responsive Website", category: "Web Programming & Design", proposals: 1, date: "May 10", budget: "850 CC", status: "to_review", freelancerName: "David Okoro", freelancerHandle: "@davidokoro", avatarClassName: "bg-[#291D46]", initials: "DO" },
-];
+const mapBackendJobToUi = (j: any): Job => {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const dateObj = new Date(j.createdAt || Date.now());
+  const dateStr = `${months[dateObj.getMonth()]}. ${dateObj.getDate()}`;
+  
+  let freelancerName = "No Selection Yet";
+  let freelancerHandle = "Accepting proposals";
+  let initials = "?";
+  if (j.freelancer) {
+    freelancerName = j.freelancer.displayName || j.freelancer.username || "Freelancer";
+    freelancerHandle = j.freelancer.username ? `@${j.freelancer.username.replace('@', '')}` : "@freelancer";
+    const parts = freelancerName.trim().split(/\s+/);
+    initials = parts.length >= 2 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : freelancerName.slice(0, 2).toUpperCase();
+  }
 
-/* â”€â”€â”€ Client Job Detail Panel (Figma 1143-16953) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  const clientName = j.client?.displayName || j.client?.username || "Client";
+  const clientHandle = j.client?.username ? `@${j.client.username.replace(/^@/, '')}` : "@client";
+  const clientParts = clientName.trim().split(/\s+/);
+  const clientInitials = clientParts.length >= 2 ? (clientParts[0][0] + clientParts[clientParts.length - 1][0]).toUpperCase() : clientName.slice(0, 2).toUpperCase();
+
+  let status: "open" | "working" | "to_review" | "completed" | "draft" = "open";
+  const st = (j.status || "").toUpperCase();
+  if (st === "IN_PROGRESS") status = "working";
+  else if (st === "DELIVERED") status = "to_review";
+  else if (st === "COMPLETED") status = "completed";
+  else if (st === "DRAFT") status = "draft";
+  else status = "open";
+
+  return {
+    id: j.id,
+    title: j.title,
+    category: j.category || "Development & IT",
+    proposals: Array.isArray(j.proposals) ? j.proposals.length : (j._count?.proposals || 0),
+    date: dateStr,
+    budget: `${j.amountCC || 0} CC`,
+    status,
+    freelancerName,
+    freelancerHandle,
+    avatarClassName: "bg-primary/20 text-primary border border-primary/30",
+    initials,
+    description: j.description,
+    questions: j.questions || [],
+    clientName,
+    clientHandle,
+    clientAvatarUrl: j.client?.avatarUrl,
+    clientInitials,
+    clientCountry: j.client?.country || "Global",
+    hasReviewed: Boolean(j.hasReviewed),
+  };
+};
+
+/* ─── Client Review Modal ───────────────────────────────────────────────────── */
+function ClientReviewModal({ job, onClose, onSubmit }: {
+  job: Job;
+  onClose: () => void;
+  onSubmit: (jobId: string, rating: number, comment: string) => Promise<void>;
+}) {
+  const [rating, setRating] = useState(0);
+  const [hovered, setHovered] = useState(0);
+  const [comment, setComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    if (rating === 0) { setError('Please select a star rating.'); return; }
+    setSubmitting(true);
+    setError('');
+    try {
+      await onSubmit(String(job.id), rating, comment);
+      onClose();
+    } catch (e: any) {
+      setError(e.message || 'Failed to submit review.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}>
+      <div className="relative w-full max-w-md rounded-2xl bg-[#FAFAFD] dark:bg-[#0B0B0B] border border-[#D8D8D8] dark:border-[#1e1e1e] p-6 flex flex-col gap-5 shadow-2xl">
+        <button onClick={onClose} className="absolute top-4 right-4 text-muted/60 hover:text-foreground/80 transition-colors cursor-pointer">
+          <X size={18} />
+        </button>
+
+        <div className="flex flex-col gap-1">
+          <h2 className="text-[1.125rem] font-bold text-foreground/85">Rate Your Freelancer</h2>
+          <p className="text-[0.8125rem] text-muted/70">
+            How was your experience working with <span className="font-semibold text-foreground/70">{job.freelancerName}</span> on <span className="font-semibold text-foreground/70">{job.title}</span>?
+          </p>
+        </div>
+
+        {/* Star selector */}
+        <div className="flex flex-col gap-2">
+          <span className="text-[0.8125rem] font-medium text-foreground/70">Overall rating</span>
+          <div className="flex items-center gap-2">
+            {[1,2,3,4,5].map(star => (
+              <button
+                key={star}
+                type="button"
+                onMouseEnter={() => setHovered(star)}
+                onMouseLeave={() => setHovered(0)}
+                onClick={() => setRating(star)}
+                className="transition-transform hover:scale-110 cursor-pointer"
+              >
+                <Star
+                  size={32}
+                  className={cn(
+                    'transition-colors',
+                    star <= (hovered || rating)
+                      ? 'text-[#FF9529] fill-[#FF9529]'
+                      : 'text-muted/30 fill-transparent'
+                  )}
+                />
+              </button>
+            ))}
+            {rating > 0 && (
+              <span className="text-[0.875rem] font-semibold text-[#FF9529] ml-1">
+                {['','Poor','Fair','Good','Very Good','Excellent'][rating]}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Comment */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[0.8125rem] font-medium text-foreground/70">Comment <span className="text-muted/50 font-normal">(optional)</span></label>
+          <textarea
+            value={comment}
+            onChange={e => setComment(e.target.value)}
+            maxLength={1000}
+            rows={3}
+            placeholder="Share your experience working with this freelancer..."
+            className="w-full resize-none rounded-xl border border-[#D8D8D8] dark:border-[#1e1e1e] bg-background px-4 py-3 text-[0.8125rem] text-foreground/80 placeholder:text-muted/50 outline-none focus:border-[#8C5CFF]/60 transition-colors"
+          />
+          <span className="text-[0.6875rem] text-muted/50 text-right">{comment.length}/1000</span>
+        </div>
+
+        {error && <p className="text-[0.8125rem] text-rose-500">{error}</p>}
+
+        <button
+          onClick={handleSubmit}
+          disabled={submitting || rating === 0}
+          className={cn(
+            'w-full rounded-xl py-2.5 text-[0.875rem] font-semibold transition-all',
+            submitting || rating === 0
+              ? 'bg-foreground/10 text-muted/50 cursor-not-allowed'
+              : 'bg-[#8C5CFF] text-white hover:opacity-90 cursor-pointer'
+          )}
+        >
+          {submitting ? 'Submitting...' : 'Submit Review'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Client Job Detail Panel ────────────────────────────────────────────────── */
 function ClientJobDetailPanel({ job, onClose, onEdit }: { job: Job; onClose: () => void; onEdit: () => void }) {
-  const mockDescription = job.description || `We are looking for a dedicated specialist to help grow this project. Your primary responsibility will be ensuring every deliverable reaches its maximum potential through research, optimization, and performance tracking.\n\nThis is a long-term role for someone who understands the nuances of the platform and stays updated on the latest trends.`;
-
-  const mockRequirements = [
-    `Minimum 2 years of proven experience in ${job.category}`,
-    "Fluent English communication skills (written and verbal)",
-    "Proficient with relevant tools and frameworks",
-    "Ability to analyze performance and identify improvement gaps",
-    "Experience with project documentation and reporting",
-  ];
-
-  const mockSkills = job.category.split(" & ").flatMap(s => s.split(" ")).filter(s => s.length > 2).concat(["TypeScript", "Documentation", "Analysis"]).slice(0, 8);
-
-  const mockQuestions = job.questions && job.questions.length > 0
-    ? job.questions.map((q: string, idx: number) => ({ q: `${idx + 1}. ${q}`, hint: "Please provide a detailed response." }))
-    : [
-        { q: `1. Have you worked on a similar ${job.category} project before? Please provide examples.`, hint: "The client is looking for proven results and past performance." },
-        { q: "2. What tools and methodologies do you prefer for this type of work?", hint: "Mention specific software or methodologies you utilize." },
-      ];
+  const realDescription = job.description || "No job description specified.";
+  const questionsList = job.questions || [];
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-200 min-w-0 overflow-hidden">
@@ -97,14 +219,14 @@ function ClientJobDetailPanel({ job, onClose, onEdit }: { job: Job; onClose: () 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className={cn("inline-flex items-center justify-center rounded-full px-3 py-1 text-[10px] font-medium capitalize", getStatusStyles(job.status))}>{job.status}</span>
-          <span className="text-[11px] text-muted">Posted {job.date} Â· Budget: {job.budget}</span>
+          <span className="text-[11px] text-muted">Posted {job.date} · Budget: {job.budget}</span>
         </div>
         <button
           onClick={onClose}
-          title="Close"
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-[#D8D8D8] dark:border-[#121212] bg-[#FAFAFD] dark:bg-[#0B0B0B] text-muted hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted hover:text-foreground transition-colors cursor-pointer"
+          title="Close details"
         >
-          <X size={15} />
+          <X size={16} />
         </button>
       </div>
 
@@ -135,7 +257,8 @@ function ClientJobDetailPanel({ job, onClose, onEdit }: { job: Job; onClose: () 
 
           {/* Description */}
           <div className="flex flex-col gap-4 text-[14px] font-normal leading-[22px] text-foreground/85">
-            {mockDescription.split("\n\n").map((para: string, i: number) => (
+            <p className="font-semibold text-foreground">Job Description</p>
+            {realDescription.split("\n\n").map((para: string, i: number) => (
               <p key={i} className="break-words min-w-0">{para}</p>
             ))}
           </div>
@@ -143,31 +266,13 @@ function ClientJobDetailPanel({ job, onClose, onEdit }: { job: Job; onClose: () 
           {/* Divider */}
           <div className="h-px bg-[#D8D8D8] dark:bg-[#121212]" />
 
-          {/* Requirements */}
+          {/* Category & Skills */}
           <div className="flex flex-col gap-4">
-            <p className="text-[18px] font-semibold text-foreground/85">Other Requirements</p>
-            <div className="flex flex-col gap-2">
-              {mockRequirements.map((req, i) => (
-                <div key={i} className="flex gap-3 items-start">
-                  <span className="text-[12px] text-muted shrink-0 mt-0.5">â€¢</span>
-                  <p className="text-[14px] leading-[22px] text-foreground/85 flex-1">{req}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="h-px bg-[#D8D8D8] dark:bg-[#121212]" />
-
-          {/* Skills */}
-          <div className="flex flex-col gap-4">
-            <p className="text-[18px] font-semibold text-foreground/85">Skills and Expertise</p>
+            <p className="text-[18px] font-semibold text-foreground/85">Category & Skills</p>
             <div className="flex flex-wrap gap-2">
-              {mockSkills.map((skill, i) => (
-                <span key={i} className="px-[10px] py-[5px] rounded-[3px] bg-[#8C5CFF]/10 dark:bg-[rgba(140,92,255,0.15)] text-[#8C5CFF] text-[12px] font-normal leading-[16px] whitespace-nowrap">
-                  {skill}
-                </span>
-              ))}
+              <span className="px-[10px] py-[5px] rounded-[3px] bg-[#8C5CFF]/10 dark:bg-[rgba(140,92,255,0.15)] text-[#8C5CFF] text-[12px] font-normal leading-[16px] whitespace-nowrap">
+                {job.category}
+              </span>
             </div>
           </div>
 
@@ -180,8 +285,7 @@ function ClientJobDetailPanel({ job, onClose, onEdit }: { job: Job; onClose: () 
             <div className="flex flex-col gap-2">
               {[
                 { label: "Proposals:", value: `${job.proposals} received` },
-                { label: "Interviewing:", value: job.status === "working" ? "1" : "0" },
-                { label: "Invites sent:", value: "0" },
+                { label: "Escrow Status:", value: "Locked in Canton Escrow" },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-start justify-between text-[14px]">
                   <span className="text-muted">{label}</span>
@@ -191,58 +295,72 @@ function ClientJobDetailPanel({ job, onClose, onEdit }: { job: Job; onClose: () 
             </div>
           </div>
 
-          {/* Divider */}
-          <div className="h-px bg-[#D8D8D8] dark:bg-[#121212]" />
-
-          {/* Interview Questions */}
-          <div className="flex flex-col gap-4">
-            <p className="text-[18px] font-semibold text-foreground/85">You will be asked to answer the following questions when submitting a proposal:</p>
-            <div className="flex flex-col gap-5">
-              {mockQuestions.map((item: { q: string; hint: string }, i: number) => (
-                <div key={i} className="flex flex-col gap-2">
-                  <p className="text-[14px] font-semibold text-foreground/85 break-words">{item.q}</p>
-                  <p className="text-[14px] font-normal text-muted break-words">{item.hint}</p>
+          {/* Screening Questions (if any) */}
+          {questionsList.length > 0 && (
+            <>
+              <div className="h-px bg-[#D8D8D8] dark:bg-[#121212]" />
+              <div className="flex flex-col gap-4">
+                <p className="text-[18px] font-semibold text-foreground/85">Screening Questions for Applicants:</p>
+                <div className="flex flex-col gap-3">
+                  {questionsList.map((q: string, i: number) => (
+                    <div key={i} className="flex flex-col gap-1 rounded-xl border border-border p-3.5 bg-background">
+                      <p className="text-[14px] font-semibold text-foreground/85 break-words">{i + 1}. {q}</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* â”€â”€ Right: Sidebar â”€â”€ */}
         <div className="hidden lg:flex flex-col gap-8 w-[320px] shrink-0 bg-card border border-card-border rounded-[12px] p-8">
 
           {/* About the client */}
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
             <p className="text-[16px] font-semibold text-foreground/85">About the client</p>
-            <div className="flex flex-col gap-4">
-              {/* Star rating */}
-              <div className="flex items-center gap-1.5">
-                {Array.from({ length: 5 }, (_, i) => (
-                  <svg key={i} width="14" height="14" viewBox="0 0 14 14" fill="#FF9529">
-                    <path d="M7 0L8.573 4.83H13.657L9.542 7.813L11.115 12.642L7 9.659L2.885 12.642L4.458 7.813L0.343 4.83H5.427L7 0Z" />
-                  </svg>
-                ))}
-                <span className="text-[14px] font-semibold text-foreground/85 ml-1">4.9 of 124 reviews</span>
+            
+            <div className="flex items-center gap-3">
+              {job.clientAvatarUrl ? (
+                <img
+                  src={job.clientAvatarUrl}
+                  alt={job.clientName || "Client"}
+                  className="w-11 h-11 rounded-full object-cover border border-primary/20 shrink-0"
+                />
+              ) : (
+                <div className="w-11 h-11 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-sm border border-primary/30 shrink-0">
+                  {job.clientInitials || "CL"}
+                </div>
+              )}
+
+              <div className="flex flex-col min-w-0">
+                <p className="text-sm font-bold text-foreground/90 truncate">
+                  {job.clientName || "Verified Client"}
+                </p>
+                <p className="text-xs text-muted truncate">
+                  {job.clientHandle || "@client"}
+                </p>
               </div>
-              {/* Stats */}
+            </div>
+
+            {/* Stats */}
+            <div className="flex flex-col gap-3 pt-2">
               {[
-                { icon: "map-pin", label: job.freelancerName !== "No Selection Yet" ? job.freelancerName : "United States", sub: "Location" },
-                { icon: "briefcase", label: "$100k+", sub: "Total spent" },
-                { icon: "users", label: "$45.00 / hr", sub: "Avg hourly rate paid" },
-                { icon: "file-text", label: "12 jobs posted", sub: "Jobs posted" },
-                { icon: "clock", label: "Oct 12, 2018", sub: "Member since" },
+                { icon: "map-pin", label: job.clientCountry || "Global", sub: "Location" },
+                { icon: "briefcase", label: job.budget, sub: "Escrow Budget" },
+                { icon: "file-text", label: `${job.proposals} Received`, sub: "Proposals count" },
+                { icon: "clock", label: `Posted ${job.date}`, sub: "Posting date" },
               ].map(({ icon, label, sub }) => (
-                <div key={sub} className="flex gap-3 items-start">
-                  <div className="w-4 h-4 shrink-0 mt-0.5 text-muted">
+                <div key={sub} className="flex gap-3 items-center">
+                  <div className="w-4 h-4 shrink-0 text-muted flex items-center justify-center">
                     {icon === "map-pin" && <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path fillRule="evenodd" clipRule="evenodd" d="M8 1.333C5.423 1.333 3.333 3.423 3.333 6c0 3.5 4.667 8.667 4.667 8.667S12.667 9.5 12.667 6c0-2.577-2.09-4.667-4.667-4.667ZM8 7.667A1.667 1.667 0 1 1 8 4.333a1.667 1.667 0 0 1 0 3.334Z" fill="currentColor" stroke="none" /></svg>}
                     {icon === "briefcase" && <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="5" width="14" height="10" rx="2" /><path d="M5 5V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>}
-                    {icon === "users" && <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 13v-1a3 3 0 0 0-3-3H5a3 3 0 0 0-3 3v1" /><circle cx="6.5" cy="5" r="2.5" /><path d="M13 13v-1a3 3 0 0 0-2-2.83" /><path d="M10.5 2.17a2.5 2.5 0 0 1 0 4.66" /></svg>}
                     {icon === "file-text" && <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M9 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5L9 1Z" /><path d="M9 1v4h4M6 9h4M6 11h2" /></svg>}
                     {icon === "clock" && <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="8" cy="8" r="6.5" /><path d="M8 4.5v4l2.5 1.5" /></svg>}
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    <p className="text-[14px] font-semibold text-foreground/85 leading-tight">{label}</p>
-                    <p className="text-[12px] font-normal text-muted">{sub}</p>
+                    <p className="text-[13px] font-semibold text-foreground/85 leading-tight">{label}</p>
+                    <p className="text-[11px] font-normal text-muted">{sub}</p>
                   </div>
                 </div>
               ))}
@@ -446,7 +564,7 @@ function ClientDeliveryApprovalPanel({ job, onClose, onDisputeClick }: { job: Jo
     }
   };
 
-  const handleSaveReview = () => {
+  const handleSaveReview = async () => {
     if (typeof window !== "undefined" && delivery) {
       try {
         const arr: LiveDelivery[] = JSON.parse(localStorage.getItem("canafri_job_deliveries") || "[]");
@@ -456,10 +574,27 @@ function ClientDeliveryApprovalPanel({ job, onClose, onDisputeClick }: { job: Jo
             : d
         );
         localStorage.setItem("canafri_job_deliveries", JSON.stringify(updated));
-        setReviewSaved(true);
-        setTimeout(() => setReviewSaved(false), 2500);
       } catch (e) { console.error(e); }
     }
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("canafri_access_token") : null;
+    if (token && job?.id) {
+      try {
+        await fetch(`/api/jobs/${job.id}/review`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ rating, comment: feedback }),
+        });
+      } catch (e) {
+        console.error('Failed to save review to backend:', e);
+      }
+    }
+
+    setReviewSaved(true);
+    setTimeout(() => setReviewSaved(false), 2500);
   };
 
   return (
@@ -706,7 +841,18 @@ function ClientDeliveryApprovalPanel({ job, onClose, onDisputeClick }: { job: Jo
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
+                      const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+                      if (token && job.id) {
+                        try {
+                          await fetch(`/api/jobs/${job.id}/approve`, {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${token}` },
+                          });
+                        } catch (e) {
+                          console.error('Failed to approve delivery on API:', e);
+                        }
+                      }
                       persistAction("approved");
                       setShowApproveConfirm(false);
                     }}
@@ -1069,32 +1215,84 @@ export default function BuyerJobsPage({ onBack, onJobClick, onCreateJobClick, on
   const [filter, setFilter] = useState("All");
   const [sort, setSort] = useState("Newest");
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [reviewJob, setReviewJob] = useState<Job | null>(null);
+  const [reviewedJobIds, setReviewedJobIds] = useState<Set<string>>(new Set());
 
-  const [jobs, setJobs] = useState<Job[]>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("canafri_posted_jobs");
-      if (stored) {
-        try {
-          return JSON.parse(stored);
-        } catch (e) {
-          console.error(e);
+  useEffect(() => {
+    let isMounted = true;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+
+    async function fetchMyJobs() {
+      try {
+        setLoading(true);
+        let res = await fetch('/api/jobs/my-jobs', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) {
+          res = await fetch('/api/jobs/my-jobs', {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
         }
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.jobs && Array.isArray(data.jobs) && isMounted) {
+            const mapped = data.jobs.map(mapBackendJobToUi);
+            setJobs(mapped);
+            // Seed reviewedJobIds from backend hasReviewed flag
+            const reviewed = new Set<string>();
+            data.jobs.forEach((j: any) => {
+              if (j.hasReviewed) reviewed.add(String(j.id));
+            });
+            setReviewedJobIds(reviewed);
+          }
+        }
+      } catch (e) {
+        console.error('Error loading my jobs:', e);
+      } finally {
+        if (isMounted) setLoading(false);
       }
     }
-    return mockJobs;
-  });
 
-  // Build tabs dynamically — include Proposals tab with live count
+    fetchMyJobs();
+    return () => { isMounted = false; };
+  }, []);
+
+  // Compute stats dynamically from real jobs
+  const activeContractsCount = jobs.filter(j => j.status === 'working').length;
+  const lockedEscrowSum = jobs
+    .filter(j => j.status === 'working' || j.status === 'open')
+    .reduce((acc, j) => acc + (parseInt(j.budget.replace(/[^0-9]/g, '') || '0', 10)), 0);
+  const openPostingsCount = jobs.filter(j => j.status === 'open').length;
+
+  const dynamicStats: StatCard[] = [
+    { label: "Active Contracts", value: `${activeContractsCount}`, sub: "Working underway", subClassName: "text-muted/80" },
+    { label: "Locked Escrow",    value: `${lockedEscrowSum} CC`, sub: "Locked in contracts", subClassName: "text-[#4ADE80]/80" },
+    { label: "Open Postings",    value: `${openPostingsCount}`, sub: "Accepting proposals", subClassName: "text-primary/80" },
+    { label: "Total Posted",     value: `${jobs.length}`, sub: "All time postings", subClassName: "text-muted/80" },
+  ];
+
+  // Build tabs dynamically
   const proposalJobs = jobs.filter(j => j.proposals > 0);
+  const openJobs = jobs.filter(j => j.status === 'open');
+  const workingJobs = jobs.filter(j => j.status === 'working');
+  const toReviewJobs = jobs.filter(j => j.status === 'to_review');
+  const draftJobs = jobs.filter(j => j.status === 'draft');
+  const completedJobs = jobs.filter(j => j.status === 'completed');
+
   const tabs = [
-    ...STATIC_TABS.slice(0, 1), // All
+    { label: "All", count: jobs.length },
     { label: "Proposals", count: proposalJobs.length },
-    ...STATIC_TABS.slice(1),    // Open, Working …
+    { label: "Open", count: openJobs.length },
+    { label: "Working", count: workingJobs.length },
+    { label: "To Review", count: toReviewJobs.length },
+    { label: "Drafts", count: draftJobs.length },
+    { label: "Completed", count: completedJobs.length },
   ];
 
   // Filter and Search logic
   const filteredJobs = jobs.filter(job => {
-    // Tab filter
     if (activeTab === "Proposals"  && job.proposals === 0) return false;
     if (activeTab === "Open"       && job.status !== "open") return false;
     if (activeTab === "Working"    && job.status !== "working") return false;
@@ -1102,7 +1300,6 @@ export default function BuyerJobsPage({ onBack, onJobClick, onCreateJobClick, on
     if (activeTab === "Drafts"     && job.status !== "draft") return false;
     if (activeTab === "Completed"  && job.status !== "completed") return false;
 
-    // Search input
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       const matchTitle = job.title.toLowerCase().includes(q);
@@ -1110,7 +1307,6 @@ export default function BuyerJobsPage({ onBack, onJobClick, onCreateJobClick, on
       if (!matchTitle && !matchFreelancer) return false;
     }
 
-    // Filter Dropdown
     if (filter === "Open"      && job.status !== "open") return false;
     if (filter === "Working"   && job.status !== "working") return false;
     if (filter === "Completed" && job.status !== "completed") return false;
@@ -1119,7 +1315,7 @@ export default function BuyerJobsPage({ onBack, onJobClick, onCreateJobClick, on
     return true;
   });
 
-  // Handle row click — Proposals tab navigates to ReviewProposals, others open detail panel
+  // Handle row click
   const handleRowClick = (job: Job) => {
     if (activeTab === "Proposals") {
       if (typeof window !== "undefined") {
@@ -1139,7 +1335,7 @@ export default function BuyerJobsPage({ onBack, onJobClick, onCreateJobClick, on
   };
 
   return (
-    <div className="h-full w-full flex flex-col bg-background overflow-y-auto no-scrollbar">
+    <div className="min-h-full w-full flex flex-col bg-background overflow-y-auto no-scrollbar">
       <div className="mx-auto flex max-w-6xl flex-col gap-9 px-4 py-10 sm:px-6 lg:px-8 w-full">
 
         {/* Top Header Row â€” always visible */}
@@ -1172,7 +1368,7 @@ export default function BuyerJobsPage({ onBack, onJobClick, onCreateJobClick, on
         <div>
           {/* Desktop */}
           <div className="hidden lg:grid lg:grid-cols-4 gap-6">
-            {stats.map((stat) => (
+            {dynamicStats.map((stat) => (
               <div key={stat.label} className="h-[7.5rem] rounded-2xl border border-[#D8D8D8] dark:border-[#121212] bg-[#FAFAFD] dark:bg-[#0B0B0B] px-6 flex flex-col justify-center gap-1.5 shadow-sm">
                 <span className="text-[0.8125rem] font-medium text-muted/80">{stat.label}</span>
                 <span className="text-[1.375rem] font-medium tracking-[-0.066px] text-foreground/80">{stat.value}</span>
@@ -1181,10 +1377,10 @@ export default function BuyerJobsPage({ onBack, onJobClick, onCreateJobClick, on
             ))}
           </div>
 
-          {/* Mobile & Tablet â€” single wrapper card, 2Ã—2 grid */}
+          {/* Mobile & Tablet — single wrapper card, 2×2 grid */}
           <div className="lg:hidden rounded-2xl border border-[#D8D8D8] dark:border-[#121212] bg-[#FAFAFD] dark:bg-[#0B0B0B] overflow-hidden">
             <div className="grid grid-cols-2">
-              {stats.map((stat, idx) => (
+              {dynamicStats.map((stat, idx) => (
                 <div
                   key={stat.label}
                   className={cn(
@@ -1317,14 +1513,33 @@ export default function BuyerJobsPage({ onBack, onJobClick, onCreateJobClick, on
                         {job.proposals}
                       </div>
 
-                      {/* Status */}
-                      <div className="flex justify-end">
+                      {/* Status & Review indicator */}
+                      <div className="flex flex-col items-end gap-1">
                         <span className={cn(
                           "inline-flex items-center justify-center rounded-full px-2.5 md:px-3 py-1 text-[0.5625rem] md:text-[0.625rem] font-medium capitalize whitespace-nowrap",
                           getStatusStyles(job.status)
                         )}>
                           {job.status}
                         </span>
+
+                        {['completed', 'to_review'].includes((job.status || '').toLowerCase()) && (
+                          (job.hasReviewed || reviewedJobIds.has(String(job.id))) ? (
+                            <span className="inline-flex items-center gap-1 text-[0.5625rem] font-medium text-emerald-500 whitespace-nowrap">
+                              <Check size={10} /> Reviewed
+                            </span>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReviewJob(job);
+                              }}
+                              className="inline-flex items-center gap-1 text-[0.5625rem] font-semibold text-primary hover:underline cursor-pointer whitespace-nowrap"
+                            >
+                              <Star size={10} className="fill-amber-400 text-amber-400" />
+                              Leave Review
+                            </button>
+                          )
+                        )}
                       </div>
                     </div>
                   ))
@@ -1339,9 +1554,28 @@ export default function BuyerJobsPage({ onBack, onJobClick, onCreateJobClick, on
         )}
 
       </div>
-      <div className="hidden md:block">
+      <div className="hidden md:block mt-auto">
         <Footer />
       </div>
+
+      {/* Client Review Modal */}
+      {reviewJob && (
+        <ClientReviewModal
+          job={reviewJob}
+          onClose={() => setReviewJob(null)}
+          onSubmit={async (jobId, rating, comment) => {
+            const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+            const res = await fetch(`/api/jobs/${jobId}/review`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+              body: JSON.stringify({ rating, comment }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to submit review.');
+            setReviewedJobIds(prev => new Set([...prev, jobId]));
+          }}
+        />
+      )}
     </div>
   );
 }

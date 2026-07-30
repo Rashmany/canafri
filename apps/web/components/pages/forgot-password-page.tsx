@@ -46,7 +46,7 @@ export default function ForgotPasswordPage({ onBack, onEmailSubmit }: ForgotPass
     setError('');
 
     try {
-      const res = await fetch('http://localhost:3001/auth/forgot-password', {
+      const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: clean }),
@@ -128,6 +128,7 @@ export default function ForgotPasswordPage({ onBack, onEmailSubmit }: ForgotPass
                     value={email}
                     onChange={(e) => handleChange(e.target.value)}
                     className="flex-1 bg-transparent text-xs text-[#e0e0e0] placeholder:text-[#a0a0a0]/40 font-normal leading-[16px] outline-none min-w-0"
+                    autoComplete="email"
                     autoFocus
                   />
                 </div>
