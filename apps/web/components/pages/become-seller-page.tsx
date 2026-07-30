@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Check, UploadCloud, File as FileIcon, Trash2, CheckCircle2, ChevronLeft, HelpCircle, Clock, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import AlreadySellerPage from '@/components/pages/already-seller-page';
+import { apiFetch } from '@/lib/api-client';
 
 interface UploadedFile {
   name: string;
@@ -628,9 +629,10 @@ export default function BecomeSellerPage({ onBack, onNavigateToSettings }: Becom
 
   // OTP Verification Modal States
   const [showPhoneOtpModal, setShowPhoneOtpModal] = useState(false);
-  const [otpDigits, setOtpDigits] = useState(['', '', '', '']);
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const [otpTimer, setOtpTimer] = useState(59);
   const [otpError, setOtpError] = useState('');
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
 
   // Success Modal
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -692,6 +694,7 @@ export default function BecomeSellerPage({ onBack, onNavigateToSettings }: Becom
         if (u.email)       setEmail(u.email);
         if (u.bio)         setBio(u.bio);
         if (u.country)     setCountry(u.country);
+        if (u.phoneVerified) setIsPhoneVerified(true);
 
         // Authoritative status check:
         // sellerApplied=true + sellerApproved=true  => fully approved
@@ -860,9 +863,35 @@ export default function BecomeSellerPage({ onBack, onNavigateToSettings }: Becom
         toast('You are not logged in. Please log in and try again.', 'error');
         return;
       }
-      fetch('/api/users/apply-seller', {
+
+      // If phone is not verified yet, trigger Phone OTP modal first
+      if (!isPhoneVerified) {
+        const cleanPhone = phone.replace(/[\s-()]/g, '');
+        apiFetch('/api/auth/phone/send-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: cleanPhone, prefix: selectedPhonePrefix.prefix }),
+        }).catch(() => {});
+
+        setOtpTimer(59);
+        setOtpDigits(['', '', '', '', '', '']);
+        setOtpError('');
+        setShowPhoneOtpModal(true);
+        return;
+      }
+
+      // Directly submit if phone is already verified
+      submitSellerApplication();
+    }
+  };
+
+  const submitSellerApplication = async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await apiFetch('/api/users/apply-seller', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           bio:              sanitize(bio),
           country:          sanitize(country),
@@ -884,30 +913,26 @@ export default function BecomeSellerPage({ onBack, onNavigateToSettings }: Becom
           educationYear:    sanitize(educationYear),
           agreedToTerms:    agreed,
         }),
-      })
-        .then(r => r.json())
-        .then(data => {
-          if (!data.success) {
-            toast(data.message || 'Submission failed. Please try again.', 'error');
-            return;
-          }
-          // Update local profile cache to reflect pending application
-          try {
-            const raw = localStorage.getItem('canafri_user_profile');
-            const existing = raw ? JSON.parse(raw) : {};
-            localStorage.setItem('canafri_user_profile', JSON.stringify({
-              ...existing,
-              bio:          sanitize(bio),
-              country:      sanitize(country),
-              sellerApplied: true,
-              isSeller:     false,
-            }));
-          } catch { /* ignore */ }
-          setShowSuccessModal(true);
-        })
-        .catch(() => {
-          toast('Network error. Please check your connection and try again.', 'error');
-        });
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toast(data.message || 'Submission failed. Please try again.', 'error');
+        return;
+      }
+      try {
+        const raw = localStorage.getItem('canafri_user_profile');
+        const existing = raw ? JSON.parse(raw) : {};
+        localStorage.setItem('canafri_user_profile', JSON.stringify({
+          ...existing,
+          bio:          sanitize(bio),
+          country:      sanitize(country),
+          sellerApplied: true,
+          isSeller:     false,
+        }));
+      } catch { /* ignore */ }
+      setShowSuccessModal(true);
+    } catch {
+      toast('Network error. Please check your connection and try again.', 'error');
     }
   };
 
@@ -1889,11 +1914,12 @@ export default function BecomeSellerPage({ onBack, onNavigateToSettings }: Becom
             <div className="flex flex-col gap-1 text-center">
               <h3 className="text-[16px] font-bold text-foreground">Verify Your Phone Number</h3>
               <p className="text-[11px] leading-[16px] text-muted">
-                We sent a 4-digit code to <strong className="text-foreground">{selectedPhonePrefix.prefix} {phone}</strong>.
+                We sent a 6-digit code to <strong className="text-foreground">{selectedPhonePrefix.prefix} {phone}</strong>.
               </p>
             </div>
 
-            <div className="flex justify-center items-center gap-3 py-2">
+            {/* OTP digit inputs */}
+            <div className="flex justify-center items-center gap-2 py-1">
               {otpDigits.map((digit, idx) => (
                 <input
                   key={idx}
@@ -1908,7 +1934,7 @@ export default function BecomeSellerPage({ onBack, onNavigateToSettings }: Becom
                     const next = [...otpDigits];
                     next[idx] = val;
                     setOtpDigits(next);
-                    if (val !== '' && idx < 3) {
+                    if (val !== '' && idx < 5) {
                       document.getElementById(`otp-${idx + 1}`)?.focus();
                     }
                   }}
@@ -1917,7 +1943,7 @@ export default function BecomeSellerPage({ onBack, onNavigateToSettings }: Becom
                       document.getElementById(`otp-${idx - 1}`)?.focus();
                     }
                   }}
-                  className="w-12 h-12 rounded-xl border border-border bg-[#F5F8FB] dark:bg-[#161616] text-center text-lg font-bold text-foreground focus:border-primary outline-none transition-colors"
+                  className="w-10 h-10 rounded-xl border border-border bg-[#F5F8FB] dark:bg-[#161616] text-center text-base font-bold text-foreground focus:border-primary outline-none transition-colors"
                 />
               ))}
             </div>
@@ -1932,10 +1958,18 @@ export default function BecomeSellerPage({ onBack, onNavigateToSettings }: Becom
               ) : (
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     setOtpTimer(59);
-                    setOtpDigits(['', '', '', '']);
+                    setOtpDigits(['', '', '', '', '', '']);
                     setOtpError('');
+                    try {
+                      const cleanPhone = phone.replace(/[\s-()]/g, '');
+                      await apiFetch('/api/auth/phone/send-otp', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone: cleanPhone, prefix: selectedPhonePrefix.prefix }),
+                      });
+                    } catch {}
                   }}
                   className="text-[11px] font-semibold text-primary hover:underline cursor-pointer bg-transparent border-none"
                 >
@@ -1949,7 +1983,7 @@ export default function BecomeSellerPage({ onBack, onNavigateToSettings }: Becom
                 type="button"
                 onClick={() => {
                   setShowPhoneOtpModal(false);
-                  setOtpDigits(['', '', '', '']);
+                  setOtpDigits(['', '', '', '', '', '']);
                   setOtpError('');
                 }}
                 className="flex-1 h-[38px] rounded-xl border border-border text-[13px] font-semibold hover:bg-foreground/5 transition-colors cursor-pointer"
@@ -1959,65 +1993,31 @@ export default function BecomeSellerPage({ onBack, onNavigateToSettings }: Becom
               <button
                 type="button"
                 disabled={otpDigits.some(d => d === '')}
-                onClick={() => {
-                  const token = getToken();
-                  if (!token) {
-                    setOtpError('You are not logged in. Please log in and try again.');
-                    return;
-                  }
-                  fetch('/api/users/apply-seller', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({
-                      bio:              sanitize(bio),
-                      country:          sanitize(country),
-                      city:             sanitize(city),
-                      phone:            sanitize(phone),
-                      phonePrefix:      selectedPhonePrefix.prefix,
-                      headline:         sanitize(headline),
-                      skills,
-                      primaryCategory,
-                      subCategory,
-                      yearsOfExperience,
-                      language,
-                      minProjectValue,
-                      availability,
-                      skillsBio:        sanitize(skillsBio),
-                      portfolioLinks,
-                      educationSchool:  sanitize(educationSchool),
-                      educationDegree:  sanitize(educationDegree),
-                      educationYear:    sanitize(educationYear),
-                      agreedToTerms:    agreed,
-                    }),
-                  })
-                    .then(r => r.json())
-                    .then(data => {
-                      if (!data.success) {
-                        setOtpError(data.message || 'Submission failed. Please try again.');
-                        return;
-                      }
-                      setShowPhoneOtpModal(false);
-                      // Update local profile cache to reflect pending application
-                      try {
-                        const raw = localStorage.getItem('canafri_user_profile');
-                        const existing = raw ? JSON.parse(raw) : {};
-                        localStorage.setItem('canafri_user_profile', JSON.stringify({
-                          ...existing,
-                          bio:          sanitize(bio),
-                          country:      sanitize(country),
-                          sellerApplied: true,
-                          isSeller:     false,
-                        }));
-                      } catch { /* ignore */ }
-                      setShowSuccessModal(true);
-                    })
-                    .catch(() => {
-                      setOtpError('Network error. Please check your connection and try again.');
+                onClick={async () => {
+                  const code = otpDigits.join('');
+                  const cleanPhone = phone.replace(/[\s\-()]/g, '');
+                  try {
+                    const res = await apiFetch('/api/auth/phone/verify-otp', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ phone: cleanPhone, prefix: selectedPhonePrefix.prefix, code }),
                     });
+                    const data = await res.json();
+                    if (!data.success) {
+                      setOtpError(data.message || 'Incorrect code. Please try again.');
+                      return;
+                    }
+                    setShowPhoneOtpModal(false);
+                    setOtpDigits(['', '', '', '', '', '']);
+                    setOtpError('');
+                    submitSellerApplication();
+                  } catch {
+                    setOtpError('Network error. Please check your connection and try again.');
+                  }
                 }}
                 className="flex-1 h-[38px] rounded-xl bg-primary text-[13px] font-semibold text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
-                Verify & Submit
+                Verify &amp; Submit
               </button>
             </div>
           </div>

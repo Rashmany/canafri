@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Eye, EyeOff, User, Lock, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, User, Lock, ArrowLeft, Mail, RefreshCw } from 'lucide-react';
 import { updateSocketToken } from '@/lib/socket';
 import { getOrCreateDeviceId } from '@/lib/api-client';
 
@@ -77,6 +77,10 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Email-not-verified state
+  const [emailNotVerified, setEmailNotVerified] = useState(false);
+  const [resendEmail, setResendEmail] = useState('');
+  const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
   const isFormValid = identifier.trim().length > 0 && password.length >= 8 && !isSubmitting;
 
@@ -89,9 +93,28 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
       });
     }
     setApiError(null);
+    setEmailNotVerified(false);
+    setResendStatus('idle');
 
     if (field === 'identifier') setIdentifier(value);
     if (field === 'password') setPassword(value);
+  };
+
+  const handleResendOTP = async () => {
+    if (!resendEmail || resendStatus === 'sending') return;
+    setResendStatus('sending');
+    try {
+      const res = await fetch('/api/auth/resend-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resendEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to resend.');
+      setResendStatus('sent');
+    } catch {
+      setResendStatus('error');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -135,7 +158,17 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || data.error || 'Login failed.');
+        // Handle email-not-verified specially
+        if (data.code === 'EMAIL_NOT_VERIFIED') {
+          // Try to extract the email from identifier if it looks like one
+          const likelyEmail = cleanIdentifier.includes('@') ? cleanIdentifier : '';
+          setResendEmail(likelyEmail);
+          setEmailNotVerified(true);
+          setResendStatus('idle');
+        } else {
+          throw new Error(data.message || data.error || 'Login failed.');
+        }
+        return;
       }
 
       if (typeof window !== 'undefined' && data.accessToken && data.user) {
@@ -249,6 +282,38 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
                 </div>
               </div>
 
+              {/* Email-not-verified banner */}
+              {emailNotVerified && (
+                <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs mt-2">
+                  <div className="flex items-start gap-2.5">
+                    <Mail size={15} className="text-amber-400 shrink-0 mt-0.5" />
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-semibold text-amber-300">Email not verified</span>
+                      <span className="text-amber-300/70 leading-[18px]">
+                        Please check your inbox and verify your email before logging in.
+                        {resendEmail && <> We sent the code to <span className="font-medium text-amber-200">{resendEmail}</span>.</>}
+                      </span>
+                    </div>
+                  </div>
+                  {resendStatus === 'sent' ? (
+                    <p className="text-[11px] text-emerald-400 text-center font-medium">✓ A new verification code has been sent!</p>
+                  ) : resendStatus === 'error' ? (
+                    <p className="text-[11px] text-red-400 text-center">Failed to resend. Please try again.</p>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleResendOTP}
+                      disabled={resendStatus === 'sending'}
+                      className="flex items-center justify-center gap-1.5 w-full h-[32px] rounded-lg bg-amber-500/20 border border-amber-500/30 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-60 cursor-pointer"
+                    >
+                      <RefreshCw size={12} className={resendStatus === 'sending' ? 'animate-spin' : ''} />
+                      {resendStatus === 'sending' ? 'Sending...' : 'Resend verification code'}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Generic API error */}
               {apiError && (
                 <div className="text-[11px] text-red-500 bg-red-500/10 border border-red-500/20 rounded-xl p-2.5 text-center mt-2">
                   {apiError}

@@ -63,6 +63,7 @@ export default function Home() {
   const [savedJobIds, setSavedJobIds] = useState<Record<number, boolean>>({});
   const [pendingEmail, setPendingEmail] = useState('');
   const [pendingOtp, setPendingOtp] = useState('');
+  const [pendingDevOtp, setPendingDevOtp] = useState<string | undefined>(undefined);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [sellerMode, setSellerMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -339,8 +340,9 @@ export default function Home() {
     return (
       <RegisterPage
         onLoginClick={() => handleNavigate('Login')}
-        onRegisterSuccess={(email?: string) => {
+        onRegisterSuccess={(email?: string, devOtp?: string) => {
           setPendingEmail(email ?? '');
+          setPendingDevOtp(devOtp);
           handleNavigate('OtpVerification');
         }}
         onBackClick={() => handleNavigate('MobileSplash')}
@@ -352,9 +354,11 @@ export default function Home() {
     return (
       <OtpVerificationPage
         email={pendingEmail || 'your email'}
+        devOtp={pendingDevOtp}
         onBack={() => handleNavigate('Register')}
         onVerificationSuccess={() => {
           // Email is verified — user must now log in to get a real session token
+          setPendingDevOtp(undefined);
           handleNavigate('Login');
           toast('Email verified! Please sign in to continue.', 'success');
         }}

@@ -5,6 +5,7 @@ import { ConfirmDepositDialog, JobPostedDialog } from "@/components/ui/post-job-
 import { useToast } from "@/components/ui/toast";
 import { usePlatformConfig } from "@/lib/platform-config-context";
 import { MaintenanceTooltip } from "@/components/ui/maintenance-tooltip";
+import { apiFetch } from "@/lib/api-client";
 import {
   ArrowLeft,
   ChevronRight,
@@ -588,8 +589,10 @@ export default function PostJobPage({ onBack, onJobPosted }: PostJobPageProps) {
 
   // Phone OTP verification modal
   const [showPhoneOtpModal, setShowPhoneOtpModal] = useState(false);
-  const [otpDigits, setOtpDigits] = useState(['', '', '', '']);
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const [otpTimer, setOtpTimer] = useState(59);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
   const [otpError, setOtpError] = useState('');
   const [selectedPrefix, setSelectedPrefix] = useState<CountryPhoneOption>(PHONE_PREFIX_OPTIONS[0]);
   const [phoneInputVal, setPhoneInputVal] = useState("");
@@ -1658,21 +1661,36 @@ export default function PostJobPage({ onBack, onJobPosted }: PostJobPageProps) {
                   </button>
                   <button
                     type="button"
-                    disabled={!phoneInputVal.trim()}
-                    onClick={() => {
+                    disabled={!phoneInputVal.trim() || otpSending}
+                    onClick={async () => {
                       const cleanPhone = phoneInputVal.replace(/[\s-()]/g, '');
                       if (cleanPhone.length < 7 || cleanPhone.length > 15) {
                         setOtpError("Please enter a valid phone number (7 to 15 digits).");
                         return;
                       }
                       setOtpError('');
-                      setOtpTimer(59);
-                      setOtpDigits(['', '', '', '']);
-                      setOtpStep("verify");
+                      setOtpSending(true);
+                      try {
+                        const res = await apiFetch('/api/auth/phone/send-otp', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ phone: cleanPhone, prefix: selectedPrefix.prefix }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.message || 'Failed to send OTP code.');
+
+                        setOtpTimer(59);
+                        setOtpDigits(['', '', '', '', '', '']);
+                        setOtpStep("verify");
+                      } catch (err: any) {
+                        setOtpError(err.message || 'Failed to send OTP code. Please try again.');
+                      } finally {
+                        setOtpSending(false);
+                      }
                     }}
                     className="flex-1 h-[38px] rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-40"
                   >
-                    Send Code
+                    {otpSending ? 'Sending...' : 'Send Code'}
                   </button>
                 </div>
                 {otpError && (
@@ -1695,7 +1713,7 @@ export default function PostJobPage({ onBack, onJobPosted }: PostJobPageProps) {
                 </div>
 
                 {/* OTP digit inputs */}
-                <div className="flex justify-center items-center gap-3 py-1">
+                <div className="flex justify-center items-center gap-2 py-1">
                   {otpDigits.map((digit, idx) => (
                     <input
                       key={idx}
@@ -1710,7 +1728,7 @@ export default function PostJobPage({ onBack, onJobPosted }: PostJobPageProps) {
                         const next = [...otpDigits];
                         next[idx] = val;
                         setOtpDigits(next);
-                        if (val !== '' && idx < 3) {
+                        if (val !== '' && idx < 5) {
                           document.getElementById(`post-otp-${idx + 1}`)?.focus();
                         }
                       }}
@@ -1719,7 +1737,7 @@ export default function PostJobPage({ onBack, onJobPosted }: PostJobPageProps) {
                           document.getElementById(`post-otp-${idx - 1}`)?.focus();
                         }
                       }}
-                      className="w-12 h-12 rounded-xl border border-border bg-[#F5F8FB] dark:bg-[#161616] text-center text-lg font-bold text-foreground focus:border-primary outline-none transition-colors"
+                      className="w-10 h-10 rounded-xl border border-border bg-[#F5F8FB] dark:bg-[#161616] text-center text-base font-bold text-foreground focus:border-primary outline-none transition-colors"
                     />
                   ))}
                 </div>
@@ -1735,7 +1753,21 @@ export default function PostJobPage({ onBack, onJobPosted }: PostJobPageProps) {
                   ) : (
                     <button
                       type="button"
-                      onClick={() => { setOtpTimer(59); setOtpDigits(['', '', '', '']); setOtpError(''); }}
+                      onClick={async () => {
+                        setOtpTimer(59);
+                        setOtpDigits(['', '', '', '', '', '']);
+                        setOtpError('');
+                        try {
+                          const cleanPhone = phoneInputVal.replace(/[\s-()]/g, '');
+                          await apiFetch('/api/auth/phone/send-otp', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ phone: cleanPhone, prefix: selectedPrefix.prefix }),
+                          });
+                        } catch {
+                          // Ignore silent resend error
+                        }
+                      }}
                       className="text-[11px] font-semibold text-primary hover:underline cursor-pointer bg-transparent border-none"
                     >
                       Resend code
@@ -1749,7 +1781,7 @@ export default function PostJobPage({ onBack, onJobPosted }: PostJobPageProps) {
                     type="button"
                     onClick={() => {
                       setOtpStep("input");
-                      setOtpDigits(['', '', '', '']);
+                      setOtpDigits(['', '', '', '', '', '']);
                       setOtpError('');
                     }}
                     className="flex-1 h-[38px] rounded-xl border border-border text-[13px] font-semibold hover:bg-foreground/5 transition-colors cursor-pointer"
@@ -1758,26 +1790,39 @@ export default function PostJobPage({ onBack, onJobPosted }: PostJobPageProps) {
                   </button>
                   <button
                     type="button"
-                    disabled={otpDigits.some(d => d === '')}
-                    onClick={() => {
+                    disabled={otpDigits.some(d => d === '') || otpVerifying}
+                    onClick={async () => {
                       const code = otpDigits.join('');
-                      if (code === '0000') {
-                        setOtpError('Invalid code. Please try again.');
-                      } else {
+                      setOtpError('');
+                      setOtpVerifying(true);
+                      try {
+                        const cleanPhone = phoneInputVal.replace(/[\s-()]/g, '');
+                        const res = await apiFetch('/api/auth/phone/verify-otp', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ phone: cleanPhone, prefix: selectedPrefix.prefix, code }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.message || 'Verification failed.');
+
                         // Mark phone as verified
                         if (typeof window !== 'undefined') {
                           localStorage.setItem('canafri_phone_verified', 'true');
                         }
                         setShowPhoneOtpModal(false);
-                        setOtpDigits(['', '', '', '']);
+                        setOtpDigits(['', '', '', '', '', '']);
                         setOtpError('');
                         // Now create and publish the job directly
                         createAndPublishJob();
+                      } catch (err: any) {
+                        setOtpError(err.message || 'Invalid code. Please try again.');
+                      } finally {
+                        setOtpVerifying(false);
                       }
                     }}
                     className="flex-1 h-[38px] rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    Verify & Continue
+                    {otpVerifying ? 'Verifying...' : 'Verify & Continue'}
                   </button>
                 </div>
               </div>

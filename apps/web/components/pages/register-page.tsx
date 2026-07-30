@@ -6,7 +6,7 @@ import { usePlatformConfig } from '@/lib/platform-config-context';
 
 interface RegisterPageProps {
   onLoginClick?: () => void;
-  onRegisterSuccess?: (email?: string) => void;
+  onRegisterSuccess?: (email?: string, devOtp?: string) => void;
   onBackClick?: () => void;
 }
 
@@ -223,7 +223,7 @@ export default function RegisterPage({
         throw new Error(firstDetail || data.message || data.error || 'Registration failed.');
       }
 
-      onRegisterSuccess?.(sanitizeInput(email));
+      onRegisterSuccess?.(sanitizeInput(email), data.devOtp);
     } catch (err: any) {
       setApiError(err.message || 'An error occurred. Please try again.');
     } finally {
