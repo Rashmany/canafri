@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   Search,
   Filter,
@@ -30,7 +30,7 @@ type SellerStatus = 'Active' | 'Inactive' | 'Suspended';
 type SellerType = 'Freelancer' | 'Agency';
 
 interface Seller {
-  id: number;
+  id: string;
   name: string;
   handle: string;
   avatarInitials: string;
@@ -43,18 +43,10 @@ interface Seller {
   location: string;
   rating: number;
   trustScore: number;
+  sellerApproved?: boolean;
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const MOCK_SELLERS: Seller[] = [
-  { id: 1,  name: 'David Nwosu',       handle: '@davidn',           avatarInitials: 'DN', gigs: 14, earnings: 48900, status: 'Active',    sellerType: 'Freelancer', joinedDate: 'Jan 2025',  email: 'david@example.com',   location: 'Lagos, Nigeria',     rating: 4.9, trustScore: 98 },
-  { id: 2,  name: 'Amina Yusuf',       handle: '@amina_y',          avatarInitials: 'AY', gigs: 8,  earnings: 23100, status: 'Active',    sellerType: 'Freelancer', joinedDate: 'Feb 2025',  email: 'amina@example.com',   location: 'Kano, Nigeria',      rating: 4.8, trustScore: 95 },
-  { id: 3,  name: 'TechFlow Agency',   handle: '@techflow',         avatarInitials: 'TF', gigs: 35, earnings: 184500,status: 'Active',    sellerType: 'Agency',     joinedDate: 'Nov 2024',  email: 'hello@techflow.io',   location: 'Accra, Ghana',       rating: 4.7, trustScore: 92 },
-  { id: 4,  name: 'Kofi Boateng',      handle: '@kofib',            avatarInitials: 'KB', gigs: 3,  earnings: 4200,  status: 'Inactive',  sellerType: 'Freelancer', joinedDate: 'Mar 2025',  email: 'kofi@example.com',    location: 'Kumasi, Ghana',      rating: 4.5, trustScore: 88 },
-  { id: 5,  name: 'Chidi Okeke',       handle: '@chidi_o',          avatarInitials: 'CO', gigs: 6,  earnings: 12400, status: 'Suspended', sellerType: 'Freelancer', joinedDate: 'Jan 2025',  email: 'chidi@example.com',   location: 'Enugu, Nigeria',     rating: 4.2, trustScore: 71 },
-  { id: 6,  name: 'Creative Studio',   handle: '@creatives',        avatarInitials: 'CS', gigs: 22, earnings: 92300, status: 'Active',    sellerType: 'Agency',     joinedDate: 'Dec 2024',  email: 'contact@creative.io', location: 'Cape Town, SA',      rating: 4.9, trustScore: 97 },
-];
+const API = '/api';
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
@@ -99,7 +91,17 @@ function StatCard({ label, value, trend }: { label: string; value: number | stri
 
 // ─── Actions Dropdown ─────────────────────────────────────────────────────────
 
-function ActionsMenu({ seller, onView }: { seller: Seller; onView: () => void }) {
+function ActionsMenu({
+  seller,
+  onView,
+  onVerify,
+  onSuspend,
+}: {
+  seller: Seller;
+  onView: () => void;
+  onVerify?: () => void;
+  onSuspend?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -135,20 +137,20 @@ function ActionsMenu({ seller, onView }: { seller: Seller; onView: () => void })
           </button>
           <button
             type="button"
-            onClick={() => { setOpen(false); }}
+            onClick={() => { setOpen(false); onVerify?.(); }}
             className="flex w-full items-center gap-2.5 px-3.5 py-2.5 font-sans text-[13px] text-foreground/80 transition-colors hover:bg-foreground/5 hover:text-foreground text-left"
           >
-            <UserCheck size={14} strokeWidth={1.75} className="shrink-0" />
-            Verify Badge
+            <UserCheck size={14} strokeWidth={1.75} className="shrink-0 text-emerald-400" />
+            {seller.sellerApproved ? 'Revoke Badge' : 'Verify Badge'}
           </button>
           <div className="mx-3 h-px bg-border" />
           <button
             type="button"
-            onClick={() => { setOpen(false); }}
+            onClick={() => { setOpen(false); onSuspend?.(); }}
             className="flex w-full items-center gap-2.5 px-3.5 py-2.5 font-sans text-[13px] text-amber-400 transition-colors hover:bg-amber-500/5 text-left"
           >
             <ShieldAlert size={14} strokeWidth={1.75} className="shrink-0" />
-            Suspend
+            {seller.status === 'Suspended' ? 'Unsuspend' : 'Suspend'}
           </button>
         </div>
       )}
@@ -480,6 +482,9 @@ function SellerDetailView({ seller, onBack }: { seller: Seller; onBack: () => vo
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AdminSellersPage() {
+  const [sellers, setSellers]     = useState<Seller[]>([]);
+  const [stats, setStats]         = useState({ totalSellers: 0, activeSellers: 0, verifiedSellers: 0, totalSalesCC: 0 });
+  const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState('');
   const [statusFilter, setStatus] = useState<SellerStatus | 'All'>('All');
   const [typeFilter, setTypeFilter] = useState<SellerType | 'All'>('All');
@@ -492,6 +497,85 @@ export default function AdminSellersPage() {
   const statusRef = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLDivElement>(null);
 
+  const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('canafri_admin_access_token') ?? '' : '';
+
+  const loadSellers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/admin/sellers`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.sellers) {
+        const mapped: Seller[] = data.sellers.map((s: any) => {
+          const initials = (s.displayName || s.username || 'S')
+            .split(' ')
+            .map((n: string) => n[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase();
+          const gigsCount = Array.isArray(s.freelanceJobs) ? s.freelanceJobs.length : 0;
+          let totalEarnings = 0;
+          if (Array.isArray(s.freelanceJobs)) {
+            for (const j of s.freelanceJobs) {
+              if (j.status === 'COMPLETED') totalEarnings += j.budgetCC ?? 0;
+            }
+          }
+          return {
+            id: s.id,
+            name: s.displayName || s.username || 'Seller',
+            handle: `@${s.username || 'seller'}`,
+            avatarInitials: initials,
+            gigs: gigsCount,
+            earnings: totalEarnings,
+            status: s.status === 'SUSPENDED' ? 'Suspended' : s.status === 'INACTIVE' ? 'Inactive' : 'Active',
+            sellerType: s.creatorStake ? 'Agency' : 'Freelancer',
+            joinedDate: s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Recently',
+            email: s.email || 'No email',
+            location: s.country || 'Global',
+            rating: 4.9,
+            trustScore: s.trustScore ?? 90,
+            sellerApproved: s.sellerApproved ?? false,
+          };
+        });
+        setSellers(mapped);
+      }
+      if (data.stats) {
+        setStats(data.stats);
+      }
+    } catch {
+      // Fallback
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadSellers(); }, [loadSellers]);
+
+  const toggleSellerApproval = async (seller: Seller) => {
+    try {
+      await fetch(`${API}/admin/sellers/${seller.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ sellerApproved: !seller.sellerApproved }),
+      });
+      await loadSellers();
+    } catch {}
+  };
+
+  const toggleSellerSuspension = async (seller: Seller) => {
+    const nextStatus = seller.status === 'Suspended' ? 'ACTIVE' : 'SUSPENDED';
+    try {
+      await fetch(`${API}/admin/sellers/${seller.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      await loadSellers();
+    } catch {}
+  };
+
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (statusRef.current && !statusRef.current.contains(e.target as Node)) setStatusOpen(false);
@@ -502,7 +586,7 @@ export default function AdminSellersPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    let list = MOCK_SELLERS;
+    let list = sellers;
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(s => s.name.toLowerCase().includes(q) || s.handle.toLowerCase().includes(q) || s.email.toLowerCase().includes(q));
@@ -517,7 +601,7 @@ export default function AdminSellersPage() {
       return a.name.localeCompare(b.name);
     });
     return list;
-  }, [search, statusFilter, typeFilter, sortBy]);
+  }, [sellers, search, statusFilter, typeFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageData   = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -564,9 +648,10 @@ export default function AdminSellersPage() {
 
       {/* Stats */}
       <div className="shrink-0 flex gap-5 px-6 pb-6">
-        {STATS.map(s => (
-          <StatCard key={s.key} label={s.label} value={s.value} trend={s.trend} />
-        ))}
+        <StatCard label="Total Sellers" value={stats.totalSellers} trend={5.4} />
+        <StatCard label="Active Sellers" value={stats.activeSellers} trend={9.2} />
+        <StatCard label="Verified Sellers" value={stats.verifiedSellers} trend={11.5} />
+        <StatCard label="Total Sales (CC)" value={`${stats.totalSalesCC} CC`} trend={13.8} />
       </div>
 
       {/* Main content */}
@@ -731,7 +816,12 @@ export default function AdminSellersPage() {
                   </div>
 
                   <div className="flex items-center justify-center" onClick={e => e.stopPropagation()}>
-                    <ActionsMenu seller={seller} onView={() => setSelectedSeller(seller)} />
+                    <ActionsMenu
+                      seller={seller}
+                      onView={() => setSelectedSeller(seller)}
+                      onVerify={() => toggleSellerApproval(seller)}
+                      onSuspend={() => toggleSellerSuspension(seller)}
+                    />
                   </div>
                 </div>
               );

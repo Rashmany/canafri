@@ -1,69 +1,180 @@
 'use client';
-import { useState, useRef, useCallback } from "react";
-import { FileText, ChevronLeft, ChevronRight, ShieldCheck } from "lucide-react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { FileText, ChevronLeft, ChevronRight, ShieldCheck, Star, X, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Footer from '@/components/layout/footer';
 
 const getStatusStyles = (status: string) => {
   switch (status.toLowerCase()) {
-    case 'in progress':
-      return 'bg-[#8C5CFF]/15 text-[#8C5CFF]/80';
-    case 'pending':
-      return 'bg-amber-500/15 text-amber-600/80 dark:text-amber-400/80';
-    case 'completed':
-      return 'bg-emerald-500/15 text-emerald-600/80 dark:text-emerald-400/80';
-    case 'late':
-      return 'bg-rose-500/15 text-rose-600/80 dark:text-rose-400/80';
+    case 'in progress':   return 'bg-[#8C5CFF]/15 text-[#8C5CFF]/80';
+    case 'pending':       return 'bg-amber-500/15 text-amber-600/80 dark:text-amber-400/80';
+    case 'completed':     return 'bg-emerald-500/15 text-emerald-600/80 dark:text-emerald-400/80';
+    case 'late':          return 'bg-rose-500/15 text-rose-600/80 dark:text-rose-400/80';
     case 'cancelled':
-    case 'cancel':
-      return 'bg-foreground/10 text-muted/80';
-    default:
-      return 'bg-[#8C5CFF]/15 text-[#8C5CFF]/80';
+    case 'cancel':        return 'bg-foreground/10 text-muted/80';
+    default:              return 'bg-[#8C5CFF]/15 text-[#8C5CFF]/80';
   }
 };
 
-interface StatCard {
-  label: string;
-  value: string;
-  sub: string;
-  subClassName: string;
-}
-
-const stats: StatCard[] = [
-  { label: "Active Orders",   value: "0", sub: "In progress",         subClassName: "text-muted/80" },
-  { label: "CC in Escrow",    value: "0", sub: "Locked across orders", subClassName: "text-[#4ADE80]/80" },
-  { label: "Awaiting Review", value: "0", sub: "Action needed",        subClassName: "text-muted/80" },
-  { label: "Completed",       value: "0", sub: "All time",             subClassName: "text-muted/80" },
-];
-
-const tabs = [
-  { label: "New",              count: 1 },
-  { label: "Active",           count: 1 },
-  { label: "Late",             count: 1 },
-  { label: "Delivered",        count: 1 },
-  { label: "Completed",        count: 1 },
-  { label: "Cancel",           count: 1 },
-  { label: "Starred",          count: 1 },
-  { label: "Dispute/Approve",  count: 1 },
-];
-
 interface Order {
+  id: string;
   name: string;
   handle: string;
   title: string;
   subtitle: string;
   date: string;
   price: string;
-  status: "in progress" | "pending" | "delivered";
-  avatarClassName: string;
+  status: string;
+  avatarUrl?: string;
   initials: string;
 }
 
-const orders: Order[] = [
-  { name: "John Trek", handle: "@johntrek", title: "Create landing page,", subtitle: "Web development", date: "Mar. 26", price: "$26", status: "in progress", avatarClassName: "bg-[#291D46]", initials: "JT" },
-  { name: "John Trek", handle: "@johntrek", title: "Create landing page,", subtitle: "Web development", date: "Mar. 26", price: "$26", status: "delivered",    avatarClassName: "bg-[#291D46]", initials: "JT" },
-  { name: "John Trek", handle: "@johntrek", title: "Create landing page,", subtitle: "Web development", date: "Mar. 26", price: "$26", status: "pending",     avatarClassName: "bg-[#291D46]", initials: "JT" },
-];
+const TAB_STATUSES: Record<string, string[]> = {
+  'New':           ['OPEN'],
+  'Active':        ['IN_PROGRESS'],
+  'Late':          ['LATE'],
+  'Delivered':     ['DELIVERED'],
+  'Completed':     ['COMPLETED'],
+  'Cancel':        ['CANCELLED'],
+  'Starred':       [],
+  'Dispute/Approve': ['DISPUTED'],
+};
+
+/* ─── Review Modal ─────────────────────────────────────────────────────────── */
+function ReviewModal({ order, onClose, onSubmit }: {
+  order: Order;
+  onClose: () => void;
+  onSubmit: (jobId: string, rating: number, comment: string) => Promise<void>;
+}) {
+  const [rating, setRating] = useState(0);
+  const [hovered, setHovered] = useState(0);
+  const [comment, setComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    if (rating === 0) { setError('Please select a star rating.'); return; }
+    setSubmitting(true);
+    setError('');
+    try {
+      await onSubmit(order.id, rating, comment);
+      onClose();
+    } catch (e: any) {
+      setError(e.message || 'Failed to submit review.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}>
+      <div className="relative w-full max-w-md rounded-2xl bg-[#FAFAFD] dark:bg-[#0B0B0B] border border-[#D8D8D8] dark:border-[#1e1e1e] p-6 flex flex-col gap-5 shadow-2xl">
+        <button onClick={onClose} className="absolute top-4 right-4 text-muted/60 hover:text-foreground/80 transition-colors cursor-pointer">
+          <X size={18} />
+        </button>
+
+        <div className="flex flex-col gap-1">
+          <h2 className="text-[1.125rem] font-bold text-foreground/85">Rate Your Client</h2>
+          <p className="text-[0.8125rem] text-muted/70">
+            How was your experience working with <span className="font-semibold text-foreground/70">{order.name}</span>?
+          </p>
+        </div>
+
+        {/* Star selector */}
+        <div className="flex flex-col gap-2">
+          <span className="text-[0.8125rem] font-medium text-foreground/70">Overall rating</span>
+          <div className="flex items-center gap-2">
+            {[1,2,3,4,5].map(star => (
+              <button
+                key={star}
+                type="button"
+                onMouseEnter={() => setHovered(star)}
+                onMouseLeave={() => setHovered(0)}
+                onClick={() => setRating(star)}
+                className="transition-transform hover:scale-110 cursor-pointer"
+              >
+                <Star
+                  size={32}
+                  className={cn(
+                    'transition-colors',
+                    star <= (hovered || rating)
+                      ? 'text-[#FF9529] fill-[#FF9529]'
+                      : 'text-muted/30 fill-transparent'
+                  )}
+                />
+              </button>
+            ))}
+            {rating > 0 && (
+              <span className="text-[0.875rem] font-semibold text-[#FF9529] ml-1">
+                {['','Poor','Fair','Good','Very Good','Excellent'][rating]}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Comment */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[0.8125rem] font-medium text-foreground/70">Comment <span className="text-muted/50 font-normal">(optional)</span></label>
+          <textarea
+            value={comment}
+            onChange={e => setComment(e.target.value)}
+            maxLength={1000}
+            rows={3}
+            placeholder="Share your experience with this client..."
+            className="w-full resize-none rounded-xl border border-[#D8D8D8] dark:border-[#1e1e1e] bg-background px-4 py-3 text-[0.8125rem] text-foreground/80 placeholder:text-muted/50 outline-none focus:border-[#8C5CFF]/60 transition-colors"
+          />
+          <span className="text-[0.6875rem] text-muted/50 text-right">{comment.length}/1000</span>
+        </div>
+
+        {error && <p className="text-[0.8125rem] text-rose-500">{error}</p>}
+
+        <button
+          onClick={handleSubmit}
+          disabled={submitting || rating === 0}
+          className={cn(
+            'w-full rounded-xl py-2.5 text-[0.875rem] font-semibold transition-all',
+            submitting || rating === 0
+              ? 'bg-foreground/10 text-muted/50 cursor-not-allowed'
+              : 'bg-[#8C5CFF] text-white hover:opacity-90 cursor-pointer'
+          )}
+        >
+          {submitting ? 'Submitting…' : 'Submit Review'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function mapBackendJobToOrder(j: any): Order {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const dateObj = new Date(j.createdAt || Date.now());
+  const dateStr = `${months[dateObj.getMonth()]}. ${dateObj.getDate()}`;
+
+  const clientName = j.client?.displayName || j.client?.username || 'Client';
+  const clientHandle = j.client?.username ? `@${j.client.username.replace(/^@/,'')}` : '@client';
+  const parts = clientName.trim().split(/\s+/);
+  const initials = parts.length >= 2
+    ? (parts[0][0] + parts[parts.length-1][0]).toUpperCase()
+    : clientName.slice(0,2).toUpperCase();
+
+  const statusMap: Record<string, string> = {
+    OPEN: 'in progress', IN_PROGRESS: 'in progress', DELIVERED: 'delivered',
+    COMPLETED: 'completed', CANCELLED: 'cancel', DISPUTED: 'in progress', LATE: 'late',
+  };
+
+  return {
+    id: j.id,
+    name: clientName,
+    handle: clientHandle,
+    title: j.title,
+    subtitle: j.category || 'Freelance',
+    date: dateStr,
+    price: `${j.amountCC || 0} CC`,
+    status: statusMap[(j.status || '').toUpperCase()] || 'in progress',
+    avatarUrl: j.client?.avatarUrl,
+    initials,
+  };
+}
 
 /* ─── Tab Button ─────────────────────────────────────────────────────────────*/
 function TabButton({ label, count, isActive, onClick }: {
@@ -264,13 +375,72 @@ function SearchToolbar() {
   );
 }
 
-/* ─── Page ────────────────────────────────────────────────────────────────────────────────────── */
-export default function OrdersPage({ onOrderClick, onDisputeApproveClick }: { onOrderClick?: () => void; onDisputeApproveClick?: () => void }) {
+/* ─── Page ──────────────────────────────────────────────────────────────────────────────── */
+export default function OrdersPage({ onOrderClick, onDisputeApproveClick }: { onOrderClick?: (orderId?: string) => void; onDisputeApproveClick?: () => void }) {
   const [activeTab, setActiveTab] = useState("New");
+  const [allOrders, setAllOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [reviewOrder, setReviewOrder] = useState<Order | null>(null);
+  const [reviewedJobIds, setReviewedJobIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+    if (!token) { setLoading(false); return; }
+    fetch('/api/jobs/seller/my-orders', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.jobs)) {
+          setAllOrders(data.jobs.map(mapBackendJobToOrder));
+          // Mark already-reviewed jobs
+          const reviewed = new Set<string>();
+          data.jobs.forEach((j: any) => {
+            if (Array.isArray(j.reviews) && j.reviews.length > 0) reviewed.add(j.id);
+          });
+          setReviewedJobIds(reviewed);
+        }
+      })
+      .catch(err => console.error('Failed to load orders:', err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Derive stats from real data
+  const activeCount    = allOrders.filter(o => o.status === 'in progress').length;
+  const escrowTotal    = allOrders.filter(o => o.status === 'in progress').reduce((s, o) => s + (parseInt(o.price) || 0), 0);
+  const awaitingCount  = allOrders.filter(o => o.status === 'delivered').length;
+  const completedCount = allOrders.filter(o => o.status === 'completed').length;
+
+  const dynamicStats = [
+    { label: 'Active Orders',   value: String(activeCount),    sub: 'In progress',         subClassName: 'text-muted/80' },
+    { label: 'CC in Escrow',    value: `${escrowTotal} CC`,   sub: 'Locked across orders', subClassName: 'text-[#4ADE80]/80' },
+    { label: 'Awaiting Review', value: String(awaitingCount),  sub: 'Action needed',        subClassName: 'text-muted/80' },
+    { label: 'Completed',       value: String(completedCount), sub: 'All time',             subClassName: 'text-muted/80' },
+  ];
+
+  // Derive tab counts & filtered rows
+  const TAB_LABELS = ['New', 'Active', 'Late', 'Delivered', 'Completed', 'Cancel', 'Starred', 'Dispute/Approve'];
+  const tabCounts = TAB_LABELS.reduce<Record<string, number>>((acc, label) => {
+    const statuses = TAB_STATUSES[label] ?? [];
+    acc[label] = statuses.length === 0 ? 0 : allOrders.filter(o => statuses.some(s => o.status === s.toLowerCase().replace('_',' ') || o.status === 'in progress' && s === 'IN_PROGRESS')).length;
+    return acc;
+  }, {});
+
+  const filteredOrders = (() => {
+    const statuses = TAB_STATUSES[activeTab] ?? [];
+    if (statuses.length === 0) return [];
+    return allOrders.filter(o => {
+      const st = (o.status || '').toLowerCase();
+      return statuses.some(s => {
+        const mapped = s.toLowerCase().replace('_', ' ');
+        return st === mapped || (s === 'IN_PROGRESS' && st === 'in progress');
+      });
+    });
+  })();
 
   return (
-    <div className="h-full w-full flex flex-col bg-background overflow-y-auto no-scrollbar">
-      <div className="mx-auto flex max-w-6xl flex-col gap-9 px-4 py-10 sm:px-6 lg:px-8 w-full">
+    <div className="min-h-full w-full flex flex-col bg-background overflow-y-auto no-scrollbar">
+      <div className="mx-auto flex max-w-6xl flex-col gap-9 px-4 py-10 sm:px-6 lg:px-8 w-full flex-1">
 
         <h1 className="text-[1.75rem] font-bold tracking-tight text-foreground/80 sm:text-[2rem]">
           Manage sales
@@ -283,7 +453,7 @@ export default function OrdersPage({ onOrderClick, onDisputeApproveClick }: { on
         <div>
           {/* Desktop */}
           <div className="hidden lg:grid lg:grid-cols-4 gap-6">
-            {stats.map((stat) => (
+            {dynamicStats.map((stat) => (
               <div key={stat.label} className="h-[7.5rem] rounded-2xl border border-[#D8D8D8] dark:border-[#121212] bg-[#FAFAFD] dark:bg-[#0B0B0B] px-6 flex flex-col justify-center gap-1.5">
                 <span className="text-[0.8125rem] font-medium text-muted/80">{stat.label}</span>
                 <span className="text-[1.375rem] font-medium tracking-[-0.066px] text-foreground/80">{stat.value}</span>
@@ -295,7 +465,7 @@ export default function OrdersPage({ onOrderClick, onDisputeApproveClick }: { on
           {/* Mobile & Tablet — single wrapper card, 2×2 grid */}
           <div className="lg:hidden rounded-2xl border border-[#D8D8D8] dark:border-[#121212] bg-[#FAFAFD] dark:bg-[#0B0B0B] overflow-hidden">
             <div className="grid grid-cols-2">
-              {stats.map((stat, idx) => (
+              {dynamicStats.map((stat, idx) => (
                 <div
                   key={stat.label}
                   className={cn(
@@ -324,13 +494,13 @@ export default function OrdersPage({ onOrderClick, onDisputeApproveClick }: { on
             {/* Tab buttons with scroll arrows on mobile */}
             <div className="w-full h-[3.75rem] border border-[#D8D8D8] dark:border-[#121212] bg-[#FAFAFD] dark:bg-[#0B0B0B]">
               <TabScrollContainer>
-                {tabs.map((tab) => (
+                {TAB_LABELS.map((label) => (
                   <TabButton
-                    key={tab.label}
-                    label={tab.label}
-                    count={tab.count}
-                    isActive={tab.label === activeTab}
-                    onClick={() => setActiveTab(tab.label)}
+                    key={label}
+                    label={label}
+                    count={tabCounts[label] ?? 0}
+                    isActive={label === activeTab}
+                    onClick={() => setActiveTab(label)}
                   />
                 ))}
               </TabScrollContainer>
@@ -358,25 +528,31 @@ export default function OrdersPage({ onOrderClick, onDisputeApproveClick }: { on
                 <span className="text-[0.75rem] font-medium text-foreground/80 text-right">Status / Action</span>
               </div>
 
-              {/* Table rows — same column layout on all screen sizes, scaled down text on mobile */}
+              {/* Table rows */}
               <div className="divide-y divide-[#D8D8D8] dark:divide-[#121212]">
-                {orders.map((order, index) => (
+                 {filteredOrders.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center min-w-[38rem]">
+                    <FileText className="text-muted/30 mb-3 size-8" />
+                    <p className="text-[0.8125rem] font-medium text-foreground/60">No {activeTab.toLowerCase()} orders</p>
+                    <p className="text-[0.6875rem] text-muted/60 mt-1">Orders in this status will appear here.</p>
+                  </div>
+                ) : filteredOrders.map((order) => (
                   <div
-                    key={index}
-                    onClick={order.status !== 'delivered' ? onOrderClick : undefined}
+                    key={order.id}
+                    onClick={() => onOrderClick?.(order.id)}
                     className={cn(
-                      "grid grid-cols-[minmax(9rem,2fr)_minmax(8rem,2fr)_minmax(5rem,1fr)_minmax(5rem,1fr)_minmax(3rem,0.6fr)_minmax(8rem,1.6fr)] items-center gap-4 px-6 py-4 min-w-[38rem] transition-colors duration-200",
-                      order.status !== 'delivered' && "cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.02] active:bg-black/[0.04] dark:active:bg-white/[0.04]"
+                      "grid grid-cols-[minmax(9rem,2fr)_minmax(8rem,2fr)_minmax(5rem,1fr)_minmax(5rem,1fr)_minmax(3rem,0.6fr)_minmax(8rem,1.6fr)] items-center gap-4 px-6 py-4 min-w-[38rem] transition-colors duration-200 cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.02] active:bg-black/[0.04] dark:active:bg-white/[0.04]"
                     )}
                   >
                     {/* Buyer Info */}
                     <div className="flex items-center gap-2.5">
-                      <div className={cn(
-                        "flex h-[2.25rem] w-[2.25rem] md:h-[2.8125rem] md:w-[2.8125rem] shrink-0 items-center justify-center rounded-full text-[0.75rem] md:text-[0.875rem] font-semibold text-white",
-                        order.avatarClassName,
-                      )}>
-                        {order.initials}
-                      </div>
+                      {order.avatarUrl && order.avatarUrl.trim() ? (
+                        <img src={order.avatarUrl} alt={order.name} className="flex h-[2.25rem] w-[2.25rem] md:h-[2.8125rem] md:w-[2.8125rem] shrink-0 rounded-full object-cover" />
+                      ) : (
+                        <div className="flex h-[2.25rem] w-[2.25rem] md:h-[2.8125rem] md:w-[2.8125rem] shrink-0 items-center justify-center rounded-full text-[0.75rem] md:text-[0.875rem] font-semibold text-white bg-primary/60">
+                          {order.initials}
+                        </div>
+                      )}
                       <div className="flex flex-col gap-0.5 min-w-0">
                         <span className="text-[0.75rem] md:text-[0.875rem] font-medium text-foreground/80 leading-5 truncate">{order.name}</span>
                         <span className="text-[0.625rem] md:text-[0.6875rem] font-medium text-muted/80 truncate">{order.handle}</span>
@@ -402,17 +578,28 @@ export default function OrdersPage({ onOrderClick, onDisputeApproveClick }: { on
 
                     {/* Status / Action */}
                     <div className="flex justify-end">
-                      {order.status === 'delivered' ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onDisputeApproveClick) onDisputeApproveClick();
-                          }}
-                          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.5625rem] md:text-[0.625rem] font-semibold bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors cursor-pointer whitespace-nowrap"
-                        >
-                          <ShieldCheck className="size-3" />
-                          Dispute/Approve
-                        </button>
+                      {['delivered', 'completed'].includes(order.status) ? (
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={cn(
+                            "inline-flex items-center justify-center rounded-full px-2.5 py-1 text-[0.5625rem] font-medium capitalize whitespace-nowrap",
+                            order.status === 'completed' ? "bg-emerald-500/15 text-emerald-600/80 dark:text-emerald-400/80" : "bg-amber-500/15 text-amber-600/80 dark:text-amber-400/80"
+                          )}>
+                            {order.status}
+                          </span>
+                          {reviewedJobIds.has(order.id) ? (
+                            <span className="inline-flex items-center gap-1 text-[0.5625rem] font-medium text-emerald-500 whitespace-nowrap">
+                              <Check size={10} /> Reviewed
+                            </span>
+                          ) : (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setReviewOrder(order); }}
+                              className="inline-flex items-center gap-1 text-[0.5625rem] font-semibold text-[#8C5CFF] hover:underline cursor-pointer whitespace-nowrap"
+                            >
+                              <Star size={10} className="fill-amber-400 text-amber-400" />
+                              Rate Client
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <span className={cn(
                           "inline-flex items-center justify-center rounded-full px-2.5 md:px-3 py-1 text-[0.5625rem] md:text-[0.625rem] font-medium capitalize whitespace-nowrap",
@@ -428,11 +615,30 @@ export default function OrdersPage({ onOrderClick, onDisputeApproveClick }: { on
             </div>
           </div>
 
-      </div>
-      <div className="hidden md:block">
+        </div>{/* ── end Tabs + Table ── */}
+      </div>{/* ── end flex-1 content ── */}
+      <div className="hidden md:block mt-auto">
         <Footer />
       </div>
-    </div>
+
+      {/* Review Modal */}
+      {reviewOrder && (
+        <ReviewModal
+          order={reviewOrder}
+          onClose={() => setReviewOrder(null)}
+          onSubmit={async (jobId, rating, comment) => {
+            const token = localStorage.getItem('canafri_access_token');
+            const res = await fetch(`/api/jobs/${jobId}/review`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ rating, comment }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to submit review.');
+            setReviewedJobIds(prev => new Set([...prev, jobId]));
+          }}
+        />
+      )}
     </div>
   );
 }

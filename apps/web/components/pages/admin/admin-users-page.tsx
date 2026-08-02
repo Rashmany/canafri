@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { ChevronDown, Eye, ShieldAlert, Check, X, ShieldCheck, Mail, ShieldAlert as AlertIcon, MapPin, Calendar, Wallet } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type UserRole = 'Creator' | 'Seller' | 'Member';
+type UserRole = 'Creator' | 'Seller' | 'Buyer' | 'Member';
 type UserStatus = 'Active' | 'Suspended' | 'Banned';
 
 interface UserItem {
-  id: number;
+  id: string;
   name: string;
   handle: string;
   email: string;
@@ -30,126 +30,12 @@ interface UserItem {
   warned?: boolean;  // true after admin issues a warning
 }
 
-type FilterTab = 'All' | 'Members' | 'Creators' | 'Sellers' | 'Suspended' | 'Banned' | 'Warned' | 'High Risk';
+type FilterTab = 'All' | 'Members' | 'Buyers' | 'Creators' | 'Sellers' | 'Suspended' | 'Banned' | 'Warned' | 'High Risk';
 type SortOption = 'newest' | 'trust-high' | 'risk-high' | 'name-asc';
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
+// ─── API Base ──────────────────────────────────────────────────────────────────
 
-const INITIAL_USERS: UserItem[] = [
-  {
-    id: 1,
-    name: 'John Trek',
-    handle: '@johntrek',
-    email: 'johntrek@gmail.com',
-    initials: 'JT',
-    roles: ['Creator', 'Seller'],
-    trustScore: 94,
-    riskScore: 12,
-    status: 'Active',
-    bio: 'Product designer with 4 years of experience working with Web3 startups across Africa. I specialise in dashboard interfaces and have shipped products for two DeFi platforms.',
-    location: 'Lagos, Nigeria',
-    joinedDate: 'Joined Oct 2025',
-    walletAddress: '0x71C...845f',
-    stakedAmount: '250 CC'
-  },
-  {
-    id: 2,
-    name: 'John Trek',
-    handle: '@johntrek',
-    email: 'johntrek@gmail.com',
-    initials: 'JT',
-    roles: ['Creator', 'Seller'],
-    trustScore: 94,
-    riskScore: 12,
-    status: 'Active',
-    bio: 'Product designer with 4 years of experience working with Web3 startups across Africa. I specialise in dashboard interfaces and have shipped products for two DeFi platforms.',
-    location: 'Lagos, Nigeria',
-    joinedDate: 'Joined Oct 2025',
-    walletAddress: '0x71C...845f',
-    stakedAmount: '250 CC'
-  },
-  {
-    id: 3,
-    name: 'John Trek',
-    handle: '@johntrek',
-    email: 'johntrek@gmail.com',
-    initials: 'JT',
-    roles: ['Creator', 'Seller'],
-    trustScore: 94,
-    riskScore: 12,
-    status: 'Active',
-    bio: 'Product designer with 4 years of experience working with Web3 startups across Africa. I specialise in dashboard interfaces and have shipped products for two DeFi platforms.',
-    location: 'Lagos, Nigeria',
-    joinedDate: 'Joined Oct 2025',
-    walletAddress: '0x71C...845f',
-    stakedAmount: '250 CC'
-  },
-  {
-    id: 4,
-    name: 'John Trek',
-    handle: '@johntrek',
-    email: 'johntrek@gmail.com',
-    initials: 'JT',
-    roles: ['Creator', 'Seller'],
-    trustScore: 94,
-    riskScore: 82,
-    status: 'Active',
-    bio: 'Product designer with 4 years of experience working with Web3 startups across Africa. I specialise in dashboard interfaces and have shipped products for two DeFi platforms.',
-    location: 'Lagos, Nigeria',
-    joinedDate: 'Joined Oct 2025',
-    walletAddress: '0x71C...845f',
-    stakedAmount: '250 CC'
-  },
-  {
-    id: 5,
-    name: 'John Trek',
-    handle: '@johntrek',
-    email: 'johntrek@gmail.com',
-    initials: 'JT',
-    roles: ['Creator', 'Seller'],
-    trustScore: 94,
-    riskScore: 12,
-    status: 'Suspended',
-    bio: 'Product designer with 4 years of experience working with Web3 startups across Africa. I specialise in dashboard interfaces and have shipped products for two DeFi platforms.',
-    location: 'Lagos, Nigeria',
-    joinedDate: 'Joined Oct 2025',
-    walletAddress: '0x71C...845f',
-    stakedAmount: '0 CC',
-    suspensionReason: 'Violated Terms of Service: Multiple complaints of non-delivery of milestones.'
-  },
-  {
-    id: 6,
-    name: 'John Trek',
-    handle: '@johntrek',
-    email: 'johntrek@gmail.com',
-    initials: 'JT',
-    roles: ['Member'],
-    trustScore: 94,
-    riskScore: 12,
-    status: 'Active',
-    bio: 'Product designer with 4 years of experience working with Web3 startups across Africa. I specialise in dashboard interfaces and have shipped products for two DeFi platforms.',
-    location: 'Lagos, Nigeria',
-    joinedDate: 'Joined Oct 2025',
-    walletAddress: '0x71C...845f',
-    stakedAmount: '0 CC'
-  },
-  {
-    id: 7,
-    name: 'John Trek',
-    handle: '@johntrek',
-    email: 'johntrek@gmail.com',
-    initials: 'JT',
-    roles: ['Creator', 'Seller'],
-    trustScore: 94,
-    riskScore: 12,
-    status: 'Active',
-    bio: 'Product designer with 4 years of experience working with Web3 startups across Africa. I specialise in dashboard interfaces and have shipped products for two DeFi platforms.',
-    location: 'Lagos, Nigeria',
-    joinedDate: 'Joined Oct 2025',
-    walletAddress: '0x71C...845f',
-    stakedAmount: '250 CC'
-  }
-];
+const API = '/api';
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
@@ -180,8 +66,8 @@ function UserPreviewModal({
 }: {
   user: UserItem;
   onClose: () => void;
-  onRoleToggle: (id: number, role: UserRole) => void;
-  onScoreUpdate: (id: number, field: 'trust' | 'risk', value: number) => void;
+  onRoleToggle: (id: string, role: UserRole) => void;
+  onScoreUpdate: (id: string, field: 'trust' | 'risk', value: number) => void;
 }) {
   const isCreator = user.roles.includes('Creator');
   const isSeller = user.roles.includes('Seller');
@@ -502,7 +388,7 @@ function BanUserModal({
 
 // ─── Filter Tabs & Sort options ───────────────────────────────────────────────
 
-const TABS: FilterTab[] = ['All', 'Members', 'Creators', 'Sellers', 'Suspended', 'Banned', 'Warned', 'High Risk'];
+const TABS: FilterTab[] = ['All', 'Members', 'Buyers', 'Creators', 'Sellers', 'Suspended', 'Banned', 'Warned', 'High Risk'];
 
 const SORT_OPTIONS: { key: SortOption; label: string }[] = [
   { key: 'newest',     label: 'Newest first' },
@@ -549,27 +435,101 @@ function SortSelect({ value, onChange }: { value: SortOption; onChange: (v: Sort
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AdminUsersPage() {
-  const [users, setUsers]               = useState<UserItem[]>(INITIAL_USERS);
-  const [activeTab, setActiveTab]       = useState<FilterTab>('All');
-  const [sortKey, setSortKey]           = useState<SortOption>('newest');
+  const [users, setUsers]                 = useState<UserItem[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState('');
+  const [activeTab, setActiveTab]         = useState<FilterTab>('All');
+  const [sortKey, setSortKey]             = useState<SortOption>('newest');
   
   // Modals state
-  const [previewUser, setPreviewUser]   = useState<UserItem | null>(null);
-  const [suspendUserId, setSuspendUserId] = useState<number | null>(null);
-  const [warnUserId, setWarnUserId]       = useState<number | null>(null);
-  const [banUserId, setBanUserId]         = useState<number | null>(null);
+  const [previewUser, setPreviewUser]     = useState<UserItem | null>(null);
+  const [suspendUserId, setSuspendUserId] = useState<string | null>(null);
+  const [warnUserId, setWarnUserId]       = useState<string | null>(null);
+  const [banUserId, setBanUserId]         = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
-  const [lastAction, setLastAction]     = useState<{ type: 'suspend' | 'unsuspend' | 'warn' | 'ban'; user: UserItem } | null>(null);
+
+  const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('canafri_admin_access_token') ?? '' : '';
+  const authHeader = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` });
+
+  // Load platform users from backend API
+  const loadUsers = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API}/admin/users`, { headers: authHeader() });
+      if (!res.ok) throw new Error('Failed to load registered users.');
+      const data = await res.json();
+      const rawUsers = data.users ?? [];
+
+      const mapped: UserItem[] = rawUsers.map((u: any) => {
+      const roles: UserRole[] = [];
+        if (u.isCreator) roles.push('Creator');
+        // Seller: only when admin has approved the seller application
+        if (u.isSeller && u.sellerApproved) roles.push('Seller');
+        // Buyer: phone verified and has posted at least one job
+        if (u.phoneVerified && (u._count?.postedJobs ?? 0) > 0) roles.push('Buyer');
+        // Default fallback label
+        if (roles.length === 0) roles.push('Member');
+
+        const initials = (u.displayName || u.username || 'U')
+          .split(' ')
+          .map((n: string) => n[0])
+          .join('')
+          .slice(0, 2)
+          .toUpperCase();
+
+        const status: UserStatus = u.status === 'SUSPENDED'
+          ? 'Suspended'
+          : u.status === 'BANNED'
+          ? 'Banned'
+          : 'Active';
+
+        const joinedDate = u.createdAt
+          ? `Joined ${new Date(u.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
+          : 'Joined Recently';
+
+        return {
+          id: u.id,
+          name: u.displayName || u.username || 'User',
+          handle: `@${u.username || 'user'}`,
+          email: u.email || 'No email',
+          avatarUrl: u.avatarUrl,
+          initials,
+          roles,
+          trustScore: u.trustScore ?? 50,
+          riskScore: u.riskScore ?? 0,
+          status,
+          bio: u.bio || 'No bio provided.',
+          location: u.country || 'Not specified',
+          joinedDate,
+          walletAddress: u.walletAddress ? `${u.walletAddress.slice(0, 5)}...${u.walletAddress.slice(-4)}` : 'Not linked',
+          stakedAmount: u.creatorStake?.stakedCC ? `${u.creatorStake.stakedCC} CC` : '0 CC',
+          suspensionReason: u.revokeReason,
+          warned: Array.isArray(u.riskFlags) && u.riskFlags.length > 0,
+        };
+      });
+
+      setUsers(mapped);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load users');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadUsers(); }, [loadUsers]);
 
   // Statistics counters
   const totalUsers  = users.length;
   const creators    = users.filter(u => u.roles.includes('Creator')).length;
   const sellers     = users.filter(u => u.roles.includes('Seller')).length;
+  const buyers      = users.filter(u => u.roles.includes('Buyer')).length;
   const suspended   = users.filter(u => u.status === 'Suspended').length;
 
   const countByTab = (tab: FilterTab) => {
     if (tab === 'All') return users.length;
     if (tab === 'Members') return users.filter(u => u.roles.includes('Member')).length;
+    if (tab === 'Buyers') return users.filter(u => u.roles.includes('Buyer')).length;
     if (tab === 'Creators') return users.filter(u => u.roles.includes('Creator')).length;
     if (tab === 'Sellers') return users.filter(u => u.roles.includes('Seller')).length;
     if (tab === 'Suspended') return users.filter(u => u.status === 'Suspended').length;
@@ -584,6 +544,8 @@ export default function AdminUsersPage() {
     // Filter Tab
     if (activeTab === 'Members') {
       list = list.filter(u => u.roles.includes('Member'));
+    } else if (activeTab === 'Buyers') {
+      list = list.filter(u => u.roles.includes('Buyer'));
     } else if (activeTab === 'Creators') {
       list = list.filter(u => u.roles.includes('Creator'));
     } else if (activeTab === 'Sellers') {
@@ -612,93 +574,123 @@ export default function AdminUsersPage() {
   }, [users, activeTab, sortKey]);
 
   // Admin Config updates
-  const handleRoleToggle = (id: number, role: UserRole) => {
-    setUsers(prev => prev.map(u => {
-      if (u.id !== id) return u;
-      const roles = u.roles.includes(role)
-        ? u.roles.filter(r => r !== role)
-        : [...u.roles, role];
-      const updated = { ...u, roles };
-      if (previewUser?.id === id) setPreviewUser(updated);
-      return updated;
-    }));
-  };
-
-  const handleScoreUpdate = (id: number, field: 'trust' | 'risk', value: number) => {
-    setUsers(prev => prev.map(u => {
-      if (u.id !== id) return u;
-      const updated = field === 'trust'
-        ? { ...u, trustScore: value }
-        : { ...u, riskScore: value };
-      if (previewUser?.id === id) setPreviewUser(updated);
-      return updated;
-    }));
-  };
-
-  const executeWarning = (warning: string) => {
-    if (warnUserId === null) return;
-    const targetUser = users.find(u => u.id === warnUserId);
-    if (!targetUser) return;
-
-    setUsers(prev => prev.map(u => {
-      if (u.id !== warnUserId) return u;
-      // Increment risk score slightly + flag as warned
-      return { ...u, riskScore: Math.min(100, u.riskScore + 10), warned: true };
-    }));
-    setLastAction({ type: 'warn', user: targetUser });
-    setSuccessBanner(`Warning sent to "${targetUser.name}": "${warning}"`);
-    setWarnUserId(null);
-  };
-
-  const executeSuspension = (reason: string) => {
-    if (suspendUserId === null) return;
-    const targetUser = users.find(u => u.id === suspendUserId);
-    if (!targetUser) return;
-
-    setUsers(prev => prev.map(u => {
-      if (u.id !== suspendUserId) return u;
-      return { ...u, status: 'Suspended', suspensionReason: reason };
-    }));
-    setLastAction({ type: 'suspend', user: targetUser });
-    setSuccessBanner(`User "${targetUser.name}" has been suspended.`);
-    setSuspendUserId(null);
-  };
-
-  const executeUnsuspend = (id: number) => {
+  const handleRoleToggle = async (id: string, role: UserRole) => {
     const targetUser = users.find(u => u.id === id);
     if (!targetUser) return;
-
-    setUsers(prev => prev.map(u => {
-      if (u.id !== id) return u;
-      return { ...u, status: 'Active', suspensionReason: undefined };
-    }));
-    setLastAction({ type: 'unsuspend', user: targetUser });
-    setSuccessBanner(`User "${targetUser.name}" has been unsuspended.`);
+    const isCreator = role === 'Creator' ? !targetUser.roles.includes('Creator') : targetUser.roles.includes('Creator');
+    const isSeller  = role === 'Seller'  ? !targetUser.roles.includes('Seller')  : targetUser.roles.includes('Seller');
+    
+    try {
+      const res = await fetch(`${API}/admin/users/${id}/flags`, {
+        method: 'PATCH',
+        headers: authHeader(),
+        body: JSON.stringify({ isCreator, isSeller }),
+      });
+      if (!res.ok) throw new Error('Role flag update failed.');
+      await loadUsers();
+      if (previewUser?.id === id) {
+        const updatedRoles = ['Member' as UserRole];
+        if (isCreator) updatedRoles.push('Creator');
+        if (isSeller) updatedRoles.push('Seller');
+        setPreviewUser({ ...previewUser, roles: updatedRoles });
+      }
+      setSuccessBanner(`Updated roles for ${targetUser.name}`);
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
-  const executeBan = (reason: string) => {
-    if (banUserId === null) return;
+  const handleScoreUpdate = async (id: string, field: 'trust' | 'risk', value: number) => {
+    try {
+      const res = await fetch(`${API}/admin/users/${id}/scores`, {
+        method: 'PATCH',
+        headers: authHeader(),
+        body: JSON.stringify({ [field === 'trust' ? 'trustScore' : 'riskScore']: value }),
+      });
+      if (!res.ok) throw new Error('Score update failed.');
+      await loadUsers();
+      if (previewUser?.id === id) {
+        setPreviewUser({
+          ...previewUser,
+          [field === 'trust' ? 'trustScore' : 'riskScore']: value,
+        });
+      }
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const executeWarning = async (warning: string) => {
+    if (!warnUserId) return;
+    const targetUser = users.find(u => u.id === warnUserId);
+    try {
+      const res = await fetch(`${API}/admin/users/${warnUserId}/warn`, {
+        method: 'POST',
+        headers: authHeader(),
+        body: JSON.stringify({ warning }),
+      });
+      if (!res.ok) throw new Error('Failed to send warning.');
+      setSuccessBanner(`Warning issued to "${targetUser?.name || 'User'}".`);
+      setWarnUserId(null);
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const executeSuspension = async (reason: string) => {
+    if (!suspendUserId) return;
+    const targetUser = users.find(u => u.id === suspendUserId);
+    try {
+      const res = await fetch(`${API}/admin/users/${suspendUserId}/suspend`, {
+        method: 'PATCH',
+        headers: authHeader(),
+        body: JSON.stringify({ status: 'SUSPENDED', reason }),
+      });
+      if (!res.ok) throw new Error('Suspension failed.');
+      setSuccessBanner(`User "${targetUser?.name || 'User'}" has been suspended.`);
+      setSuspendUserId(null);
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const executeUnsuspend = async (id: string) => {
+    const targetUser = users.find(u => u.id === id);
+    try {
+      const res = await fetch(`${API}/admin/users/${id}/suspend`, {
+        method: 'PATCH',
+        headers: authHeader(),
+        body: JSON.stringify({ status: 'ACTIVE' }),
+      });
+      if (!res.ok) throw new Error('Unsuspend failed.');
+      setSuccessBanner(`User "${targetUser?.name || 'User'}" has been unsuspended.`);
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const executeBan = async (reason: string) => {
+    if (!banUserId) return;
     const targetUser = users.find(u => u.id === banUserId);
-    if (!targetUser) return;
-
-    setUsers(prev => prev.map(u => {
-      if (u.id !== banUserId) return u;
-      return { ...u, status: 'Banned', suspensionReason: reason };
-    }));
-    setLastAction({ type: 'ban', user: targetUser });
-    setSuccessBanner(`User "${targetUser.name}" has been permanently banned.`);
-    setBanUserId(null);
+    try {
+      const res = await fetch(`${API}/admin/users/${banUserId}/suspend`, {
+        method: 'PATCH',
+        headers: authHeader(),
+        body: JSON.stringify({ status: 'BANNED', reason }),
+      });
+      if (!res.ok) throw new Error('Ban failed.');
+      setSuccessBanner(`User "${targetUser?.name || 'User'}" has been permanently banned.`);
+      setBanUserId(null);
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
-  const handleUndo = () => {
-    if (!lastAction) return;
-    setUsers(prev => prev.map(u => {
-      if (u.id !== lastAction.user.id) return u;
-      return lastAction.user;
-    }));
-    setLastAction(null);
-    setSuccessBanner(null);
-  };
+
 
   return (
     <div className="h-full overflow-y-auto no-scrollbar">
@@ -751,14 +743,18 @@ export default function AdminUsersPage() {
           <div className="flex items-center gap-3 rounded-xl border border-[#8C5CFF]/30 bg-[#8C5CFF]/10 px-5 py-3 font-sans text-[0.8125rem] text-white">
             <Check size={16} className="text-[#8C5CFF]" />
             <span>{successBanner}</span>
-            <button
-              type="button"
-              onClick={handleUndo}
-              className="ml-auto font-bold text-[#8C5CFF] hover:underline"
-            >
-              Undo Action
+            <button type="button" onClick={() => setSuccessBanner(null)} className="ml-auto text-white/40 hover:text-white">
+              <X size={14} />
             </button>
-            <button type="button" onClick={() => setSuccessBanner(null)} className="ml-3 text-white/40 hover:text-white">
+          </div>
+        )}
+
+        {/* Error Alert Banner */}
+        {error && (
+          <div className="flex items-center gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-3 font-sans text-[0.8125rem] text-red-400">
+            <AlertIcon size={16} className="text-red-400 shrink-0" />
+            <span>{error}</span>
+            <button type="button" onClick={() => setError('')} className="ml-auto text-red-400/60 hover:text-red-400">
               <X size={14} />
             </button>
           </div>
@@ -804,8 +800,13 @@ export default function AdminUsersPage() {
             <p className="font-sans text-[0.75rem] font-medium text-[#A0A0A0] uppercase tracking-wider text-right">Actions</p>
           </div>
 
-          {/* Rows */}
-          {filteredUsers.length === 0 ? (
+          {/* Rows / Loading */}
+          {loading ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+              <div className="size-6 border-2 border-[#8C5CFF] border-t-transparent rounded-full animate-spin" />
+              <p className="font-sans text-[0.8125rem] text-[#A0A0A0] mt-2">Loading registered users...</p>
+            </div>
+          ) : filteredUsers.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
               <p className="font-sans text-[0.8125rem] text-[#A0A0A0]">No users found matching filters</p>
             </div>
@@ -835,7 +836,12 @@ export default function AdminUsersPage() {
                     {user.roles.map(r => (
                       <span
                         key={r}
-                        className={`rounded px-2 py-0.5 font-sans text-[0.625rem] font-medium ${r === 'Creator' ? 'bg-[#4ADE80]/10 border border-[#4ADE80]/20 text-[#4ADE80]' : r === 'Seller' ? 'bg-[#8C5CFF]/10 border border-[#8C5CFF]/20 text-[#8C5CFF]' : 'bg-border text-[#A0A0A0]'}`}
+                        className={`rounded px-2 py-0.5 font-sans text-[0.625rem] font-medium ${
+                          r === 'Creator' ? 'bg-[#4ADE80]/10 border border-[#4ADE80]/20 text-[#4ADE80]'
+                          : r === 'Seller' ? 'bg-[#8C5CFF]/10 border border-[#8C5CFF]/20 text-[#8C5CFF]'
+                          : r === 'Buyer' ? 'bg-[#38BDF8]/10 border border-[#38BDF8]/20 text-[#38BDF8]'
+                          : 'bg-border text-[#A0A0A0]'
+                        }`}
                       >
                         {r}
                       </span>

@@ -15,6 +15,7 @@ function PasswordField({
   onChange,
   placeholder,
   error,
+  autoComplete,
 }: {
   id: string;
   label: string;
@@ -22,6 +23,7 @@ function PasswordField({
   onChange: (v: string) => void;
   placeholder?: string;
   error?: boolean;
+  autoComplete?: string;
 }) {
   const [show, setShow] = useState(false);
 
@@ -37,6 +39,7 @@ function PasswordField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
+          autoComplete={autoComplete}
           className={[
             'w-full rounded-xl border bg-background py-3 pl-4 pr-10 font-sans text-[13px] text-foreground placeholder:text-foreground/30 outline-none transition',
             error ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500' : 'border-border focus:border-[#8C5CFF] focus:ring-1 focus:ring-[#8C5CFF]',
@@ -125,6 +128,7 @@ export default function ChangePasswordModal({ onClose, onSave }: ChangePasswordM
             value={currentPassword}
             onChange={setCurrentPassword}
             placeholder="••••••••"
+            autoComplete="current-password"
           />
 
           <PasswordField
@@ -134,6 +138,7 @@ export default function ChangePasswordModal({ onClose, onSave }: ChangePasswordM
             onChange={setNewPassword}
             placeholder="••••••••"
             error={isTooShort}
+            autoComplete="new-password"
           />
           {isTooShort && (
             <p className="font-sans text-[10px] text-[#ff6b6b]">Min. 8 characters</p>
@@ -146,6 +151,7 @@ export default function ChangePasswordModal({ onClose, onSave }: ChangePasswordM
             onChange={setConfirmPassword}
             placeholder="••••••••"
             error={isMismatch}
+            autoComplete="new-password"
           />
           {isMismatch && (
             <p className="font-sans text-[10px] text-[#ff6b6b]">Passwords do not match</p>

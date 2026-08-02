@@ -21,46 +21,44 @@ interface Proposal {
   viewed: boolean;
 }
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
+// ─── Backend status mapper ────────────────────────────────────────────────────
 
-const MOCK_PROPOSALS: Proposal[] = [
-  {
-    id: 1,
-    jobTitle: 'Full Stack Web Developer',
-    jobCategory: 'Web Programming & Design',
-    clientName: 'John Trek',
-    bidAmount: '25 CC/hr',
-    status: 'in_review',
-    date: '2 days ago',
-    viewed: true,
-    coverLetter:
-      'I have extensive experience building React/Next.js frontends and connecting them to blockchain networks. I would love to build the Canton wallet dashboard for you.',
-  },
-  {
-    id: 2,
-    jobTitle: 'Frontend Integration Engineer (Next.js)',
-    jobCategory: 'Frontend Dev',
-    clientName: 'Sarah Chen',
-    bidAmount: '1,500 CC',
-    status: 'submitted',
-    date: '5 days ago',
-    viewed: false,
-    coverLetter:
-      'I can quickly integrate Tailwind components with Fastify WebSockets for real-time order matching. I am available to start immediately.',
-  },
-  {
-    id: 3,
-    jobTitle: 'Senior Daml Smart Contract Developer',
-    jobCategory: 'Smart Contracts',
-    clientName: 'Alex Rivera',
-    bidAmount: '50 CC/hr',
-    status: 'accepted',
-    date: '1 week ago',
-    viewed: true,
-    coverLetter:
-      'Expert Daml developer ready to write secure multi-party agreements and asset tokenization contracts on the Canton network.',
-  },
-];
+function mapBackendStatusToProposalStatus(s: string): Proposal['status'] {
+  switch ((s || '').toUpperCase()) {
+    case 'ACCEPTED': return 'accepted';
+    case 'REJECTED': return 'declined';
+    case 'IN_REVIEW': return 'in_review';
+    default: return 'submitted';
+  }
+}
+
+function mapBackendProposal(p: any): Proposal {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const dateObj = new Date(p.createdAt || Date.now());
+  const diffHours = Math.floor((Date.now() - dateObj.getTime()) / (1000 * 60 * 60));
+  const timeAgo = diffHours < 1
+    ? 'Just now'
+    : diffHours < 24
+    ? `${diffHours}h ago`
+    : `${months[dateObj.getMonth()]}. ${dateObj.getDate()}`;
+
+  const clientName =
+    p.job?.client?.displayName ||
+    p.job?.client?.username ||
+    'Unknown Client';
+
+  return {
+    id: p.id,
+    jobTitle: p.job?.title || 'Untitled Job',
+    jobCategory: p.job?.category || 'General',
+    clientName,
+    bidAmount: p.rateCC ? `${p.rateCC} CC` : '—',
+    status: mapBackendStatusToProposalStatus(p.status),
+    date: timeAgo,
+    coverLetter: p.coverLetter || '',
+    viewed: p.status !== 'PENDING',
+  };
+}
 
 // ─── Status pill helpers ───────────────────────────────────────────────────────
 
@@ -201,36 +199,23 @@ interface ProposalsPageProps {
 export default function ProposalsPage({ onBack }: ProposalsPageProps) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'archived'>('all');
-
-  const [proposals] = useState<Proposal[]>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('canafri_submitted_proposals');
-      if (stored) {
-        try {
-          // Merge stored proposals; add viewed=false and category if missing
-          const parsed: Partial<Proposal>[] = JSON.parse(stored);
-          return parsed.map((p, i) => ({
-            id: p.id ?? i + 100,
-            jobTitle: p.jobTitle ?? 'Untitled Job',
-            jobCategory: p.jobCategory ?? 'General',
-            clientName: p.clientName ?? 'Unknown Client',
-            bidAmount: p.bidAmount ?? '—',
-            status: (p.status as Proposal['status']) ?? 'submitted',
-            date: p.date ?? 'recently',
-            coverLetter: p.coverLetter ?? '',
-            viewed: p.viewed ?? false,
-          }));
-        } catch (e) {
-          console.error(e);
-        }
-      }
-    }
-    return MOCK_PROPOSALS;
-  });
+  const [proposals, setProposals] = useState<Proposal[]>([]);
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 600);
-    return () => clearTimeout(t);
+    const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+    if (!token) { setLoading(false); return; }
+
+    fetch('/api/jobs/seller/my-proposals', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.proposals)) {
+          setProposals(data.proposals.map(mapBackendProposal));
+        }
+      })
+      .catch(err => console.error('Failed to load proposals:', err))
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <FindJobPageSkeleton />;
@@ -248,7 +233,7 @@ export default function ProposalsPage({ onBack }: ProposalsPageProps) {
   ];
 
   return (
-    <div className="flex h-full w-full flex-col bg-background overflow-y-auto no-scrollbar">
+    <div className="flex min-h-full w-full flex-col bg-background overflow-y-auto no-scrollbar">
 
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-border bg-background px-6 py-5 shrink-0">

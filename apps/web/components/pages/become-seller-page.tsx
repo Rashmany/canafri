@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Check, UploadCloud, File as FileIcon, Trash2, CheckCircle2, ChevronLeft } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Check, UploadCloud, File as FileIcon, Trash2, CheckCircle2, ChevronLeft, HelpCircle, Clock, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
+import AlreadySellerPage from '@/components/pages/already-seller-page';
+import { apiFetch } from '@/lib/api-client';
 
 interface UploadedFile {
   name: string;
@@ -563,13 +565,26 @@ function TermsCheckbox({
   );
 }
 
+function InfoTooltip() {
+  return (
+    <div className="group relative flex items-center">
+      <HelpCircle size={13} className="text-muted hover:text-primary transition-colors cursor-help" />
+      <div className="pointer-events-none absolute bottom-full right-0 mb-2 hidden w-60 rounded-xl border border-border bg-[#181818] p-2.5 text-[10px] leading-[14px] font-normal text-foreground/90 shadow-2xl group-hover:block z-50 animate-in fade-in duration-150">
+        If you need to update any of these details, please edit them in your account settings.
+        <div className="absolute top-full right-2 border-4 border-transparent border-t-[#181818]" />
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page Component ──────────────────────────────────────────────────────
 
 interface BecomeSellerPageProps {
   onBack: () => void;
+  onNavigateToSettings?: () => void;
 }
 
-export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
+export default function BecomeSellerPage({ onBack, onNavigateToSettings }: BecomeSellerPageProps) {
   const { toast } = useToast();
 
   // Wizard step state (1 = Profile, 2 = Skills, 3 = Review)
@@ -577,7 +592,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
   const TOTAL_STEPS = 3;
   const isLastStep = currentStep === TOTAL_STEPS;
 
-  // Form state
+  // Form state — fullName/username/email auto-filled from account (read-only)
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -598,38 +613,34 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
   const [educationYear, setEducationYear] = useState('');
 
   // Step 2 states
-  const [skillInput, setSkillInput] = useState("");
-  const [skills, setSkills] = useState([
-    "React.js",
-    "Next.js",
-    "Canton Ledger",
-    "Tailwind CSS",
-  ]);
-  const [primaryCategory, setPrimaryCategory] = useState("Development & IT");
-  const [subCategory, setSubCategory] = useState("Web Development");
-  const [yearsOfExperience, setYearsOfExperience] = useState("5 - 7 years");
-  const [language, setLanguage] = useState("English");
-  const [hourlyRate, setHourlyRate] = useState("120");
-  const [availability, setAvailability] = useState("More than 30hrs/week");
-  const [skillsBio, setSkillsBio] = useState(
-    "I am a fullstack developer with over 6 years of experience building modern web applications.",
-  );
-  const [portfolioLinks, setPortfolioLinks] = useState([
-    "dashboard-project-2025.pdf",
-    "portfolio-site.link",
-  ]);
+  const [skillInput, setSkillInput] = useState('');
+  const [skills, setSkills] = useState<string[]>([]);
+  const [primaryCategory, setPrimaryCategory] = useState('');
+  const [subCategory, setSubCategory] = useState('');
+  const [yearsOfExperience, setYearsOfExperience] = useState('');
+  const [language, setLanguage] = useState('');
+  const [minProjectValue, setMinProjectValue] = useState('');
+  const [availability, setAvailability] = useState('');
+  const [skillsBio, setSkillsBio] = useState('');
+  const [portfolioLinks, setPortfolioLinks] = useState<string[]>([]);
 
   // Search states for phone dropdown
   const [phoneSearchQuery, setPhoneSearchQuery] = useState('');
 
   // OTP Verification Modal States
   const [showPhoneOtpModal, setShowPhoneOtpModal] = useState(false);
-  const [otpDigits, setOtpDigits] = useState(['', '', '', '']);
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const [otpTimer, setOtpTimer] = useState(59);
   const [otpError, setOtpError] = useState('');
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
 
   // Success Modal
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  // Application review status: 'idle' | 'pending' | 'approved'
+  const [applicationStatus, setApplicationStatus] = useState<'idle' | 'pending' | 'approved'>('idle');
+  // True while we're waiting for /users/me to confirm status (prevents form flash)
+  const [statusLoading, setStatusLoading] = useState(true);
 
   // Phone OTP countdown
   useEffect(() => {
@@ -640,6 +651,73 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
       return () => clearInterval(interval);
     }
   }, [showPhoneOtpModal, otpTimer]);
+
+  // ── Auto-fill user profile from account on mount (localStorage + API /me) ──────
+  const getToken = useCallback(() =>
+    typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') ?? '' : '', []);
+
+  useEffect(() => {
+    // 1. Instantly check localStorage for cached profile
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('canafri_user_profile');
+      if (stored) {
+        try {
+          const profile = JSON.parse(stored);
+          if (profile.fullName) setFullName(profile.fullName);
+          if (profile.username) setUsername(profile.username.replace(/^@/, ''));
+          if (profile.email)    setEmail(profile.email);
+          if (profile.bio)      setBio(profile.bio);
+          if (profile.country)  setCountry(profile.country);
+          // If sellerApplied is set locally and not yet approved, show pending screen immediately
+          if (profile.sellerApplied && !profile.sellerApproved) {
+            setApplicationStatus('pending');
+          }
+        } catch {
+          // ignore error
+        }
+      }
+    }
+
+    // 2. Always fetch authoritative status from /users/me
+    // (covers the case where localStorage was set before our sellerApplied flag was introduced)
+    const token = getToken();
+    if (!token) { setStatusLoading(false); return; }
+    fetch('/api/users/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data?.user) { setStatusLoading(false); return; }
+        const u = data.user;
+        if (u.displayName) setFullName(u.displayName);
+        if (u.username)    setUsername(u.username.replace(/^@/, ''));
+        if (u.email)       setEmail(u.email);
+        if (u.bio)         setBio(u.bio);
+        if (u.country)     setCountry(u.country);
+        if (u.phoneVerified) setIsPhoneVerified(true);
+
+        // Authoritative status check:
+        // sellerApplied=true + sellerApproved=true  => fully approved
+        // sellerApplied=true + sellerApproved=false => pending review
+        if (u.sellerApproved === true) {
+          setApplicationStatus('approved');
+        } else if (u.sellerApplied === true) {
+          setApplicationStatus('pending');
+          // Sync to localStorage so the instant check works next time
+          try {
+            const raw = localStorage.getItem('canafri_user_profile');
+            const existing = raw ? JSON.parse(raw) : {};
+            localStorage.setItem('canafri_user_profile', JSON.stringify({
+              ...existing,
+              sellerApplied: true,
+              sellerApproved: false,
+            }));
+          } catch { /* ignore */ }
+        }
+        setStatusLoading(false);
+      })
+      .catch(() => { setStatusLoading(false); });
+  }, [getToken]);
 
   const sanitize = (val: string): string => {
     return val.trim().replace(/[<>]/g, '');
@@ -656,6 +734,35 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
   const validateUsername = (val: string): boolean => {
     return /^[a-zA-Z0-9_-]{3,20}$/.test(val);
   };
+
+  // ── Per-step readiness gate ─────────────────────────────────────────────────
+  // Step 1: all identity + professional + education + terms must be filled
+  const step1Ready =
+    fullName.trim().length >= 2 &&
+    /^[a-zA-Z0-9_-]{3,20}$/.test(username.replace(/^@/, '').trim()) &&
+    /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email.trim()) &&
+    /^[0-9]{7,15}$/.test(phone.replace(/[\s-()]/g, '')) &&
+    headline.trim().length > 0 &&
+    bio.trim().length >= 10 &&
+    educationSchool.trim().length > 0 &&
+    educationDegree.trim().length > 0 &&
+    educationYear.trim().length > 0 &&
+    agreed;
+
+  // Step 2: at least one skill, a skills bio, and a valid minimum project budget
+  const step2Ready =
+    skills.length > 0 &&
+    skillsBio.trim().length >= 15 &&
+    minProjectValue.trim().length > 0 &&
+    Number(minProjectValue) > 0;
+
+  // Step 3: review page — always ready to submit
+  const step3Ready = true;
+
+  const canContinue =
+    currentStep === 1 ? step1Ready :
+    currentStep === 2 ? step2Ready :
+    step3Ready;
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -743,19 +850,89 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
         toast('Please describe your professional experience (at least 15 characters).', 'error');
         return;
       }
-      if (!hourlyRate.trim() || Number(hourlyRate) <= 0) {
-        toast('Please enter a valid hourly rate (greater than 0).', 'error');
+      if (!minProjectValue.trim() || Number(minProjectValue) <= 0) {
+        toast('Please enter a valid minimum project budget (greater than 0).', 'error');
         return;
       }
 
       toast('Skills & experience updated. Previewing registration details…', 'success');
       setCurrentStep(3);
     } else if (currentStep === 3) {
-      // Trigger Phone Number Verification Modal
-      setOtpTimer(59);
-      setOtpDigits(['', '', '', '']);
-      setOtpError('');
-      setShowPhoneOtpModal(true);
+      const token = getToken();
+      if (!token) {
+        toast('You are not logged in. Please log in and try again.', 'error');
+        return;
+      }
+
+      // If phone is not verified yet, trigger Phone OTP modal first
+      if (!isPhoneVerified) {
+        const cleanPhone = phone.replace(/[\s-()]/g, '');
+        apiFetch('/api/auth/phone/send-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: cleanPhone, prefix: selectedPhonePrefix.prefix }),
+        }).catch(() => {});
+
+        setOtpTimer(59);
+        setOtpDigits(['', '', '', '', '', '']);
+        setOtpError('');
+        setShowPhoneOtpModal(true);
+        return;
+      }
+
+      // Directly submit if phone is already verified
+      submitSellerApplication();
+    }
+  };
+
+  const submitSellerApplication = async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await apiFetch('/api/users/apply-seller', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bio:              sanitize(bio),
+          country:          sanitize(country),
+          city:             sanitize(city),
+          phone:            sanitize(phone),
+          phonePrefix:      selectedPhonePrefix.prefix,
+          headline:         sanitize(headline),
+          skills,
+          primaryCategory,
+          subCategory,
+          yearsOfExperience,
+          language,
+          minProjectValue,
+          availability,
+          skillsBio:        sanitize(skillsBio),
+          portfolioLinks,
+          educationSchool:  sanitize(educationSchool),
+          educationDegree:  sanitize(educationDegree),
+          educationYear:    sanitize(educationYear),
+          agreedToTerms:    agreed,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toast(data.message || 'Submission failed. Please try again.', 'error');
+        return;
+      }
+      try {
+        const raw = localStorage.getItem('canafri_user_profile');
+        const existing = raw ? JSON.parse(raw) : {};
+        localStorage.setItem('canafri_user_profile', JSON.stringify({
+          ...existing,
+          bio:          sanitize(bio),
+          country:      sanitize(country),
+          sellerApplied: true,
+          isSeller:     false,
+        }));
+      } catch { /* ignore */ }
+      setShowSuccessModal(true);
+    } catch {
+      toast('Network error. Please check your connection and try again.', 'error');
     }
   };
 
@@ -838,6 +1015,232 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
     );
   }
 
+  // ── Loading guard — wait for /users/me before showing anything ──────────────
+  if (statusLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="size-10 rounded-full border-2 border-border border-t-primary animate-spin" />
+          <p className="font-sans text-sm text-muted">Checking your application status…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Under Review screen ────────────────────────────────────────────────────────
+  if (applicationStatus === 'pending') {
+    const reviewSteps = [
+      { n: 1, label: 'Personal Information', done: true },
+      { n: 2, label: 'Skills & Experience', done: true },
+      { n: 3, label: 'Review & Submitted', done: true },
+      { n: 4, label: 'Admin Approval', active: true },
+    ];
+
+    return (
+      <div className="h-full w-full overflow-y-auto bg-background pb-[76px] lg:pb-12">
+        <div className="mx-auto flex max-w-[1400px] flex-col items-start gap-6 px-4 py-6 lg:flex-row lg:px-8">
+
+          {/* ── Left main column ── */}
+          <div className="flex w-full flex-1 flex-col gap-6">
+
+            {/* Back arrow + page title breadcrumb */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onBack}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted transition-colors hover:border-primary hover:text-primary cursor-pointer"
+                aria-label="Go back"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <div className="flex flex-col">
+                <h1 className="text-[13px] font-semibold text-foreground">
+                  Become a Seller — Application Under Review
+                </h1>
+                <p className="text-[10px] text-muted">Step 4 of 4 · Admin Verification In Progress</p>
+              </div>
+            </div>
+
+            {/* Consistent Stepper Bar (4 steps) */}
+            <div className="flex h-[60px] w-full items-center gap-2 md:gap-3 rounded-[8px] border border-border bg-card px-[10px]">
+              {reviewSteps.map((step, i) => (
+                <div key={step.n} className="flex flex-1 items-center gap-2 md:gap-3">
+                  <div className="flex flex-1 items-center gap-[5px]">
+                    <div
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                        step.done
+                          ? 'border-primary bg-primary'
+                          : step.active
+                          ? 'border-amber-500 bg-amber-500/20 text-amber-400 animate-pulse'
+                          : 'border-border bg-transparent'
+                      }`}
+                    >
+                      {step.done ? (
+                        <Check className="h-3 w-3 text-white" />
+                      ) : (
+                        <span className={`text-[10px] font-semibold leading-[13px] ${step.active ? 'text-amber-400' : 'text-muted'}`}>
+                          {step.n}
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      className={`text-[10px] font-medium leading-[13px] truncate transition-colors ${
+                        step.active ? 'text-amber-400 font-semibold' : step.done ? 'text-primary' : 'text-muted'
+                      }`}
+                    >
+                      {step.label}
+                    </span>
+                  </div>
+                  {i < reviewSteps.length - 1 && (
+                    <div
+                      className={`h-px flex-1 transition-colors ${
+                        step.done ? 'bg-primary' : 'bg-border'
+                      }`}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Main Application Status Card */}
+            <div className="flex w-full flex-col gap-6 rounded-2xl border border-border bg-card p-6 md:p-8">
+
+              {/* Status Header Banner */}
+              <div className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-amber-500/10 p-5">
+                <div className="pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-amber-500/15 blur-2xl" />
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3.5">
+                    <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-amber-500/20 ring-1 ring-amber-500/30">
+                      <Clock className="size-5 text-amber-400 animate-pulse" />
+                    </div>
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-[15px] font-bold text-foreground">Application Queued for Review</h2>
+                        <span className="rounded-full bg-amber-500/20 border border-amber-500/40 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                          In Progress
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-muted mt-0.5">
+                        Your submitted application is being reviewed by the CanaFri trust & safety team.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="shrink-0 font-sans text-xs text-amber-400/90 font-medium">
+                    Est. 1–3 business days
+                  </div>
+                </div>
+              </div>
+
+              {/* Submitted Details Summary Grid */}
+              <div className="flex flex-col gap-3">
+                <h3 className="text-[13px] font-semibold text-foreground">Submitted Profile Details</h3>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="rounded-xl border border-border bg-[#F5F8FB] dark:bg-[#121212] p-3.5 flex flex-col gap-1">
+                    <span className="text-[10px] text-muted uppercase font-medium tracking-wider">Applicant</span>
+                    <span className="text-[12px] font-semibold text-foreground truncate">{fullName || 'Seller Candidate'}</span>
+                    <span className="text-[10px] text-muted truncate">@{username || 'user'}</span>
+                  </div>
+                  <div className="rounded-xl border border-border bg-[#F5F8FB] dark:bg-card p-3.5 flex flex-col gap-1">
+                    <span className="text-[10px] text-muted uppercase font-medium tracking-wider">Headline / Specialty</span>
+                    <span className="text-[12px] font-semibold text-foreground truncate">{headline || 'Freelance Specialist'}</span>
+                    <span className="text-[10px] text-muted truncate">{country || 'Global'}</span>
+                  </div>
+                  <div className="rounded-xl border border-border bg-[#F5F8FB] dark:bg-card p-3.5 flex flex-col gap-1">
+                    <span className="text-[10px] text-muted uppercase font-medium tracking-wider">Min Budget Offer</span>
+                    <span className="text-[12px] font-semibold text-primary">{minProjectValue ? `${minProjectValue} CC` : 'Fixed Budget'}</span>
+                    <span className="text-[10px] text-emerald-400">✓ 0.5 CC Canton Deposit Logged</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Verification Steps Checklist */}
+              <div className="flex flex-col gap-3">
+                <h3 className="text-[13px] font-semibold text-foreground">Review Milestones</h3>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  {[
+                    { label: 'Canton Wallet Bound', sub: 'Wallet bound & validated', done: true },
+                    { label: 'Deposit Security Check', sub: '0.5 CC Deposit logged on Canton', done: true },
+                    { label: 'Identity & Phone Check', sub: 'Verified user credentials', done: true },
+                    { label: 'Admin Board Review', sub: 'Manual review in progress', active: true },
+                  ].map((m, idx) => (
+                    <div key={idx} className="flex items-center gap-3 rounded-xl border border-border bg-[#F5F8FB] dark:bg-card p-3.5">
+                      <div className={`flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                        m.done
+                          ? 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30'
+                          : 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30 animate-pulse'
+                      }`}>
+                        {m.done ? '✓' : '4'}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className={`text-[12px] font-semibold truncate ${m.done ? 'text-foreground' : 'text-amber-400'}`}>
+                          {m.label}
+                        </span>
+                        <span className="text-[10px] text-muted truncate">{m.sub}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Bar */}
+              <div className="flex flex-col gap-3 sm:flex-row pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="flex-1 rounded-xl bg-primary hover:bg-[#7B4EE8] transition-all active:scale-[0.98] py-3 text-[12px] font-semibold text-white cursor-pointer shadow-lg shadow-primary/20 text-center"
+                >
+                  Return to Dashboard
+                </button>
+                {onNavigateToSettings && (
+                  <button
+                    type="button"
+                    onClick={onNavigateToSettings}
+                    className="rounded-xl border border-border hover:bg-foreground/5 transition-all py-3 px-5 text-[12px] font-semibold text-foreground cursor-pointer text-center"
+                  >
+                    Manage Account Settings
+                  </button>
+                )}
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* ── Right sidebar column ── */}
+          <div className="flex w-full shrink-0 flex-col gap-6 lg:w-[320px]">
+            <SidebarCards />
+            <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-5">
+              <h4 className="text-[12px] font-semibold text-foreground">Need help with your application?</h4>
+              <p className="text-[11px] text-muted leading-relaxed">
+                If you have questions about your review or need to submit additional credentials, contact our support desk.
+              </p>
+              <a
+                href="mailto:support@canafri.com"
+                className="mt-2 text-[11px] font-semibold text-primary hover:underline inline-flex items-center gap-1"
+              >
+                support@canafri.com &rarr;
+              </a>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
+  // ── Approved screen ────────────────────────────────────────────────────────────
+  if (applicationStatus === 'approved') {
+    return (
+      <AlreadySellerPage
+        onEnableSellerMode={() => {
+          localStorage.setItem('canafri_seller_mode', 'true');
+          onBack();
+        }}
+        onBack={onBack}
+      />
+    );
+  }
+
   return (
     <div className="h-full w-full overflow-y-auto bg-background pb-[76px] lg:pb-12">
       <div className="mx-auto flex max-w-[1400px] flex-col items-start gap-6 px-4 py-6 lg:flex-row lg:px-8">
@@ -878,21 +1281,64 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                     Professional Information
                   </h1>
                   <p className="text-[11px] font-normal leading-4 text-muted">
-                    Tell us about yourself. This information will be visible on your profile.
+                    Tell us about yourself. Your identity details are synced from your account profile.
                   </p>
                 </div>
 
-                {/* Full Name + Username */}
+                {/* Full Name + Username (Both Read-Only) */}
                 <div className="flex w-full flex-col gap-[14px] sm:flex-row sm:gap-6">
-                  <TextInput label="Full Name" placeholder="e.g. John Trek" value={fullName} onChange={setFullName} />
-                  <TextInput label="Username" placeholder="e.g. johntrek" value={username} onChange={setUsername} />
+                  <div className="flex flex-1 flex-col gap-[5px]">
+                    <FieldLabel>Full Name</FieldLabel>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        value={fullName}
+                        readOnly={true}
+                        tabIndex={-1}
+                        className="h-[38px] w-full rounded-[5px] border border-border bg-[#141414] px-3 text-[11px] text-foreground/80 font-medium outline-none cursor-not-allowed select-none pr-8"
+                      />
+                      <div className="absolute right-3">
+                        <InfoTooltip />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-muted">Auto-filled from account settings</p>
+                  </div>
+                  <div className="flex flex-1 flex-col gap-[5px]">
+                    <FieldLabel>Username</FieldLabel>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        value={username ? `@${username.replace(/^@/, '')}` : username}
+                        readOnly={true}
+                        tabIndex={-1}
+                        className="h-[38px] w-full rounded-[5px] border border-border bg-[#141414] px-3 text-[11px] text-foreground/80 font-medium outline-none cursor-not-allowed select-none pr-8"
+                      />
+                      <div className="absolute right-3">
+                        <InfoTooltip />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-muted">Globally unique handle</p>
+                  </div>
                 </div>
 
                 {/* Email + Phone */}
                 <div className="flex w-full flex-col gap-[14px] sm:flex-row sm:gap-6">
-                  <TextInput label="Email Address" placeholder="john@example.com" value={email} onChange={setEmail} type="email" />
-
-                  {/* Phone with country code prefix */}
+                  <div className="flex flex-1 flex-col gap-[5px]">
+                    <FieldLabel>Email Address</FieldLabel>
+                    <div className="relative flex items-center">
+                      <input
+                        type="email"
+                        value={email}
+                        readOnly={true}
+                        tabIndex={-1}
+                        className="h-[38px] w-full rounded-[5px] border border-border bg-[#141414] px-3 text-[11px] text-foreground/80 font-medium outline-none cursor-not-allowed select-none pr-8"
+                      />
+                      <div className="absolute right-3">
+                        <InfoTooltip />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-muted">Auto-filled from account settings</p>
+                  </div>
                   <div className="flex flex-1 flex-col gap-[5px]">
                     <FieldLabel>Phone Number</FieldLabel>
                     <div className="flex h-[38px] w-full">
@@ -1177,13 +1623,18 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                 </div>
 
                 <div className="flex w-full flex-col gap-[14px] sm:flex-row sm:gap-6">
-                  <TextInput
-                    label="Hourly Rate (CC)"
-                    placeholder="120"
-                    value={hourlyRate}
-                    onChange={setHourlyRate}
-                    type="number"
-                  />
+                  <div className="flex flex-1 flex-col gap-[5px]">
+                    <TextInput
+                      label="Minimum Project Budget (CC)"
+                      placeholder="e.g. 250"
+                      value={minProjectValue}
+                      onChange={setMinProjectValue}
+                      type="number"
+                    />
+                    <p className="text-[10px] text-muted leading-tight">
+                      Clients with project budgets below this amount will not be able to hire you.
+                    </p>
+                  </div>
                   <SelectInput
                     label="Availability"
                     value={availability}
@@ -1338,8 +1789,8 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                     <span className="font-medium text-foreground">{yearsOfExperience}</span>
                   </div>
                   <div className="flex justify-between text-[11px]">
-                    <span className="text-muted">Hourly Rate</span>
-                    <span className="font-semibold text-primary">{hourlyRate} CC</span>
+                    <span className="text-muted">Min. Project Budget</span>
+                    <span className="font-semibold text-primary">{minProjectValue} CC</span>
                   </div>
                   <div className="flex justify-between text-[11px]">
                     <span className="text-muted">Availability</span>
@@ -1397,7 +1848,12 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
             <button
               type="button"
               onClick={handleSaveAndContinue}
-              className="flex h-[38px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-[13px] font-semibold text-white transition-colors hover:bg-primary/90 cursor-pointer"
+              disabled={!canContinue}
+              className={`flex h-[38px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-[13px] font-semibold text-white transition-colors ${
+                canContinue
+                  ? 'hover:bg-primary/90 cursor-pointer'
+                  : 'opacity-40 cursor-not-allowed'
+              }`}
             >
               {currentStep === TOTAL_STEPS ? 'Submit for Review' : 'Save and Continue'}
               {currentStep === TOTAL_STEPS ? null : <ArrowIcon direction="right" />}
@@ -1439,7 +1895,12 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
         <button
           type="button"
           onClick={handleSaveAndContinue}
-          className="flex h-[38px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-[13px] font-semibold text-white transition-colors hover:bg-primary/90 cursor-pointer"
+          disabled={!canContinue}
+          className={`flex h-[38px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-[13px] font-semibold text-white transition-colors ${
+            canContinue
+              ? 'hover:bg-primary/90 cursor-pointer'
+              : 'opacity-40 cursor-not-allowed'
+          }`}
         >
           {currentStep === TOTAL_STEPS ? 'Submit for Review' : 'Save and Continue'}
           {currentStep === TOTAL_STEPS ? null : <ArrowIcon direction="right" />}
@@ -1453,11 +1914,12 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
             <div className="flex flex-col gap-1 text-center">
               <h3 className="text-[16px] font-bold text-foreground">Verify Your Phone Number</h3>
               <p className="text-[11px] leading-[16px] text-muted">
-                We sent a 4-digit code to <strong className="text-foreground">{selectedPhonePrefix.prefix} {phone}</strong>.
+                We sent a 6-digit code to <strong className="text-foreground">{selectedPhonePrefix.prefix} {phone}</strong>.
               </p>
             </div>
 
-            <div className="flex justify-center items-center gap-3 py-2">
+            {/* OTP digit inputs */}
+            <div className="flex justify-center items-center gap-2 py-1">
               {otpDigits.map((digit, idx) => (
                 <input
                   key={idx}
@@ -1472,7 +1934,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                     const next = [...otpDigits];
                     next[idx] = val;
                     setOtpDigits(next);
-                    if (val !== '' && idx < 3) {
+                    if (val !== '' && idx < 5) {
                       document.getElementById(`otp-${idx + 1}`)?.focus();
                     }
                   }}
@@ -1481,7 +1943,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                       document.getElementById(`otp-${idx - 1}`)?.focus();
                     }
                   }}
-                  className="w-12 h-12 rounded-xl border border-border bg-[#F5F8FB] dark:bg-[#161616] text-center text-lg font-bold text-foreground focus:border-primary outline-none transition-colors"
+                  className="w-10 h-10 rounded-xl border border-border bg-[#F5F8FB] dark:bg-[#161616] text-center text-base font-bold text-foreground focus:border-primary outline-none transition-colors"
                 />
               ))}
             </div>
@@ -1496,10 +1958,18 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
               ) : (
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     setOtpTimer(59);
-                    setOtpDigits(['', '', '', '']);
+                    setOtpDigits(['', '', '', '', '', '']);
                     setOtpError('');
+                    try {
+                      const cleanPhone = phone.replace(/[\s-()]/g, '');
+                      await apiFetch('/api/auth/phone/send-otp', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone: cleanPhone, prefix: selectedPhonePrefix.prefix }),
+                      });
+                    } catch {}
                   }}
                   className="text-[11px] font-semibold text-primary hover:underline cursor-pointer bg-transparent border-none"
                 >
@@ -1513,7 +1983,7 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
                 type="button"
                 onClick={() => {
                   setShowPhoneOtpModal(false);
-                  setOtpDigits(['', '', '', '']);
+                  setOtpDigits(['', '', '', '', '', '']);
                   setOtpError('');
                 }}
                 className="flex-1 h-[38px] rounded-xl border border-border text-[13px] font-semibold hover:bg-foreground/5 transition-colors cursor-pointer"
@@ -1523,47 +1993,31 @@ export default function BecomeSellerPage({ onBack }: BecomeSellerPageProps) {
               <button
                 type="button"
                 disabled={otpDigits.some(d => d === '')}
-                onClick={() => {
+                onClick={async () => {
                   const code = otpDigits.join('');
-                  if (code === '0000') {
-                    setOtpError('Invalid code. Try again (use any code except 0000).');
-                  } else {
+                  const cleanPhone = phone.replace(/[\s\-()]/g, '');
+                  try {
+                    const res = await apiFetch('/api/auth/phone/verify-otp', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ phone: cleanPhone, prefix: selectedPhonePrefix.prefix, code }),
+                    });
+                    const data = await res.json();
+                    if (!data.success) {
+                      setOtpError(data.message || 'Incorrect code. Please try again.');
+                      return;
+                    }
                     setShowPhoneOtpModal(false);
-                    // Save to local storage
-                    const profileData = {
-                      fullName: sanitize(fullName),
-                      username: username.startsWith('@') ? username : `@${username}`,
-                      email: sanitize(email),
-                      phonePrefix: selectedPhonePrefix.prefix,
-                      phone: sanitize(phone),
-                      country: sanitize(country),
-                      city: sanitize(city),
-                      headline: sanitize(headline),
-                      bio: sanitize(bio),
-                      avatarUrl: avatarUrl,
-                      skills,
-                      primaryCategory,
-                      subCategory,
-                      yearsOfExperience,
-                      language,
-                      hourlyRate,
-                      availability,
-                      skillsBio: sanitize(skillsBio),
-                      portfolioLinks,
-                      educationSchool: sanitize(educationSchool),
-                      educationDegree: sanitize(educationDegree),
-                      educationYear: sanitize(educationYear),
-                      isSeller: true,
-                      isVerified: false, 
-                      memberSince: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
-                    };
-                    localStorage.setItem('canafri_user_profile', JSON.stringify(profileData));
-                    setShowSuccessModal(true);
+                    setOtpDigits(['', '', '', '', '', '']);
+                    setOtpError('');
+                    submitSellerApplication();
+                  } catch {
+                    setOtpError('Network error. Please check your connection and try again.');
                   }
                 }}
                 className="flex-1 h-[38px] rounded-xl bg-primary text-[13px] font-semibold text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
-                Verify & Submit
+                Verify &amp; Submit
               </button>
             </div>
           </div>

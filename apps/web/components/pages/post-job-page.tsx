@@ -3,6 +3,9 @@
 import { useState, useRef, useEffect } from "react";
 import { ConfirmDepositDialog, JobPostedDialog } from "@/components/ui/post-job-dialogs";
 import { useToast } from "@/components/ui/toast";
+import { usePlatformConfig } from "@/lib/platform-config-context";
+import { MaintenanceTooltip } from "@/components/ui/maintenance-tooltip";
+import { apiFetch } from "@/lib/api-client";
 import {
   ArrowLeft,
   ChevronRight,
@@ -46,19 +49,7 @@ const SUB_CATEGORY_OPTIONS = [
   'Escrow & Wallet Integration',
 ];
 
-const ESTIMATED_TIME_OPTIONS = [
-  'More than 6 months',
-  '3 to 6 months',
-  '1 to 3 months',
-  'Less than 1 month',
-];
 
-const WEEKLY_COMMITMENT_OPTIONS = [
-  '30+ hrs/week',
-  '20-30 hrs/week',
-  '10-20 hrs/week',
-  'Less than 10 hrs/week',
-];
 
 const LOCATION_OPTIONS = [
   'Remote',
@@ -217,6 +208,7 @@ function DropdownSelect({
   onChange,
   placeholder,
   required = true,
+  allowCustomInput = false,
 }: {
   label: string;
   value: string;
@@ -224,21 +216,43 @@ function DropdownSelect({
   onChange: (val: string) => void;
   placeholder: string;
   required?: boolean;
+  allowCustomInput?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <div className="flex flex-col gap-1.5 w-full relative">
       <FieldLabel required={required}>{label}</FieldLabel>
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex h-[38px] w-full items-center justify-between gap-2.5 rounded-[5px] border border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 text-left text-[11px] text-foreground focus:outline-none focus:border-[#8C5CFF] transition-colors"
-      >
-        <span className={value ? "text-foreground" : "text-muted"}>
-          {value || placeholder}
-        </span>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted" />
-      </button>
+      {allowCustomInput ? (
+        <div className="flex h-[38px] w-full items-center justify-between gap-2 rounded-[5px] border border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 focus-within:border-[#8C5CFF] transition-colors">
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onFocus={() => setIsOpen(true)}
+            placeholder={placeholder}
+            className="w-full bg-transparent text-[11px] text-foreground placeholder:text-muted outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => setIsOpen(!isOpen)}
+            className="p-1 text-muted hover:text-foreground transition-colors shrink-0"
+            tabIndex={-1}
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex h-[38px] w-full items-center justify-between gap-2.5 rounded-[5px] border border-border bg-[#F5F8FB] dark:bg-[#161616] px-3 text-left text-[11px] text-foreground focus:outline-none focus:border-[#8C5CFF] transition-colors"
+        >
+          <span className={value ? "text-foreground" : "text-muted"}>
+            {value || placeholder}
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted" />
+        </button>
+      )}
       {isOpen && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setIsOpen(false)} />
@@ -523,9 +537,12 @@ const PHONE_PREFIX_OPTIONS: CountryPhoneOption[] = [
 
 interface PostJobPageProps {
   onBack: () => void;
+  onJobPosted: () => void;
 }
 
-export default function PostJobPage({ onBack }: PostJobPageProps) {
+export default function PostJobPage({ onBack, onJobPosted }: PostJobPageProps) {
+  const { config } = usePlatformConfig();
+  const { toast } = useToast();
   // Wizard view step (1 = details, 2 = payment)
   const [step, setStep] = useState(1);
 
@@ -535,8 +552,6 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
   const [subCategory, setSubCategory] = useState("");
   const [payType, setPayType] = useState<PayType>("fixed");
   const [experience, setExperience] = useState<ExperienceLevel>("expert");
-  const [estimatedTime, setEstimatedTime] = useState("");
-  const [weeklyCommitment, setWeeklyCommitment] = useState("");
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
   const [skills, setSkills] = useState(["React.js", "Next.js", "Canton Ledger", "Tailwind CSS"]);
@@ -574,8 +589,10 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
 
   // Phone OTP verification modal
   const [showPhoneOtpModal, setShowPhoneOtpModal] = useState(false);
-  const [otpDigits, setOtpDigits] = useState(['', '', '', '']);
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const [otpTimer, setOtpTimer] = useState(59);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
   const [otpError, setOtpError] = useState('');
   const [selectedPrefix, setSelectedPrefix] = useState<CountryPhoneOption>(PHONE_PREFIX_OPTIONS[0]);
   const [phoneInputVal, setPhoneInputVal] = useState("");
@@ -590,16 +607,12 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
     }
   }, [showPhoneOtpModal, otpTimer]);
 
-  const { toast } = useToast();
-
   const sanitize = (val: string): string => {
     return val.trim().replace(/[<>]/g, '');
   };
 
   // Estimated values dynamically derived
-  const derivedBudget = payType === "fixed" 
-    ? (Number(maxTotalBudget) || 1200)
-    : (Number(maxHourlyRate) * 40 || 1800); // Hourly calculates based on estimated week budget
+  const derivedBudget = Number(maxTotalBudget) || 1200;
 
   const removeSkill = (index: number) => {
     setSkills((prev) => prev.filter((_, i) => i !== index));
@@ -649,9 +662,7 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
   const isCategoryDone = category.trim().length > 0;
   const isDescriptionDone = description.trim().length >= 10;
   const isSkillsDone = skills.length > 0;
-  const isBudgetDone = payType === "hourly" 
-    ? (Number(minHourlyRate) > 0 && Number(maxHourlyRate) >= Number(minHourlyRate))
-    : (Number(minTotalBudget) > 0 && Number(maxTotalBudget) >= Number(minTotalBudget));
+  const isBudgetDone = Number(minTotalBudget) > 0 && Number(maxTotalBudget) >= Number(minTotalBudget);
   const isMilestonesDone = Number(milestones) > 0;
   const isRequirementsDone = attachments.length > 0 || prefSkills.length > 0;
 
@@ -810,40 +821,27 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
     }
 
     // Validate Step 2 inputs
-    if (payType === 'fixed') {
-      const minB = Number(minTotalBudget);
-      const maxB = Number(maxTotalBudget);
-      if (isNaN(minB) || minB <= 0 || isNaN(maxB) || maxB <= 0) {
-        toast('Please set valid positive numbers for your total budget range.', 'error');
-        return;
-      }
-      if (minB > maxB) {
-        toast('Minimum budget cannot exceed maximum budget.', 'error');
-        return;
-      }
-      
-      const dl = Number(deadline);
-      if (isNaN(dl) || dl <= 0 || !Number.isInteger(dl)) {
-        toast('Please enter a valid positive number of days for the deadline.', 'error');
-        return;
-      }
+    const minB = Number(minTotalBudget);
+    const maxB = Number(maxTotalBudget);
+    if (isNaN(minB) || minB <= 0 || isNaN(maxB) || maxB <= 0) {
+      toast('Please set valid positive numbers for your total budget range.', 'error');
+      return;
+    }
+    if (minB > maxB) {
+      toast('Minimum budget cannot exceed maximum budget.', 'error');
+      return;
+    }
+    
+    const dl = Number(deadline);
+    if (isNaN(dl) || dl <= 0 || !Number.isInteger(dl)) {
+      toast('Please enter a valid positive number of days for the deadline.', 'error');
+      return;
+    }
 
-      const ms = Number(milestones);
-      if (isNaN(ms) || ms <= 0 || !Number.isInteger(ms)) {
-        toast('Please enter a valid positive number of milestone phases.', 'error');
-        return;
-      }
-    } else {
-      const minR = Number(minHourlyRate);
-      const maxR = Number(maxHourlyRate);
-      if (isNaN(minR) || minR <= 0 || isNaN(maxR) || maxR <= 0) {
-        toast('Please set valid positive numbers for your hourly rate range.', 'error');
-        return;
-      }
-      if (minR > maxR) {
-        toast('Minimum hourly rate cannot exceed maximum hourly rate.', 'error');
-        return;
-      }
+    const ms = Number(milestones);
+    if (isNaN(ms) || ms <= 0 || !Number.isInteger(ms)) {
+      toast('Please enter a valid positive number of milestone phases.', 'error');
+      return;
     }
 
     // Validate revision configurations
@@ -868,15 +866,11 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
     // Sanitize input values
     const sanitizedTitle = sanitize(title);
     const sanitizedDesc = sanitize(description);
-    const sanitizedWeeklyCommitment = sanitize(weeklyCommitment);
-    const sanitizedEstimatedTime = sanitize(estimatedTime);
     const sanitizedLocation = sanitize(location);
     const sanitizedRevisionScope = sanitize(revisionScope);
 
     setTitle(sanitizedTitle);
     setDescription(sanitizedDesc);
-    setWeeklyCommitment(sanitizedWeeklyCommitment);
-    setEstimatedTime(sanitizedEstimatedTime);
     setLocation(sanitizedLocation);
     setRevisionScope(sanitizedRevisionScope);
 
@@ -884,48 +878,56 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
     setDepositDialogOpen(true);
   };
 
-  const createAndPublishJob = () => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("canafri_posted_jobs");
-      let jobsList = [];
-      if (stored) {
-        try {
-          jobsList = JSON.parse(stored);
-        } catch (e) {
-          console.error(e);
-        }
-      } else {
-        // Fallback/seed default mock jobs
-        jobsList = [
-          { id: 1, title: "Create a landing page for my web3 blog", category: "Web Programming & Design", proposals: 8, date: "Mar. 24", budget: "150 CC", status: "open", freelancerName: "No Selection Yet", freelancerHandle: "Accepting proposals", avatarClassName: "bg-muted text-muted-foreground border border-border", initials: "?" },
-          { id: 2, title: "Daml Smart Contract Escrow System", category: "Smart Contracts", proposals: 15, date: "Mar. 20", budget: "400 CC", status: "working", freelancerName: "Alex Daml", freelancerHandle: "@alexdaml", avatarClassName: "bg-purple-600", initials: "AD" },
-          { id: 3, title: "Next.js frontend theme refactor", category: "Frontend Dev", proposals: 12, date: "Mar. 15", budget: "250 CC", status: "completed", freelancerName: "Sina Front", freelancerHandle: "@sinafront", avatarClassName: "bg-emerald-600", initials: "SF" },
-          { id: 4, title: "Tailwind layout alignment tweaks", category: "UI CSS Tweak", proposals: 0, date: "Mar. 28", budget: "50 CC", status: "draft", freelancerName: "Draft Status", freelancerHandle: "Not published", avatarClassName: "bg-gray-400", initials: "DS" },
-        ];
+  const createAndPublishJob = async () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+
+    const sanitizedTitle = (title || 'New Job Posting').trim();
+    const fullTitle = sanitizedTitle.length >= 5 ? sanitizedTitle.slice(0, 95) : `${sanitizedTitle} Job Posting`;
+    
+    let sanitizedDesc = (description || '').trim();
+    if (sanitizedDesc.length < 20) {
+      sanitizedDesc = `${sanitizedDesc} We are looking for an experienced freelancer to deliver quality work on time.`;
+    }
+
+    const numericBudget = Math.max(1, Number(derivedBudget) || 100);
+
+    const payload = {
+      title: fullTitle,
+      description: sanitizedDesc,
+      category: category || 'Development & IT',
+      skills: Array.isArray(skills) && skills.length > 0 ? skills : ['Development'],
+      amountCC: numericBudget,
+      deadlineDays: 30,
+    };
+
+    try {
+      let res = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        // Fallback to direct backend URL
+        res = await fetch('/api/jobs', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(payload),
+        });
       }
 
-      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const dateObj = new Date();
-      const dateStr = `${months[dateObj.getMonth()]}. ${dateObj.getDate()}`;
-
-      const newJob = {
-        id: Date.now(),
-        title,
-        category,
-        proposals: 0,
-        date: dateStr,
-        budget: `${derivedBudget} CC`,
-        status: "open",
-        freelancerName: "No Selection Yet",
-        freelancerHandle: "Accepting proposals",
-        avatarClassName: "bg-muted text-muted-foreground border border-border",
-        initials: "?",
-        description,
-        questions: screeningQuestions,
-      };
-
-      jobsList.unshift(newJob);
-      localStorage.setItem("canafri_posted_jobs", JSON.stringify(jobsList));
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.warn('Job post API status:', res.status, errorText);
+      }
+    } catch (e) {
+      console.error('Job post network error:', e);
     }
 
     // Mark that the user has now successfully posted their first job
@@ -938,7 +940,7 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
     setTimeout(() => setSuccessDialogOpen(true), 80);
   };
 
-  const handleDepositConfirm = () => {
+  const handleDepositConfirm = async () => {
     setDepositDialogOpen(false);
 
     // Check if user has verified their phone number AND has posted at least once before.
@@ -982,7 +984,7 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
       return;
     }
 
-    createAndPublishJob();
+    await createAndPublishJob();
   };
 
   const handleNextStep = () => {
@@ -1002,14 +1004,7 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
       toast("Please select a sub-category.", "error");
       return;
     }
-    if (!estimatedTime) {
-      toast("Please select estimated job duration.", "error");
-      return;
-    }
-    if (!weeklyCommitment) {
-      toast("Please select weekly commitment.", "error");
-      return;
-    }
+
     if (!location) {
       toast("Please select location requirement.", "error");
       return;
@@ -1134,23 +1129,6 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                       />
                     ))}
                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <DropdownSelect
-                    label="Estimated Time"
-                    placeholder="Select duration"
-                    value={estimatedTime}
-                    options={ESTIMATED_TIME_OPTIONS}
-                    onChange={setEstimatedTime}
-                  />
-                  <DropdownSelect
-                    label="Weekly Commitment"
-                    placeholder="Select commitment"
-                    value={weeklyCommitment}
-                    options={WEEKLY_COMMITMENT_OPTIONS}
-                    onChange={setWeeklyCommitment}
-                  />
                 </div>
 
                 <DropdownSelect
@@ -1403,18 +1381,7 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                 </h2>
                 <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:gap-6">
                   <PaymentOption 
-                    active={payType === "hourly"} 
-                    title="Hourly"
-                    subtitle="Pay for the actual time worked"
-                    perks={[
-                      "Pay as work progresses",
-                      "Ideal for ongoing, flexible work",
-                      "Set rates to match experience"
-                    ]}
-                    onClick={() => setPayType("hourly")}
-                  />
-                  <PaymentOption 
-                    active={payType === "fixed"} 
+                    active={true} 
                     title="Fixed Price"
                     subtitle="Pay a set amount for milestones"
                     perks={[
@@ -1427,37 +1394,8 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                 </div>
               </div>
 
-              {/* Hourly rates configuration card */}
-              {payType === "hourly" && (
-                <BudgetRangeCard 
-                  title="Hourly Rate Budget Range"
-                  subtitle="Set your hourly rates preference to attract suitable candidate rates"
-                >
-                  <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-6">
-                    <RateField 
-                      label="Minimum Rate CC/hr" 
-                      value={minHourlyRate} 
-                      onChange={setMinHourlyRate} 
-                      placeholder="e.g. 20" 
-                    />
-                    <RateField 
-                      label="Maximum Rate CC/hr" 
-                      value={maxHourlyRate} 
-                      onChange={setMaxHourlyRate} 
-                      placeholder="e.g. 50" 
-                    />
-                  </div>
-                  <div className="flex items-center justify-center rounded-[5px] bg-[#8C5CFF]/10 p-3 text-center border border-[#8C5CFF]/15">
-                    <span className="text-[10px] leading-[14px] text-primary font-semibold">
-                      This range will help us to match you with the right talent within your budget.
-                    </span>
-                  </div>
-                </BudgetRangeCard>
-              )}
-
               {/* Fixed price configuration card */}
-              {payType === "fixed" && (
-                <BudgetRangeCard
+              <BudgetRangeCard
                   title="Total Project Budget Range"
                   subtitle="Define target escrow settings for fixed milestones"
                 >
@@ -1516,7 +1454,6 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                     </div>
                   </div>
                 </BudgetRangeCard>
-              )}
 
               {/* Revision Policy card (Step 2) */}
               <div className="flex flex-col gap-4 rounded-[25px] border border-border bg-card p-6">
@@ -1610,12 +1547,18 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                 >
                   Save as Draft
                 </button>
-                <button 
-                  onClick={handlePublish}
-                  className="h-[38px] flex-1 rounded-xl bg-primary text-[13px] font-semibold text-white hover:bg-primary-hover transition-colors flex items-center justify-center gap-2"
+                <MaintenanceTooltip
+                  active={config.freelancingMaintenance}
+                  reason={config.freelancingMaintenanceReason}
+                  defaultMessage="The freelancing service is currently under maintenance. Please check back later."
                 >
-                  Post a Job
-                </button>
+                  <button 
+                    onClick={handlePublish}
+                    className="h-[38px] flex-1 rounded-xl bg-primary text-[13px] font-semibold text-white hover:bg-primary-hover transition-colors flex items-center justify-center gap-2"
+                  >
+                    Post a Job
+                  </button>
+                </MaintenanceTooltip>
               </div>
             </div>
           )}
@@ -1718,21 +1661,36 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                   </button>
                   <button
                     type="button"
-                    disabled={!phoneInputVal.trim()}
-                    onClick={() => {
+                    disabled={!phoneInputVal.trim() || otpSending}
+                    onClick={async () => {
                       const cleanPhone = phoneInputVal.replace(/[\s-()]/g, '');
                       if (cleanPhone.length < 7 || cleanPhone.length > 15) {
                         setOtpError("Please enter a valid phone number (7 to 15 digits).");
                         return;
                       }
                       setOtpError('');
-                      setOtpTimer(59);
-                      setOtpDigits(['', '', '', '']);
-                      setOtpStep("verify");
+                      setOtpSending(true);
+                      try {
+                        const res = await apiFetch('/api/auth/phone/send-otp', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ phone: cleanPhone, prefix: selectedPrefix.prefix }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.message || 'Failed to send OTP code.');
+
+                        setOtpTimer(59);
+                        setOtpDigits(['', '', '', '', '', '']);
+                        setOtpStep("verify");
+                      } catch (err: any) {
+                        setOtpError(err.message || 'Failed to send OTP code. Please try again.');
+                      } finally {
+                        setOtpSending(false);
+                      }
                     }}
                     className="flex-1 h-[38px] rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-40"
                   >
-                    Send Code
+                    {otpSending ? 'Sending...' : 'Send Code'}
                   </button>
                 </div>
                 {otpError && (
@@ -1755,7 +1713,7 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                 </div>
 
                 {/* OTP digit inputs */}
-                <div className="flex justify-center items-center gap-3 py-1">
+                <div className="flex justify-center items-center gap-2 py-1">
                   {otpDigits.map((digit, idx) => (
                     <input
                       key={idx}
@@ -1770,7 +1728,7 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                         const next = [...otpDigits];
                         next[idx] = val;
                         setOtpDigits(next);
-                        if (val !== '' && idx < 3) {
+                        if (val !== '' && idx < 5) {
                           document.getElementById(`post-otp-${idx + 1}`)?.focus();
                         }
                       }}
@@ -1779,7 +1737,7 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                           document.getElementById(`post-otp-${idx - 1}`)?.focus();
                         }
                       }}
-                      className="w-12 h-12 rounded-xl border border-border bg-[#F5F8FB] dark:bg-[#161616] text-center text-lg font-bold text-foreground focus:border-primary outline-none transition-colors"
+                      className="w-10 h-10 rounded-xl border border-border bg-[#F5F8FB] dark:bg-[#161616] text-center text-base font-bold text-foreground focus:border-primary outline-none transition-colors"
                     />
                   ))}
                 </div>
@@ -1795,7 +1753,21 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                   ) : (
                     <button
                       type="button"
-                      onClick={() => { setOtpTimer(59); setOtpDigits(['', '', '', '']); setOtpError(''); }}
+                      onClick={async () => {
+                        setOtpTimer(59);
+                        setOtpDigits(['', '', '', '', '', '']);
+                        setOtpError('');
+                        try {
+                          const cleanPhone = phoneInputVal.replace(/[\s-()]/g, '');
+                          await apiFetch('/api/auth/phone/send-otp', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ phone: cleanPhone, prefix: selectedPrefix.prefix }),
+                          });
+                        } catch {
+                          // Ignore silent resend error
+                        }
+                      }}
                       className="text-[11px] font-semibold text-primary hover:underline cursor-pointer bg-transparent border-none"
                     >
                       Resend code
@@ -1809,7 +1781,7 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                     type="button"
                     onClick={() => {
                       setOtpStep("input");
-                      setOtpDigits(['', '', '', '']);
+                      setOtpDigits(['', '', '', '', '', '']);
                       setOtpError('');
                     }}
                     className="flex-1 h-[38px] rounded-xl border border-border text-[13px] font-semibold hover:bg-foreground/5 transition-colors cursor-pointer"
@@ -1818,26 +1790,39 @@ export default function PostJobPage({ onBack }: PostJobPageProps) {
                   </button>
                   <button
                     type="button"
-                    disabled={otpDigits.some(d => d === '')}
-                    onClick={() => {
+                    disabled={otpDigits.some(d => d === '') || otpVerifying}
+                    onClick={async () => {
                       const code = otpDigits.join('');
-                      if (code === '0000') {
-                        setOtpError('Invalid code. Please try again.');
-                      } else {
+                      setOtpError('');
+                      setOtpVerifying(true);
+                      try {
+                        const cleanPhone = phoneInputVal.replace(/[\s-()]/g, '');
+                        const res = await apiFetch('/api/auth/phone/verify-otp', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ phone: cleanPhone, prefix: selectedPrefix.prefix, code }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.message || 'Verification failed.');
+
                         // Mark phone as verified
                         if (typeof window !== 'undefined') {
                           localStorage.setItem('canafri_phone_verified', 'true');
                         }
                         setShowPhoneOtpModal(false);
-                        setOtpDigits(['', '', '', '']);
+                        setOtpDigits(['', '', '', '', '', '']);
                         setOtpError('');
                         // Now create and publish the job directly
                         createAndPublishJob();
+                      } catch (err: any) {
+                        setOtpError(err.message || 'Invalid code. Please try again.');
+                      } finally {
+                        setOtpVerifying(false);
                       }
                     }}
                     className="flex-1 h-[38px] rounded-xl bg-primary text-white text-[13px] font-semibold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    Verify & Continue
+                    {otpVerifying ? 'Verifying...' : 'Verify & Continue'}
                   </button>
                 </div>
               </div>

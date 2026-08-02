@@ -197,7 +197,7 @@ export default function SearchPage({ query, onBack }: SearchPageProps) {
   }, [filteredUsers, filteredServices, filteredArticles, filteredJobs, filteredTags]);
 
   return (
-    <div className="flex flex-col h-full w-full bg-background overflow-y-auto pb-16 md:pb-6">
+    <div className="flex flex-col min-h-full w-full bg-background overflow-y-auto pb-16 md:pb-6">
       {/* Search Header — overflow-visible so dropdown renders below */}
       <div className="flex flex-col gap-4 px-4 md:px-6 pt-4 md:pt-6 pb-4 border-b border-border bg-background sticky top-0 z-20" style={{ overflow: 'visible' }}>
         <div className="flex items-center gap-2 md:gap-3">
@@ -624,7 +624,7 @@ export default function SearchPage({ query, onBack }: SearchPageProps) {
           )}
         </section>
       </div>
-      <div className="hidden md:block">
+      <div className="hidden md:block mt-auto">
         <Footer />
       </div>
     </div>

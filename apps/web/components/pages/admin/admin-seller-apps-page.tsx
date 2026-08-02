@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Check, Clock, Globe, Link2, ChevronLeft, Eye, X, FileText, ExternalLink } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -21,7 +22,7 @@ interface PortfolioFile {
 }
 
 interface SellerApplicant {
-  id: number;
+  id: string;
   name: string;
   handle: string;
   location: string;
@@ -37,191 +38,9 @@ interface SellerApplicant {
   tab: ListTab;
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
+// ─── API Base ──────────────────────────────────────────────────────────────────
 
-const APPLICANTS: SellerApplicant[] = [
-  {
-    id: 1,
-    name: 'John Trek',
-    handle: '@johntrek',
-    location: 'Lagos, Nigeria',
-    appliedAgo: 'Applied 1 hour ago',
-    specialty: 'UI/UX Design',
-    level: 'Intermediate',
-    languages: '5 languages',
-    initials: 'JT',
-    bio: 'Product designer with 4 years of experience working with Web3 startups across Africa. I specialise in dashboard interfaces and have shipped products for two DeFi platforms. Looking to bring clean, accessible design to the Canton ecosystem.',
-    skills: ['React.js', 'Figma', 'UI/UX Design', 'Web3 Design'],
-    checklist: [
-      { id: 'profile',   label: 'John Trek',          sub: 'Name, bio, country, photo', done: true },
-      { id: 'skills',    label: 'Skills selected',     sub: 'Primary + sub-skills',     done: true },
-      { id: 'wallet',    label: 'Wallet bound',        sub: 'One Canton wallet',         done: true },
-      { id: 'phone',     label: 'Phone verified',      sub: 'OTP confirmed',             done: true },
-      { id: 'id',        label: 'ID verification',     sub: 'Optional — not submitted',  done: false },
-      { id: 'portfolio', label: 'Portfolio attached',  sub: '3 samples provided',        done: false },
-    ],
-    portfolio: [
-      { id: 'p1', name: 'dashboard-project-2025.pdf', type: 'pdf' },
-      { id: 'p2', name: 'dashboard-project-2025.pdf', type: 'link' },
-      { id: 'p3', name: 'dashboard-project-2025.pdf', type: 'link' },
-    ],
-    tab: 'Pending',
-  },
-  {
-    id: 2,
-    name: 'John Trek',
-    handle: '@johntrek2',
-    location: 'Accra, Ghana',
-    appliedAgo: 'Applied 2 hours ago',
-    specialty: 'UI/UX Design',
-    level: 'Expert',
-    languages: '3 languages',
-    initials: 'JT',
-    bio: 'Seasoned UX lead with 7 years experience across fintech and Web3. Previously led design at two African startups. Strong systems thinker with a deep understanding of mobile-first design patterns.',
-    skills: ['Figma', 'Adobe XD', 'Prototyping', 'Design Systems'],
-    checklist: [
-      { id: 'profile',   label: 'John Trek',          sub: 'Name, bio, country, photo', done: true },
-      { id: 'skills',    label: 'Skills selected',     sub: 'Primary + sub-skills',     done: true },
-      { id: 'wallet',    label: 'Wallet bound',        sub: 'One Canton wallet',         done: true },
-      { id: 'phone',     label: 'Phone verified',      sub: 'OTP confirmed',             done: true },
-      { id: 'id',        label: 'ID verification',     sub: 'Government ID submitted',   done: true },
-      { id: 'portfolio', label: 'Portfolio attached',  sub: '2 samples provided',        done: true },
-    ],
-    portfolio: [
-      { id: 'p1', name: 'portfolio-deck-2025.pdf', type: 'pdf' },
-      { id: 'p2', name: 'case-study-defi-app.pdf', type: 'pdf' },
-    ],
-    tab: 'Pending',
-  },
-  {
-    id: 3,
-    name: 'John Trek',
-    handle: '@johntrek3',
-    location: 'Nairobi, Kenya',
-    appliedAgo: 'Applied 2 hours ago',
-    specialty: 'UI/UX Design',
-    level: 'Beginner',
-    languages: '2 languages',
-    initials: 'JT',
-    bio: 'Junior designer pivoting into Web3 from a traditional agency background. Eager to grow and contribute to the Canton ecosystem with fresh perspectives.',
-    skills: ['Figma', 'Canva', 'Wireframing'],
-    checklist: [
-      { id: 'profile',   label: 'John Trek',          sub: 'Name, bio, country, photo', done: true },
-      { id: 'skills',    label: 'Skills selected',     sub: 'Primary + sub-skills',     done: true },
-      { id: 'wallet',    label: 'Wallet bound',        sub: 'One Canton wallet',         done: true },
-      { id: 'phone',     label: 'Phone verified',      sub: 'OTP confirmed',             done: false },
-      { id: 'id',        label: 'ID verification',     sub: 'Optional — not submitted',  done: false },
-      { id: 'portfolio', label: 'Portfolio attached',  sub: 'No samples yet',            done: false },
-    ],
-    portfolio: [],
-    tab: 'Pending',
-  },
-  {
-    id: 4,
-    name: 'John Trek',
-    handle: '@johntrek4',
-    location: 'Lagos, Nigeria',
-    appliedAgo: 'Applied 2 hours ago',
-    specialty: 'UI/UX Design',
-    level: 'Intermediate',
-    languages: '4 languages',
-    initials: 'JT',
-    bio: 'Multidisciplinary designer with strong experience in mobile applications and Web3 DApp interfaces.',
-    skills: ['React.js', 'Figma', 'Motion Design'],
-    checklist: [
-      { id: 'profile',   label: 'John Trek',          sub: 'Name, bio, country, photo', done: true },
-      { id: 'skills',    label: 'Skills selected',     sub: 'Primary + sub-skills',     done: true },
-      { id: 'wallet',    label: 'Wallet bound',        sub: 'One Canton wallet',         done: true },
-      { id: 'phone',     label: 'Phone verified',      sub: 'OTP confirmed',             done: true },
-      { id: 'id',        label: 'ID verification',     sub: 'Optional — not submitted',  done: false },
-      { id: 'portfolio', label: 'Portfolio attached',  sub: '3 samples provided',        done: true },
-    ],
-    portfolio: [
-      { id: 'p1', name: 'dashboard-project-2025.pdf', type: 'pdf' },
-      { id: 'p2', name: 'dashboard-project-2025.pdf', type: 'link' },
-      { id: 'p3', name: 'case-study-mobile.pdf',      type: 'pdf' },
-    ],
-    tab: 'Pending',
-  },
-  {
-    id: 5,
-    name: 'John Trek',
-    handle: '@johntrek5',
-    location: 'Abuja, Nigeria',
-    appliedAgo: 'Applied 2 hours ago',
-    specialty: 'UI/UX Design',
-    level: 'Intermediate',
-    languages: '3 languages',
-    initials: 'JT',
-    bio: 'Creative designer focused on building delightful user experiences for emerging markets.',
-    skills: ['Figma', 'Sketch', 'User Research'],
-    checklist: [
-      { id: 'profile',   label: 'John Trek',          sub: 'Name, bio, country, photo', done: true },
-      { id: 'skills',    label: 'Skills selected',     sub: 'Primary + sub-skills',     done: true },
-      { id: 'wallet',    label: 'Wallet bound',        sub: 'One Canton wallet',         done: true },
-      { id: 'phone',     label: 'Phone verified',      sub: 'OTP confirmed',             done: true },
-      { id: 'id',        label: 'ID verification',     sub: 'Optional — not submitted',  done: false },
-      { id: 'portfolio', label: 'Portfolio attached',  sub: '1 sample provided',         done: true },
-    ],
-    portfolio: [
-      { id: 'p1', name: 'portfolio-2025.pdf', type: 'pdf' },
-    ],
-    tab: 'Pending',
-  },
-  {
-    id: 6,
-    name: 'John Trek',
-    handle: '@johntrek6',
-    location: 'Cape Town, SA',
-    appliedAgo: 'Applied 2 hours ago',
-    specialty: 'UI/UX Design',
-    level: 'Intermediate',
-    languages: '2 languages',
-    initials: 'JT',
-    bio: 'UX designer specialising in data-heavy dashboards and analytics products.',
-    skills: ['Figma', 'Data Visualisation'],
-    checklist: [
-      { id: 'profile',   label: 'John Trek',          sub: 'Name, bio, country, photo', done: true },
-      { id: 'skills',    label: 'Skills selected',     sub: 'Primary + sub-skills',     done: false },
-      { id: 'wallet',    label: 'Wallet bound',        sub: 'Not yet bound',             done: false },
-      { id: 'phone',     label: 'Phone verified',      sub: 'OTP confirmed',             done: true },
-      { id: 'id',        label: 'ID verification',     sub: 'Optional — not submitted',  done: false },
-      { id: 'portfolio', label: 'Portfolio attached',  sub: '2 samples provided',        done: true },
-    ],
-    portfolio: [
-      { id: 'p1', name: 'dashboard-project-2025.pdf', type: 'pdf' },
-      { id: 'p2', name: 'analytics-portfolio.pdf',    type: 'pdf' },
-    ],
-    tab: 'Flagged',
-  },
-  {
-    id: 7,
-    name: 'John Trek',
-    handle: '@johntrek7',
-    location: 'Kampala, Uganda',
-    appliedAgo: 'Applied 2 hours ago',
-    specialty: 'UI/UX Design',
-    level: 'Expert',
-    languages: '5 languages',
-    initials: 'JT',
-    bio: 'Senior product designer with deep expertise in financial services and compliance-heavy UX.',
-    skills: ['Figma', 'Framer', 'React.js', 'TypeScript'],
-    checklist: [
-      { id: 'profile',   label: 'John Trek',          sub: 'Name, bio, country, photo', done: true },
-      { id: 'skills',    label: 'Skills selected',     sub: 'Primary + sub-skills',     done: true },
-      { id: 'wallet',    label: 'Wallet bound',        sub: 'One Canton wallet',         done: true },
-      { id: 'phone',     label: 'Phone verified',      sub: 'OTP confirmed',             done: true },
-      { id: 'id',        label: 'ID verification',     sub: 'Government ID submitted',   done: true },
-      { id: 'portfolio', label: 'Portfolio attached',  sub: '3 samples provided',        done: true },
-    ],
-    portfolio: [
-      { id: 'p1', name: 'dashboard-project-2025.pdf', type: 'pdf' },
-      { id: 'p2', name: 'dashboard-project-2025.pdf', type: 'link' },
-      { id: 'p3', name: 'dashboard-project-2025.pdf', type: 'link' },
-    ],
-    tab: 'Recent',
-  },
-];
+const API = '/api';
 
 // ─── Avatar Monogram ──────────────────────────────────────────────────────────
 
@@ -414,11 +233,27 @@ function SkillPill({ label }: { label: string }) {
 interface DetailPanelProps {
   applicant: SellerApplicant;
   onBack?: () => void;
+  onApprove?: (id: string) => void;
+  onReject?: (id: string) => void;
 }
 
-function DetailPanel({ applicant, onBack }: DetailPanelProps) {
-  const [decision,     setDecision]     = useState<'approved' | 'rejected' | null>(null);
+function DetailPanel({ applicant, onBack, onApprove, onReject }: DetailPanelProps) {
+  const [decision,     setDecision]     = useState<'approved' | 'rejected' | null>(applicant.tab === 'Recent' ? 'approved' : null);
   const [previewFile,  setPreviewFile]  = useState<PortfolioFile | null>(null);
+
+  useEffect(() => {
+    setDecision(applicant.tab === 'Recent' ? 'approved' : null);
+  }, [applicant.id, applicant.tab]);
+
+  const handleApprove = () => {
+    setDecision('approved');
+    onApprove?.(applicant.id);
+  };
+
+  const handleReject = () => {
+    setDecision('rejected');
+    onReject?.(applicant.id);
+  };
 
   return (
     <div className="flex h-full flex-col overflow-y-auto no-scrollbar">
@@ -509,7 +344,7 @@ function DetailPanel({ applicant, onBack }: DetailPanelProps) {
             {/* Approve — primary button */}
             <button
               type="button"
-              onClick={() => setDecision('approved')}
+              onClick={handleApprove}
               className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#8C5CFF] px-5 py-3 font-sans text-[0.875rem] font-semibold text-white transition-all hover:bg-[#AC8EF3] active:scale-[0.98] shadow-lg shadow-[#8C5CFF]/25 cursor-pointer"
             >
               <Check size={16} strokeWidth={2.5} />
@@ -518,7 +353,7 @@ function DetailPanel({ applicant, onBack }: DetailPanelProps) {
             {/* Reject — variant 2 (outlined) */}
             <button
               type="button"
-              onClick={() => setDecision('rejected')}
+              onClick={handleReject}
               className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[#8C5CFF]/30 hover:bg-[#8C5CFF]/5 text-[#8C5CFF] px-5 py-3 font-sans text-[0.875rem] font-semibold transition-all active:scale-[0.98] cursor-pointer"
             >
               Reject
@@ -589,15 +424,104 @@ function ListItem({
 const LIST_TABS: ListTab[] = ['Pending', 'Flagged', 'Recent'];
 
 export default function AdminSellerAppsPage() {
+  const { toast } = useToast();
   const [activeTab,   setActiveTab]   = useState<ListTab>('Pending');
-  const [selectedId,  setSelectedId]  = useState<number>(1);
+  const [applicants, setApplicants]   = useState<SellerApplicant[]>([]);
+  const [selectedId,  setSelectedId]  = useState<string>('');
   const [mobileView,  setMobileView]  = useState<'list' | 'detail'>('list');
 
-  const visibleApplicants = APPLICANTS.filter(a => a.tab === activeTab);
-  const pendingCount = APPLICANTS.filter(a => a.tab === 'Pending').length;
-  const selected = APPLICANTS.find(a => a.id === selectedId) ?? APPLICANTS[0];
+  const getToken = () =>
+    typeof window !== 'undefined'
+      ? localStorage.getItem('canafri_admin_access_token') || localStorage.getItem('canafri_access_token') || ''
+      : '';
 
-  const handleSelect = (id: number) => {
+  const loadApplicants = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/admin/seller-applications`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.applicants)) {
+        const mapped: SellerApplicant[] = data.applicants.map((a: any) => {
+          let appData: any = {};
+          if (a.notifications && a.notifications[0]?.body) {
+            try {
+              appData = JSON.parse(a.notifications[0].body);
+            } catch {
+              appData = {};
+            }
+          }
+          return {
+            id: a.id,
+            name: a.displayName || a.username || 'Applicant',
+            handle: `@${a.username || 'user'}`,
+            location: [appData.city, a.country || appData.country].filter(Boolean).join(', ') || 'Global',
+            appliedAgo: a.createdAt ? `Applied ${new Date(a.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : 'Recently',
+            specialty: appData.headline || appData.primaryCategory || 'Service Provider',
+            level: (a.trustScore ?? 50) >= 80 ? 'Expert' : 'Standard',
+            languages: appData.language || 'English',
+            initials: (a.displayName || a.username || 'A').slice(0, 2).toUpperCase(),
+            bio: a.bio || appData.skillsBio || 'Applicant submitted a request for seller privileges on the Canton platform.',
+            skills: Array.isArray(appData.skills) && appData.skills.length > 0 ? appData.skills : ['Smart Contracts', 'Services', 'Freelance Delivery'],
+            checklist: [
+              { id: 'profile', label: a.displayName || a.username || 'Profile Info', sub: a.email || 'Email registered', done: true },
+              { id: 'wallet',  label: 'Canton Wallet Bound', sub: a.walletAddress ? `${a.walletAddress.slice(0, 6)}...${a.walletAddress.slice(-4)}` : 'No wallet bound', done: Boolean(a.walletAddress) },
+              { id: 'phone',   label: 'Phone Number', sub: appData.phone ? `${appData.phonePrefix || ''} ${appData.phone}` : (a.phoneVerified ? 'Verified' : 'Unverified'), done: Boolean(a.phoneVerified || appData.phone) },
+              { id: 'rate',    label: `Min Project Budget: ${appData.minProjectValue ? `${appData.minProjectValue} CC` : 'Not set'}`, sub: 'Fixed project pricing model', done: true },
+              { id: 'stake',   label: 'Deposit & Staking', sub: a.creatorStake?.stakedCC ? `${a.creatorStake.stakedCC} CC Staked` : '0.5 CC Application Deposit Logged', done: true },
+            ],
+            portfolio: Array.isArray(appData.portfolioLinks)
+              ? appData.portfolioLinks.map((link: string, idx: number) => ({
+                  id: `p-${idx}`,
+                  name: link,
+                  type: link.endsWith('.pdf') ? 'pdf' : 'link',
+                }))
+              : [],
+            tab: a.sellerApproved
+              ? ('Recent' as ListTab)
+              : ((a.riskScore ?? 0) > 30 || (a.riskFlags?.length ?? 0) > 0)
+                ? ('Flagged' as ListTab)
+                : ('Pending' as ListTab),
+          };
+        });
+        setApplicants(mapped);
+        if (mapped.length > 0) {
+          const firstTabApp = mapped.find(a => a.tab === 'Pending') || mapped[0];
+          setSelectedId(firstTabApp.id);
+        } else {
+          setSelectedId('');
+        }
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => { loadApplicants(); }, [loadApplicants]);
+
+  const handleDecision = async (id: string, approved: boolean) => {
+    try {
+      const res = await fetch(`${API}/admin/seller-applications/${id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ approved }),
+      });
+      if (res.ok) {
+        toast(approved ? 'Application approved successfully! User is now a Seller.' : 'Application rejected.', approved ? 'success' : 'info');
+        await loadApplicants();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        toast(errData.message || 'Failed to update application status.', 'error');
+      }
+    } catch {
+      toast('Network error processing application decision.', 'error');
+    }
+  };
+
+  const visibleApplicants = applicants.filter(a => a.tab === activeTab);
+  const pendingCount = applicants.filter(a => a.tab === 'Pending').length;
+  const selected = applicants.find(a => a.id === selectedId) ?? applicants[0];
+
+  const handleSelect = (id: string) => {
     setSelectedId(id);
     setMobileView('detail');
   };
@@ -625,7 +549,7 @@ export default function AdminSellerAppsPage() {
               <button
                 key={tab}
                 type="button"
-                onClick={() => { setActiveTab(tab); setSelectedId(APPLICANTS.find(a => a.tab === tab)?.id ?? selectedId); }}
+                onClick={() => { setActiveTab(tab); setSelectedId(applicants.find((a: SellerApplicant) => a.tab === tab)?.id ?? selectedId); }}
                 className={`flex flex-1 items-center justify-center gap-1.5 px-2 py-1 rounded-lg font-sans text-[0.6875rem] font-semibold transition-all ${
                   activeTab === tab
                     ? 'bg-[#8C5CFF] text-white shadow'
@@ -683,6 +607,8 @@ export default function AdminSellerAppsPage() {
           <DetailPanel
             applicant={selected}
             onBack={() => setMobileView('list')}
+            onApprove={(id) => handleDecision(id, true)}
+            onReject={(id) => handleDecision(id, false)}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center">

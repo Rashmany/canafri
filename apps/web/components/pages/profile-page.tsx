@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ArrowLeft,
   Pencil,
@@ -15,78 +15,58 @@ import {
   ShieldCheck,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
+  Briefcase,
   Heart,
   Bookmark,
   ThumbsDown,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
-import { Post, PostCard } from './dashboard-page';
+import { Post, PostCard, PostDetail, CommentItem } from './dashboard-page';
 import ProfileOverviewCard from './profile-overview-card';
 import WorkHistoryCard from './work-history-card';
 import Footer from '@/components/layout/footer';
 
 // --- Constants for Buyer Profile ----------------------------------------------
 
-const TABS = ['Published', 'Reads'] as const;
+const TABS = ['Published', 'Reads', 'Job & Rating History'] as const;
 type Tab = typeof TABS[number];
 
-const PUBLISHED_POSTS: Post[] = [
-  {
-    id: 101,
-    name: 'John Trek',
-    handle: '@johntrek',
-    date: 'May 10',
-    avatarSrc: '/images/default-avatar.png',
-    text: 'EXCLUSIVE: Alpha report on Canton Network node staking yields and institutional Liquidity Pool migration patterns for Q3 2026. Staking yields remain highly lucrative.',
-    fullText: 'EXCLUSIVE: Alpha report on Canton Network node staking yields and institutional Liquidity Pool migration patterns for Q3 2026. Staking yields remain highly lucrative.',
-    category: 'premium',
-    likesCount: 24,
-    commentsCount: 3,
-    stakeReward: '5 CC Read-Stake Required',
-  },
-  {
-    id: 102,
-    name: 'John Trek',
-    handle: '@johntrek',
-    date: 'May 8',
-    avatarSrc: '/images/default-avatar.png',
-    text: 'Deep-dive analysis on institutional Daml ledgers and validator security configurations. Recommended node operational policies are detailed in full document.',
-    fullText: 'Deep-dive analysis on institutional Daml ledgers and validator security configurations. Recommended node operational policies are detailed in full document.',
-    category: 'premium',
-    likesCount: 15,
-    commentsCount: 1,
-    stakeReward: '5 CC Read-Stake Required',
-  },
-];
+// --- Helper: map backend content to Post UI model ---------------------------------
 
-const READS_POSTS: Post[] = [
-  {
-    id: 103,
-    name: 'Sarah Dev',
-    handle: '@sarahdev',
-    date: 'May 9',
-    avatarSrc: '/images/default-avatar.png',
-    text: 'Analyzing Canton network gas dynamics under high transaction volumes: A comprehensive review of performance characteristics.',
-    fullText: 'Analyzing Canton network gas dynamics under high transaction volumes: A comprehensive review of performance characteristics.',
+function mapContentToPost(c: any): Post {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const d = new Date(c.publishedAt || c.createdAt || Date.now());
+  const dateStr = `${months[d.getMonth()]} ${d.getDate()}`;
+
+  const creatorName = c.creator?.displayName || c.creator?.username || 'Creator';
+  const creatorHandle = c.creator?.username
+    ? `@${c.creator.username.replace(/^@/, '')}`
+    : '@creator';
+
+  const plainText = (c.bodyIpfsHash || c.body || c.title || '').replace(/<[^>]*>/g, '');
+  const snippet = plainText.length > 200 ? plainText.slice(0, 200) + '…' : plainText;
+
+  return {
+    id: c.id,
+    name: creatorName,
+    handle: creatorHandle,
+    date: dateStr,
+    avatarSrc: c.creator?.avatarUrl || '',
+    text: snippet || c.title,
+    fullText: c.body || c.bodyIpfsHash || c.title || '',
     category: 'premium',
-    likesCount: 42,
-    commentsCount: 8,
-    stakeReward: '5 CC Read-Stake Required',
-  },
-  {
-    id: 104,
-    name: 'Alex Daml',
-    handle: '@alexdaml',
-    date: 'May 5',
-    avatarSrc: '/images/default-avatar.png',
-    text: 'Best practices for writing secure Daml templates and preventing execution logic recursion vulnerabilities.',
-    fullText: 'Best practices for writing secure Daml templates and preventing execution logic recursion vulnerabilities.',
-    category: 'premium',
-    likesCount: 18,
-    commentsCount: 2,
-    stakeReward: '5 CC Read-Stake Required',
-  },
-];
+    stakeReward: `${c.priceCC || 5} CC Read-Stake Required`,
+    likesCount: c.readCount || 0,
+    commentsCount: 0,
+    image: c.coverImageUrl || undefined,
+    topic: c.topic || undefined,
+    publication: c.publication || undefined,
+    contentStatus: c.status || undefined,
+  };
+}
 
 // --- Verified Star Badge ------------------------------------------------------
 
@@ -106,10 +86,11 @@ interface ProfilePageProps {
   sellerMode?: boolean;
   /** Pass false when a buyer is viewing someone else's freelancer profile */
   isOwner?: boolean;
+  onOpenChat?: (user: { id: string; name: string; username?: string; avatarUrl?: string }) => void;
 }
 
-export default function ProfilePage({ onBack, sellerMode = false, isOwner = true }: ProfilePageProps) {
-  const [profile] = useState(() => {
+export default function ProfilePage({ onBack, sellerMode = false, isOwner = true, onOpenChat }: ProfilePageProps) {
+  const [profile, setProfile] = useState<any>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('canafri_user_profile');
       if (stored) {
@@ -121,13 +102,138 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
       }
     }
     return {
-      fullName: 'John Trek',
-      username: '@joshtrek',
-      email: 'josh@trek.io',
-      location: 'Turkey',
+      fullName: 'User',
+      username: '@user',
+      email: '',
+      location: 'Global',
       memberSince: 'April 2026',
     };
   });
+
+  const [sellerAppData, setSellerAppData] = useState<any>({});
+  const [freelanceJobs, setFreelanceJobs] = useState<any[]>([]);
+  const [sellerReviews, setSellerReviews] = useState<any[]>([]);
+  const [sellerRating, setSellerRating] = useState<number>(0);
+  const [sellerReviewsCount, setSellerReviewsCount] = useState<number>(0);
+  const [publishedPosts, setPublishedPosts] = useState<Post[]>([]);
+  const [readsPosts, setReadsPosts] = useState<Post[]>([]);
+  const [buyerRating, setBuyerRating] = useState<number>(0);
+  const [buyerReviewsCount, setBuyerReviewsCount] = useState<number>(0);
+  const [buyerReviews, setBuyerReviews] = useState<any[]>([]);
+  const [clientPostedJobs, setClientPostedJobs] = useState<any[]>([]);
+  const [ratingsOpen, setRatingsOpen] = useState<boolean>(false);
+  const [postedJobsOpen, setPostedJobsOpen] = useState<boolean>(false);
+  const [showAllRatings, setShowAllRatings] = useState<boolean>(false);
+  const [showAllJobs, setShowAllJobs] = useState<boolean>(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const token = typeof window !== 'undefined'
+      ? localStorage.getItem('canafri_access_token') || localStorage.getItem('canafri_admin_access_token')
+      : null;
+    if (!token) return;
+
+    async function loadMe() {
+      try {
+        let res = await fetch('/api/users/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          res = await fetch('/api/users/me', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user && isMounted) {
+            const u = data.user;
+            const app = data.sellerAppData || {};
+            setSellerAppData(app);
+            if (Array.isArray(u.freelanceJobs)) {
+              setFreelanceJobs(u.freelanceJobs);
+            }
+            if (Array.isArray(u.reviewsReceived)) {
+              const revs = u.reviewsReceived as any[];
+              setSellerReviews(revs);
+              const count = revs.length;
+              setSellerReviewsCount(count);
+              const avg = count > 0
+                ? parseFloat((revs.reduce((s: number, r: any) => s + (r.rating || 0), 0) / count).toFixed(1))
+                : 0;
+              setSellerRating(avg);
+            }
+            if (Array.isArray(u.postedJobs)) {
+              setClientPostedJobs(u.postedJobs);
+            }
+            if (Array.isArray(u.content)) {
+              const mappedPub = u.content.map((c: any) => ({
+                ...mapContentToPost(c),
+                name: u.displayName || u.username || 'User',
+                handle: u.username ? (u.username.startsWith('@') ? u.username : `@${u.username}`) : '@user',
+              }));
+              setPublishedPosts(mappedPub);
+            }
+            if (Array.isArray(u.readStakes)) {
+              const mappedReads = u.readStakes
+                .filter((rs: any) => rs.content)
+                .map((rs: any) => mapContentToPost(rs.content));
+              setReadsPosts(mappedReads);
+            }
+            const updated = {
+              ...u,
+              fullName: u.displayName || u.username || 'User',
+              username: u.username ? (u.username.startsWith('@') ? u.username : `@${u.username}`) : '@user',
+              location: u.country || app.country || 'Global',
+              memberSince: u.createdAt
+                ? new Date(u.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                : 'April 2026',
+              skills: app.skills || (u.skills ? u.skills : []),
+              headline: app.headline || u.bio || '',
+              bio: u.bio || app.skillsBio || app.bio || '',
+              yearsOfExperience: app.yearsOfExperience || '0',
+              minProjectBudget: app.minProjectValue ? `${app.minProjectValue} CC` : '150 CC',
+              portfolioLinks: app.portfolioLinks || [],
+              educationSchool: app.educationSchool || '',
+              educationDegree: app.educationDegree || '',
+              educationYear: app.educationYear || '',
+              reviews: u.reviews || [],
+            };
+            setProfile(updated);
+            // Fetch buyer reviews from the public profile endpoint
+            const rawUsername = u.username?.replace(/^@/, '');
+            if (rawUsername) {
+              fetch(`/api/users/${rawUsername}`)
+                .then(r => r.json())
+                .then(pubData => {
+                  if (pubData?.user) {
+                    setBuyerRating(pubData.user.buyerRating || 0);
+                    setBuyerReviewsCount(pubData.user.buyerReviewsCount || 0);
+                    setBuyerReviews(pubData.user.buyerReviews || []);
+                    if (Array.isArray(pubData.user.postedJobs)) {
+                      setClientPostedJobs(pubData.user.postedJobs);
+                    }
+                  }
+                })
+                .catch(() => {});
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load profile:', e);
+      }
+    }
+
+    loadMe();
+
+    // Re-fetch whenever a new post is published from the dashboard
+    const handleContentPublished = () => { loadMe(); };
+    window.addEventListener('canafri:content-published', handleContentPublished);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('canafri:content-published', handleContentPublished);
+    };
+  }, []);
 
   const [activeTab, setActiveTab] = useState<Tab>('Published');
   const [activeSubTab, setActiveSubTab] = useState<'about' | 'preview' | 'history'>('about');
@@ -135,6 +241,71 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
   const [portfolioScrolled, setPortfolioScrolled] = useState(false);
   const portfolioRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  const userInitials = useMemo(() => {
+    const nameStr = profile?.fullName || profile?.displayName || profile?.username || 'U';
+    const parts = nameStr.replace('@', '').trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return nameStr.slice(0, 2).toUpperCase();
+  }, [profile]);
+
+  const completedJobsList = useMemo(() => {
+    return freelanceJobs
+      .filter((j) => j.status === 'COMPLETED')
+      .map((j) => ({
+        id: j.id,
+        title: j.title,
+        startDate: new Date(j.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        endDate: new Date(j.updatedAt || j.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        feedback: 'Canton Escrow Release Completed',
+        amount: `${j.amountCC || 0} CC`,
+      }));
+  }, [freelanceJobs]);
+
+  const inProgressJobsList = useMemo(() => {
+    return freelanceJobs
+      .filter((j) => j.status !== 'COMPLETED')
+      .map((j) => ({
+        id: j.id,
+        title: j.title,
+        startDate: new Date(j.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        endDate: 'Present',
+        feedback: 'In progress',
+        amount: `${j.amountCC || 0} CC`,
+      }));
+  }, [freelanceJobs]);
+
+  const totalEarnedCC = useMemo(() => {
+    return freelanceJobs
+      .filter((j) => j.status === 'COMPLETED')
+      .reduce((acc, j) => acc + (j.amountCC || 0), 0);
+  }, [freelanceJobs]);
+
+  const overviewData = useMemo(() => {
+    return {
+      minProjectBudget: profile.minProjectBudget || '150 CC',
+      totalEarnings: `${totalEarnedCC} CC`,
+      completedJobs: completedJobsList.length,
+      cantonStake: profile.creatorStake ? `${profile.creatorStake.amountCC} CC` : '0 CC',
+      jobSuccess: completedJobsList.length > 0 ? '100%' : 'N/A',
+      rating: sellerRating,
+      reviewsCount: sellerReviewsCount,
+      level: profile.sellerApproved ? 'Top Rated Seller' : (profile.isSeller ? 'Verified Seller' : 'Registered Seller'),
+      verifications: [
+        profile.emailVerified ? 'Email Verified' : null,
+        profile.phoneVerified ? 'Phone Verified' : null,
+        profile.sellerApproved ? 'Identity Verified' : null,
+        'Registered Seller',
+      ].filter(Boolean),
+      languages: sellerAppData.language
+        ? [{ name: sellerAppData.language, level: 'Native' }]
+        : [{ name: 'English', level: 'Native' }],
+      availability: sellerAppData.availability || 'As needed - open to offers',
+      responseTime: '< 24 hrs',
+    };
+  }, [profile, sellerAppData, completedJobsList.length, totalEarnedCC, sellerRating, sellerReviewsCount]);
 
   const handleShare = async () => {
     try {
@@ -159,25 +330,74 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
   const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Record<number, boolean>>({});
   const [favoriteCreators, setFavoriteCreators] = useState<Record<string, boolean>>({});
 
+  // Full-article reader overlay
+  const [selectedArticle, setSelectedArticle] = useState<Post | null>(null);
+  const [unlockedArticleIds, setUnlockedArticleIds] = useState<(number | string)[]>([]);
+  const [articleComments, setArticleComments] = useState<CommentItem[]>([]);
+
+  const handleOpenArticle = async (post: Post) => {
+    setSelectedArticle(post);
+    // Fetch real comments for this post
+    try {
+      const res = await fetch(`/api/content/${post.id}/replies`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.replies)) {
+        setArticleComments(
+          data.replies.map((r: any) => ({
+            id: r.id,
+            postId: post.id,
+            name: r.author?.displayName || r.author?.username || 'Reader',
+            handle: r.author?.username ? `@${r.author.username.replace(/^@/, '')}` : '@reader',
+            text: r.body,
+            time: new Date(r.createdAt).toLocaleDateString(),
+          }))
+        );
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handleAddArticleComment = async (text: string) => {
+    if (!selectedArticle) return;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+    const optimistic = {
+      id: `opt_${Date.now()}`,
+      postId: selectedArticle.id,
+      name: 'You',
+      handle: '@me',
+      text,
+      time: 'Just now',
+    };
+    setArticleComments(prev => [optimistic, ...prev]);
+    if (token) {
+      try {
+        await fetch(`/api/content/${selectedArticle.id}/replies`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ body: text }),
+        });
+      } catch { /* ignore */ }
+    }
+  };
+
   // --- SELLER MODE (FREELANCER PROFILE) LAYOUT ---
   if (sellerMode) {
-    const displayLocation = profile.city ? `${profile.city}, ${profile.country}` : (profile.country || profile.location);
-    const displayHeadline = profile.headline || 'Full Stack Developer';
-    const displayTags = profile.skills?.slice(0, 4) || ['smart contract', 'Daml developer', 'Web3 Expert'];
+    const displayLocation = profile.city ? `${profile.city}, ${profile.country}` : (profile.country || profile.location || 'Global');
+    const displayHeadline = profile.headline || 'Blockchain & Canton Developer';
+    const displayTags = profile.skills && profile.skills.length > 0 ? profile.skills : [];
 
     return (
-      <div className="flex flex-col overflow-y-auto bg-background h-full animate-in fade-in duration-200 px-4 py-6 gap-6 md:px-8">
+      <div className="flex flex-col overflow-y-auto bg-background min-h-full animate-in fade-in duration-200 px-4 py-6 gap-6 md:px-8">
 
         {/* Header section (Figma 1118:17514) */}
         <div className="overflow-x-auto no-scrollbar w-full shrink-0">
           <div className="bg-card border border-card-border rounded-[16px] px-[24px] py-[30px] flex flex-row gap-[47px] items-center relative min-w-[850px]">
             {/* Avatar + online dot */}
             <div className="relative shrink-0">
-              <div className="size-[90px] rounded-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 shadow-md text-primary overflow-hidden">
+              <div className="size-[90px] rounded-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 shadow-md text-primary overflow-hidden font-bold text-[24px]">
                 {profile.avatarUrl ? (
                   <img src={profile.avatarUrl} alt={profile.fullName} className="h-full w-full object-cover" />
                 ) : (
-                  <User size={40} strokeWidth={1.2} />
+                  <span>{userInitials}</span>
                 )}
               </div>
               <div className="absolute bottom-[3px] right-[3px] size-[14px] rounded-full bg-[#00C37A] border-2 border-card" />
@@ -189,7 +409,7 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
                 <div className="flex flex-col gap-0 items-start">
                   <div className="flex items-center gap-[16px]">
                     <h1 className="font-bold text-[36px] leading-[42px] tracking-[-0.18px] text-foreground">{profile.fullName}</h1>
-                    {profile.isVerified && <VerifiedBadge />}
+                    {(profile.sellerApproved || profile.emailVerified) && <VerifiedBadge />}
                     {/* Owner: edit profile name/title */}
                     {isOwner && (
                       <button
@@ -236,14 +456,25 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
                 <div className="flex flex-wrap gap-[12px] items-center mt-2">
                   <button
                     type="button"
-                    onClick={() => toast('Opening message composer for John Trek…', 'success')}
+                    onClick={() => {
+                      if (onOpenChat) {
+                        onOpenChat({
+                          id: profile.id || 'seller-1',
+                          name: profile.fullName || profile.displayName || 'User',
+                          username: profile.username,
+                          avatarUrl: profile.avatarSrc,
+                        });
+                      } else {
+                        toast(`Opening message composer for ${profile.fullName}…`, 'success');
+                      }
+                    }}
                     className="h-[36px] px-[16px] rounded-[12px] border border-primary/50 text-[13px] font-semibold text-foreground hover:bg-foreground/5 transition-colors cursor-pointer"
                   >
                     Message
                   </button>
                   <button
                     type="button"
-                    onClick={() => toast('Opening hire contract for John Trek…', 'success')}
+                    onClick={() => toast(`Opening hire contract for ${profile.fullName}…`, 'success')}
                     className="h-[36px] px-[16px] rounded-[12px] bg-primary hover:bg-primary-hover text-[13px] font-semibold text-white transition-colors cursor-pointer"
                   >
                     Hire
@@ -256,38 +487,10 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
                   >
                     <Share2 size={14} />
                   </button>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowMenu((v) => !v)}
-                      className="h-[34px] w-[38px] flex items-center justify-center text-muted hover:text-foreground transition-colors cursor-pointer"
-                      title="More options"
-                    >
-                      <MoreVertical size={15} />
-                    </button>
-                    {showMenu && (
-                      <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-[10px] shadow-xl z-50 min-w-[160px] py-1 flex flex-col">
-                        {[
-                          { label: 'Report freelancer', action: () => toast('Report submitted', 'success') },
-                          { label: 'Block user', action: () => toast('User blocked', 'success') },
-                          { label: 'Save to list', action: () => toast('Saved to favourites', 'success') },
-                        ].map((item) => (
-                          <button
-                            key={item.label}
-                            type="button"
-                            onClick={() => { item.action(); setShowMenu(false); }}
-                            className="px-[14px] py-[8px] text-[13px] text-left text-foreground/75 hover:bg-foreground/5 hover:text-foreground transition-colors cursor-pointer"
-                          >
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
 
-              {/* Owner: share button only (no message/hire/dots) */}
+              {/* Owner: share button only */}
               {isOwner && (
                 <button
                   type="button"
@@ -302,7 +505,7 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
           </div>
         </div>
 
-        {/* Tab switcher (Figma 1118:18132) — h-[100px] */}
+        {/* Tab switcher */}
         <div className="bg-gradient-to-r border border-card-border from-card to-background h-[100px] rounded-[8px] flex items-center justify-center p-3">
           <div className="border border-border rounded-full bg-card p-1 flex w-full max-w-xl relative">
             <div aria-hidden className="absolute bg-card inset-0 pointer-events-none rounded-full" />
@@ -340,7 +543,7 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
         {/* ── About me tab ── */}
         {activeSubTab === 'about' && (
           <>
-            {/* About Me Card — gradient bg (Figma 1127:19290) */}
+            {/* About Me Card */}
             <div
               className="border border-card-border rounded-[16px] p-[24px] flex flex-col gap-[24px]"
               style={{ background: 'linear-gradient(70deg, var(--bg-card) 70%, var(--bg-sidebar) 121%)' }}
@@ -363,22 +566,17 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
                 {profile.bio ? (
                   <p>{profile.bio}</p>
                 ) : (
-                  <>
-                    <p>
-                      I&apos;m a passionate Full Stack Developer with 6+ years of experience building secure, scalable, and high-performance web applications. I specialize in JavaScript/TypeScript ecosystems and have a strong focus on clean code, performance, and exceptional user experience.
-                    </p>
-                    <p>I help startups and businesses turn ideas into reliable products that users love.</p>
-                  </>
+                  <p className="text-muted italic">No about me description provided yet.</p>
                 )}
               </div>
               <div className="h-px bg-card-border w-full shrink-0" />
               <div className="overflow-x-auto no-scrollbar w-full shrink-0">
                 <div className="flex gap-[24px] items-start min-w-[700px] w-full">
                   {[
-                    { icon: <User size={28} className="text-muted" strokeWidth={1.2} />, value: profile.yearsOfExperience || '6+', label: 'Years experience' },
-                    { icon: <Grid size={28} className="text-muted" strokeWidth={1.2} />, value: '80+', label: 'Projects completed' },
-                    { icon: <Smile size={28} className="text-muted" strokeWidth={1.2} />, value: '30+', label: 'Happy clients' },
-                    { icon: <ShieldCheck size={28} className="text-muted" strokeWidth={1.2} />, value: '100%', label: 'Client satisfaction' },
+                  { icon: <Star size={28} className="text-muted" strokeWidth={1.2} />, value: sellerReviewsCount > 0 ? `${sellerRating}★` : 'N/A', label: 'Average rating' },
+                    { icon: <Grid size={28} className="text-muted" strokeWidth={1.2} />, value: `${completedJobsList.length}`, label: 'Projects completed' },
+                    { icon: <Smile size={28} className="text-muted" strokeWidth={1.2} />, value: `${sellerReviewsCount}`, label: 'Client reviews' },
+                    { icon: <ShieldCheck size={28} className="text-muted" strokeWidth={1.2} />, value: completedJobsList.length > 0 ? '100%' : 'N/A', label: 'Client satisfaction' },
                   ].map((stat, i) => (
                     <div key={i} className="flex flex-1 min-w-0 gap-[12px] items-center">
                       <div className="shrink-0 size-[28px] flex items-center justify-center">{stat.icon}</div>
@@ -392,12 +590,12 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
               </div>
             </div>
 
-            {/* Skills Card (Figma 1118:17681) */}
+            {/* Skills Card */}
             <div className="bg-card border border-card-border rounded-[16px] p-[24px] flex flex-col gap-[24px]">
               <div className="flex justify-between items-center">
                 <h2 className="font-bold text-[20px] text-foreground/80 leading-normal">Skills</h2>
                 <div className="flex items-center gap-[10px]">
-                  {isOwner ? (
+                  {isOwner && (
                     <button
                       type="button"
                       onClick={() => toast('Edit skills & expertise', 'success')}
@@ -407,20 +605,20 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
                       <Pencil size={11} />
                       Edit skills
                     </button>
-                  ) : (
-                    <button type="button" onClick={() => toast('Viewing full skills list for John Trek', 'success')} className="text-[12px] font-medium text-primary hover:underline cursor-pointer">
-                      View all skills
-                    </button>
                   )}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-[12px]">
-                {(profile.skills || ['JavaScript','TypeScript','React','Next.js','Node.js','NestJS','Express.js','Prisma','Docker','Tailwind CSS']).map((skill: string) => (
-                  <div key={skill} className="bg-primary/10 px-[16px] py-[8px] rounded-[8px]">
-                    <span className="font-normal text-[14px] text-primary">{skill}</span>
-                  </div>
-                ))}
-              </div>
+              {profile.skills && profile.skills.length > 0 ? (
+                <div className="flex flex-wrap gap-[12px]">
+                  {profile.skills.map((skill: string) => (
+                    <div key={skill} className="bg-primary/10 px-[16px] py-[8px] rounded-[8px]">
+                      <span className="font-normal text-[14px] text-primary">{skill}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-4 text-muted text-[13px]">No skills added yet.</div>
+              )}
             </div>
 
             {/* Education Card */}
@@ -436,7 +634,7 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
               </div>
             )}
 
-            {/* Featured Work Card (Figma 1118:17714) */}
+            {/* Featured Work Card */}
             <div className="bg-card border border-card-border rounded-[16px] p-[24px] flex flex-col gap-[24px]">
               <div className="flex justify-between items-center">
                 <h2 className="font-bold text-[20px] text-foreground/80 leading-normal">Featured work</h2>
@@ -452,112 +650,115 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
                       Edit
                     </button>
                   )}
-                  <button type="button" onClick={() => toast('Opening full portfolio for John Trek', 'success')} className="text-[12px] font-medium text-primary hover:underline cursor-pointer">
-                    View portfolio
-                  </button>
                 </div>
               </div>
-              {/* Scrollable portfolio row */}
-              <div className="relative">
-                {/* Left scroll arrow — only visible when scrolled right */}
-                {portfolioScrolled && (
-                  <button
-                    type="button"
-                    onClick={() => scrollPortfolio('left')}
-                    className="-translate-y-1/2 absolute bg-sidebar border border-card-border hover:bg-card drop-shadow-xl flex items-center justify-center left-[-20px] rounded-full size-[48px] top-1/2 cursor-pointer transition-all z-10 active:scale-90"
-                    title="Scroll left"
-                  >
-                    <ChevronLeft size={22} className="text-foreground" />
-                  </button>
-                )}
-                {/* Cards row */}
-                <div
-                  ref={portfolioRef}
-                  className="flex gap-[24px] items-start overflow-x-auto no-scrollbar scroll-smooth"
-                >
-                  {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="bg-background border border-card-border flex shrink-0 w-[220px] flex-col gap-[12px] items-start p-[10px] rounded-[16px] cursor-pointer hover:ring-1 hover:ring-primary/40 transition-all">
-                      <div className="aspect-[16/10] rounded-[12px] w-full bg-[#14111d] flex items-center justify-center text-muted overflow-hidden">
-                        <User size={28} className="opacity-30" />
-                      </div>
-                      <div className="flex flex-col gap-[4px] w-full">
-                        <p className="font-medium text-[13px] leading-[18px] text-foreground/80">Fintrack - Financial Dashboard</p>
-                        <p className="font-medium text-[12px] leading-normal text-muted">Web Application</p>
-                      </div>
-                      <div className="flex flex-wrap gap-[8px]">
-                        {['Next.js','TypeScript'].map((tag) => (
-                          <div key={tag} className="bg-primary/10 px-[8px] py-[4px] rounded-[4px]">
-                            <span className="font-medium text-[12px] text-primary">{tag}</span>
+
+              {profile.portfolioLinks && profile.portfolioLinks.length > 0 ? (
+                <div className="flex flex-wrap gap-[16px]">
+                  {profile.portfolioLinks.map((link: string, idx: number) => (
+                    <a
+                      key={idx}
+                      href={link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-background border border-card-border p-[14px] rounded-[12px] flex items-center gap-3 hover:border-primary/50 transition-colors cursor-pointer"
+                    >
+                      <Share2 size={16} className="text-primary" />
+                      <span className="text-[13px] font-medium text-foreground truncate max-w-[220px]">{link}</span>
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-6 text-center text-muted text-[13px]">
+                  No featured portfolio projects added yet.
+                </div>
+              )}
+            </div>
+
+            {/* Reviews */}
+            <div className="bg-card border border-card-border rounded-[16px] flex flex-col gap-[24px] p-[24px] w-full shrink-0">
+              <div className="flex font-medium items-center justify-between text-[13px]">
+                <div className="flex items-center gap-3">
+                  <p className="text-foreground font-bold text-[18px]">Client Reviews ({sellerReviewsCount})</p>
+                  {sellerReviewsCount > 0 && (
+                    <span className="text-[12px] font-medium text-muted border border-border/50 px-2 py-0.5 rounded-full">
+                      {sellerRating.toFixed(1)} avg
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {sellerReviews.length > 0 ? (
+                <div className="flex flex-col items-start w-full">
+                  {sellerReviews.map((review: any) => (
+                    <div key={review.id} className="bg-card border-t border-card-border flex gap-[24px] items-start py-[16px] w-full">
+                      {review.reviewer?.avatarUrl && review.reviewer.avatarUrl.trim() ? (
+                        <img
+                          src={review.reviewer.avatarUrl}
+                          alt={review.reviewer.displayName || review.reviewer.username}
+                          className="shrink-0 size-[56px] rounded-full object-cover border border-border/30"
+                        />
+                      ) : (
+                        <div className="shrink-0 size-[56px] rounded-full bg-foreground/5 border border-border/40 flex items-center justify-center text-muted text-[16px] font-bold">
+                          {(review.reviewer?.displayName || review.reviewer?.username || 'C').slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="flex flex-1 min-w-0 items-start justify-between gap-4">
+                        <div className="flex flex-col gap-[8px] items-start min-w-0">
+                          <div className="flex flex-col gap-[3px] items-start">
+                            <div className="flex gap-[16px] items-center flex-wrap">
+                              <p className="font-bold text-[15px] leading-[20px] text-foreground/90">
+                                {review.reviewer?.displayName || review.reviewer?.username || 'Client'}
+                              </p>
+                              <div className="flex gap-[3px] items-center">
+                                {[...Array(5)].map((_, idx) => (
+                                  <Star
+                                    key={idx}
+                                    size={13}
+                                    className={idx < review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-border fill-border'}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                            {review.job?.title && (
+                              <p className="font-normal text-[11px] text-muted">{review.job.title}</p>
+                            )}
                           </div>
-                        ))}
+                          {review.comment && (
+                            <p className="font-normal text-[13px] leading-[20px] text-foreground/80 max-w-[400px]">
+                              {review.comment}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-[6px] items-end shrink-0">
+                          <p className="font-bold text-[14px] text-foreground">{review.rating}.0</p>
+                          <p className="font-normal text-[10px] text-muted whitespace-nowrap">
+                            {new Date(review.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
-                {/* Right scroll arrow */}
-                <button
-                  type="button"
-                  onClick={() => scrollPortfolio('right')}
-                  className="-translate-y-1/2 absolute bg-sidebar border border-card-border hover:bg-card drop-shadow-xl flex items-center justify-center right-[-20px] rounded-full size-[48px] top-1/2 cursor-pointer transition-all z-10 active:scale-90"
-                  title="Scroll right"
-                >
-                  <ChevronRight size={22} className="text-foreground" />
-                </button>
-              </div>
-            </div>
-
-            {/* Reviews (Figma 1118:17770) */}
-            <div className="bg-card border border-card-border rounded-tl-[16px] rounded-tr-[16px] flex flex-col gap-[24px] pt-[24px] overflow-x-auto no-scrollbar w-full shrink-0">
-              <div className="flex font-medium items-center justify-between leading-[18px] px-[24px] text-[13px] min-w-[800px] w-full">
-                <p className="text-foreground">Client Review</p>
-                <button type="button" onClick={() => toast('Viewing all reviews for John Trek', 'success')} className="text-primary hover:underline cursor-pointer">View all reviews</button>
-              </div>
-              <div className="flex flex-col items-start min-w-[800px] w-full">
-                {[
-                  { name: 'Alinson brave', company: 'CEO Technova inc.', comment: 'John Trek is exemptional, he deliver high quality application, i recommend him for the next person to hire him, i have no doubt in him.', score: '5.00', date: 'April 12, 2026', rating: 5 },
-                  { name: 'Alinson brave', company: 'CEO Technova inc.', comment: 'John Trek is exemptional, he deliver high quality application, i recommend him for the next person to hire him, i have no doubt in him.', score: '5.00', date: 'April 12, 2026', rating: 5 },
-                ].map((review, i) => (
-                  <div key={i} className="bg-card border-t border-card-border flex gap-[24px] items-start py-[12px] px-[24px] w-full">
-                    <div className="shrink-0 size-[85px] rounded-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 text-primary">
-                      <User size={40} strokeWidth={1.2} />
-                    </div>
-                    <div className="flex flex-1 min-w-0 items-start justify-between">
-                      <div className="flex flex-col gap-[10px] items-start">
-                        <div className="flex flex-col gap-[5px] items-start">
-                          <div className="flex gap-[24px] items-center">
-                            <p className="font-bold text-[18px] leading-[24px] tracking-[-0.18px] text-foreground/80">{review.name}</p>
-                            <div className="flex gap-[3px] items-center">
-                              {[...Array(review.rating)].map((_, idx) => (
-                                <Star key={idx} size={16} className="text-yellow-400 fill-yellow-400" />
-                              ))}
-                            </div>
-                          </div>
-                          <p className="font-normal text-[11px] leading-[16px] text-foreground/80">{review.company}</p>
-                        </div>
-                        <p className="font-normal text-[13px] leading-[20px] text-foreground/80 max-w-[358px]">{review.comment}</p>
-                      </div>
-                      <div className="flex flex-col gap-[10px] items-start shrink-0 w-[66px]">
-                        <p className="font-medium text-[13px] leading-[18px] text-foreground">{review.score}</p>
-                        <p className="font-normal text-[10px] leading-[13px] text-muted">{review.date}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              ) : (
+                <div className="py-6 text-center text-muted text-[13px] w-full">
+                  No client reviews yet.
+                </div>
+              )}
             </div>
           </>
         )}
 
         {/* ── Profile Preview tab ── */}
         {activeSubTab === 'preview' && (
-          <ProfileOverviewCard />
+          <ProfileOverviewCard profileData={overviewData} />
         )}
 
         {/* ── Job History tab ── */}
         {activeSubTab === 'history' && (
-          <WorkHistoryCard />
+          <WorkHistoryCard completedJobs={completedJobsList} inProgressJobs={inProgressJobsList} />
         )}
-        <div className="hidden md:block">
+        <div className="hidden md:block mt-auto pt-16">
           <Footer />
         </div>
       </div>
@@ -566,7 +767,7 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
 
   // --- BUYER MODE (NORMAL PROFILE) LAYOUT ---
   return (
-    <div className="flex flex-col overflow-y-auto no-scrollbar bg-background h-full animate-in fade-in duration-200">
+    <div className="flex flex-col overflow-y-auto no-scrollbar bg-background min-h-full animate-in fade-in duration-200">
 
       {/* Top Bar */}
       <div className="flex shrink-0 items-center justify-between px-4 py-4">
@@ -601,7 +802,7 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
       <div className="flex flex-col bg-card rounded-tl-[10px] rounded-tr-[10px] pt-4">
 
         {/* Tab bar */}
-        <div className="flex justify-center gap-16 px-4 border-b border-border shrink-0">
+        <div className="flex justify-center gap-12 sm:gap-16 px-4 border-b border-border shrink-0">
           {TABS.map((tab) => (
             <button
               key={tab}
@@ -620,43 +821,284 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
 
         {/* Feed */}
         <div className="flex flex-col">
-          {(activeTab === 'Published' ? PUBLISHED_POSTS : READS_POSTS).map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              isSelected={false}
-              onClick={() => {}}
-              liked={!!likedPostIds[post.id]}
-              bookmarked={!!bookmarkedPostIds[post.id]}
-              isFavoriteCreator={!!favoriteCreators[post.handle]}
-              onLikeToggle={() => {
-                setLikedPostIds((prev) => ({ ...prev, [post.id]: !prev[post.id] }));
-              }}
-              onBookmarkToggle={() => {
-                setBookmarkedPostIds((prev) => ({ ...prev, [post.id]: !prev[post.id] }));
-              }}
-              onFavoriteCreatorToggle={() => {
-                setFavoriteCreators((prev) => ({ ...prev, [post.handle]: !prev[post.handle] }));
-              }}
-              onMuteUser={() => {
-                toast(`Muted ${post.handle}`, 'success');
-              }}
-              onBlockUser={() => {
-                toast(`Blocked ${post.handle}`, 'success');
-              }}
-              onDislikePost={() => {
-                toast('Post disliked', 'success');
-              }}
-              onShareOpen={() => {
-                toast('Share options opened', 'success');
-              }}
-            />
-          ))}
+          {activeTab === 'Published' ? (
+            publishedPosts.length > 0 ? (
+              publishedPosts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  showLiveBadge={true}
+                  isSelected={false}
+                  onClick={() => handleOpenArticle(post)}
+                  liked={!!likedPostIds[post.id as any]}
+                  bookmarked={!!bookmarkedPostIds[post.id as any]}
+                  isFavoriteCreator={!!favoriteCreators[post.handle]}
+                  onLikeToggle={() => {
+                    setLikedPostIds((prev) => ({ ...prev, [post.id]: !prev[post.id as any] }));
+                  }}
+                  onBookmarkToggle={() => {
+                    setBookmarkedPostIds((prev) => ({ ...prev, [post.id]: !prev[post.id as any] }));
+                  }}
+                  onFavoriteCreatorToggle={() => {
+                    setFavoriteCreators((prev) => ({ ...prev, [post.handle]: !prev[post.handle] }));
+                  }}
+                  onMuteUser={() => {
+                    toast(`Muted ${post.handle}`, 'success');
+                  }}
+                  onBlockUser={() => {
+                    toast(`Blocked ${post.handle}`, 'success');
+                  }}
+                  onDislikePost={() => {
+                    toast('Post disliked', 'success');
+                  }}
+                  onShareOpen={() => {
+                    toast('Share options opened', 'success');
+                  }}
+                />
+              ))
+            ) : (
+              <div className="py-12 text-center text-muted text-[13px]">
+                No published content yet.
+              </div>
+            )
+          ) : activeTab === 'Reads' ? (
+            readsPosts.length > 0 ? (
+              readsPosts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  isSelected={false}
+                  onClick={() => handleOpenArticle(post)}
+                  liked={!!likedPostIds[post.id as any]}
+                  bookmarked={!!bookmarkedPostIds[post.id as any]}
+                  isFavoriteCreator={!!favoriteCreators[post.handle]}
+                  onLikeToggle={() => {
+                    setLikedPostIds((prev) => ({ ...prev, [post.id]: !prev[post.id as any] }));
+                  }}
+                  onBookmarkToggle={() => {
+                    setBookmarkedPostIds((prev) => ({ ...prev, [post.id]: !prev[post.id as any] }));
+                  }}
+                  onFavoriteCreatorToggle={() => {
+                    setFavoriteCreators((prev) => ({ ...prev, [post.handle]: !prev[post.handle] }));
+                  }}
+                  onMuteUser={() => {
+                    toast(`Muted ${post.handle}`, 'success');
+                  }}
+                  onBlockUser={() => {
+                    toast(`Blocked ${post.handle}`, 'success');
+                  }}
+                  onDislikePost={() => {
+                    toast('Post disliked', 'success');
+                  }}
+                  onShareOpen={() => {
+                    toast('Share options opened', 'success');
+                  }}
+                />
+              ))
+            ) : (
+              <div className="py-12 text-center text-muted text-[13px]">
+                No read history yet.
+              </div>
+            )
+          ) : (
+            <div className="flex flex-col gap-6 p-4 animate-in fade-in duration-200">
+              
+              {/* Section 1: Client Rating History Collapsible */}
+              <div className="flex flex-col gap-3 rounded-2xl border border-border/50 bg-card p-4 shadow-sm transition-all duration-200">
+                <button
+                  type="button"
+                  onClick={() => setRatingsOpen(!ratingsOpen)}
+                  className="flex items-center justify-between w-full text-left cursor-pointer group"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex items-center justify-center size-8 rounded-xl bg-foreground/5 text-muted border border-border/40">
+                      <Star size={16} />
+                    </div>
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[14px] font-bold text-foreground">Client Rating History</span>
+                        {buyerReviewsCount > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted px-2 py-0.5 rounded-full border border-border/50">
+                            {buyerRating.toFixed(1)} avg
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-muted font-normal">
+                        {buyerReviewsCount} {buyerReviewsCount === 1 ? 'review' : 'reviews'} received as a client
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronDown size={18} className={cn("text-muted group-hover:text-foreground transition-transform duration-200", ratingsOpen && "rotate-180")} />
+                </button>
+
+                {ratingsOpen && (
+                  <div className="flex flex-col gap-3 pt-2 border-t border-border/40 animate-in fade-in slide-in-from-top-2 duration-200">
+                    {buyerReviews.length > 0 ? (
+                      <>
+                        <div className="flex flex-col gap-3">
+                          {(showAllRatings ? buyerReviews : buyerReviews.slice(0, 6)).map((r: any) => (
+                            <div key={r.id} className="flex gap-3 items-start bg-background/80 hover:bg-background rounded-xl border border-border/40 p-3.5 transition-colors shadow-xs">
+                              {r.reviewer?.avatarUrl && r.reviewer.avatarUrl.trim() ? (
+                                <img src={r.reviewer.avatarUrl} alt={r.reviewer.displayName} className="size-8 rounded-full object-cover shrink-0 border border-border/30" />
+                              ) : (
+                                <div className="size-8 rounded-full bg-primary/15 text-primary flex items-center justify-center text-[11px] font-bold shrink-0 border border-primary/20">
+                                  {(r.reviewer?.displayName || r.reviewer?.username || 'F').slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[12px] font-semibold text-foreground truncate">
+                                    {r.reviewer?.displayName || r.reviewer?.username || 'Freelancer'}
+                                  </span>
+                                  <div className="flex items-center gap-1 text-[#FF9529] font-bold text-[11px] bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 shrink-0">
+                                    <Star size={10} className="fill-[#FF9529] text-[#FF9529]" />
+                                    {r.rating}
+                                  </div>
+                                </div>
+                                {r.job?.title && <span className="text-[10px] font-medium text-muted/70 truncate">{r.job.title}</span>}
+                                {r.comment && <p className="text-[11px] text-foreground/80 italic mt-1 bg-card/50 p-2 rounded-lg border border-border/20">"{r.comment}"</p>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {buyerReviews.length > 6 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowAllRatings(!showAllRatings)}
+                            className="w-full py-2 text-[12px] font-semibold text-primary hover:text-primary-hover hover:bg-primary/5 rounded-xl border border-primary/20 transition-all cursor-pointer text-center mt-1 flex items-center justify-center gap-1.5"
+                          >
+                            {showAllRatings ? (
+                              <>Show Less <ChevronUp size={14} /></>
+                            ) : (
+                              <>View More ({buyerReviews.length - 6} remaining) <ChevronDown size={14} /></>
+                            )}
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <div className="py-6 text-center text-muted text-[12px]">
+                        No client ratings or reviews received yet.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 2: Posted Job History Collapsible */}
+              <div className="flex flex-col gap-3 rounded-2xl border border-border/50 bg-card p-4 shadow-sm transition-all duration-200">
+                <button
+                  type="button"
+                  onClick={() => setPostedJobsOpen(!postedJobsOpen)}
+                  className="flex items-center justify-between w-full text-left cursor-pointer group"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex items-center justify-center size-8 rounded-xl bg-foreground/5 text-muted border border-border/40">
+                      <Briefcase size={16} />
+                    </div>
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[14px] font-bold text-foreground">Posted Job History</span>
+                        <span className="text-[11px] font-medium text-muted px-2 py-0.5 rounded-full border border-border/50">
+                          {clientPostedJobs.length} jobs
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-muted font-normal">
+                        All jobs posted by this account as a client
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronDown size={18} className={cn("text-muted group-hover:text-foreground transition-transform duration-200", postedJobsOpen && "rotate-180")} />
+                </button>
+
+                {postedJobsOpen && (
+                  <div className="flex flex-col gap-3 pt-2 border-t border-border/40 animate-in fade-in slide-in-from-top-2 duration-200">
+                    {clientPostedJobs.length > 0 ? (
+                      <>
+                        <div className="flex flex-col gap-3">
+                          {(showAllJobs ? clientPostedJobs : clientPostedJobs.slice(0, 6)).map((job: any) => {
+                            const status = (job.status || 'OPEN').toUpperCase();
+                            const getBadgeStyle = (st: string) => {
+                              switch (st) {
+                                case 'COMPLETED': return 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+                                case 'IN_PROGRESS':
+                                case 'WORKING': return 'bg-[#8C5CFF]/15 text-[#8C5CFF] border-[#8C5CFF]/20';
+                                case 'DELIVERED': return 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20';
+                                case 'CANCELLED': return 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/20';
+                                default: return 'bg-[#4ADE80]/15 text-[#4ADE80] border-[#4ADE80]/20';
+                              }
+                            };
+                            return (
+                              <div key={job.id} className="flex flex-col gap-2 p-3.5 rounded-xl bg-background/80 hover:bg-background border border-border/40 transition-colors shadow-xs">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[13px] font-semibold text-foreground truncate">{job.title}</span>
+                                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold border capitalize shrink-0 ${getBadgeStyle(status)}`}>
+                                    {status.replace('_', ' ').toLowerCase()}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px] text-muted pt-1">
+                                  <span>{job.category || 'General'}</span>
+                                  <span className="font-semibold text-primary">{job.amountCC || 0} CC Budget</span>
+                                </div>
+                                {job.createdAt && (
+                                  <span className="text-[10px] text-muted/60">
+                                    Posted on {new Date(job.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {clientPostedJobs.length > 6 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowAllJobs(!showAllJobs)}
+                            className="w-full py-2 text-[12px] font-semibold text-primary hover:text-primary-hover hover:bg-primary/5 rounded-xl border border-primary/20 transition-all cursor-pointer text-center mt-1 flex items-center justify-center gap-1.5"
+                          >
+                            {showAllJobs ? (
+                              <>Show Less <ChevronUp size={14} /></>
+                            ) : (
+                              <>View More ({clientPostedJobs.length - 6} remaining) <ChevronDown size={14} /></>
+                            )}
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <div className="py-6 text-center text-muted text-[12px]">
+                        No posted job history found for this account.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
         </div>
       </div>
-      <div className="hidden md:block">
+      <div className="hidden md:block mt-auto pt-16">
         <Footer />
       </div>
+
+      {/* Full-article reader overlay */}
+      {selectedArticle && (
+        <div className="fixed inset-0 z-50 bg-background flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <PostDetail
+            post={selectedArticle}
+            onBack={() => setSelectedArticle(null)}
+            isUnlocked={unlockedArticleIds.includes(selectedArticle.id as any)}
+            onUnlock={() => setUnlockedArticleIds(prev => [...prev, selectedArticle.id])}
+            liked={!!likedPostIds[selectedArticle.id as any]}
+            bookmarked={!!bookmarkedPostIds[selectedArticle.id as any]}
+            onLikeToggle={() => setLikedPostIds(prev => ({ ...prev, [selectedArticle.id]: !prev[selectedArticle.id as any] }))}
+            onBookmarkToggle={() => setBookmarkedPostIds(prev => ({ ...prev, [selectedArticle.id]: !prev[selectedArticle.id as any] }))}
+            onShareOpen={() => toast('Share link copied!', 'success')}
+            comments={articleComments}
+            onAddComment={handleAddArticleComment}
+          />
+        </div>
+      )}
     </div>
   );
 }

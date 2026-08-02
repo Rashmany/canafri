@@ -10,7 +10,7 @@ interface AdminLoginPageProps {
 
 type LoginStep = 'credentials' | 'totp-setup' | 'totp-verify';
 
-const API = 'http://localhost:3001/auth';
+const API = '/api/auth';
 
 export default function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) {
   const [step, setStep] = useState<LoginStep>('credentials');

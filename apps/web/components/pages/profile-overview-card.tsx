@@ -54,8 +54,30 @@ function StatRow({ icon, value, label }: { icon: React.ReactNode; value: string;
   );
 }
 
-export default function ProfileOverviewCard() {
+interface ProfileOverviewCardProps {
+  profileData?: any;
+}
+
+export default function ProfileOverviewCard({ profileData }: ProfileOverviewCardProps) {
   const { toast } = useToast();
+
+  const minBudget = profileData?.minProjectBudget || '150 CC';
+  const totalEarnings = profileData?.totalEarnings || '0 CC';
+  const completedJobs = profileData?.completedJobs ?? 0;
+  const cantonStake = profileData?.cantonStake || '0 CC';
+  const jobSuccess = profileData?.jobSuccess || (completedJobs > 0 ? '100%' : 'N/A');
+  const rating: number = profileData?.rating ?? 0;
+  const reviewsCount: number = profileData?.reviewsCount ?? 0;
+  const level = profileData?.level || 'Verified Seller';
+  const verifications: string[] = profileData?.verifications?.length
+    ? profileData.verifications
+    : ['Email Verified'];
+  const languages: { lang: string; level: string }[] = profileData?.languages?.length
+    ? profileData.languages.map((l: any) => ({ lang: l.name || l.lang, level: l.level || 'Native' }))
+    : [{ lang: 'English', level: 'Native' }];
+  const availability = profileData?.availability || 'As needed - open to offers';
+  const responseTime = profileData?.responseTime || '< 24 hrs';
+
   return (
     <div className="bg-background flex flex-col gap-[24px] items-start p-[24px] w-full">
 
@@ -66,18 +88,23 @@ export default function ProfileOverviewCard() {
             <div className="bg-card border border-card-border flex flex-col gap-[24px] items-start p-[24px] rounded-[16px] shrink-0 w-full">
               <p className="font-semibold text-[18px] text-foreground/80 leading-normal w-full">Profile overview</p>
               <div className="flex flex-col gap-[16px] items-start w-full">
-                <StatRow icon={<DollarSign size={20} className="text-muted" strokeWidth={1.5} />} value="$50.00/hr" label="Hourly rate" />
-                <StatRow icon={<Wallet size={20} className="text-muted" strokeWidth={1.5} />} value="$20K+" label="Total earnings" />
-                <StatRow icon={<Briefcase size={20} className="text-muted" strokeWidth={1.5} />} value="48" label="Total jobs" />
-                <StatRow icon={<Clock size={20} className="text-muted" strokeWidth={1.5} />} value="2,350" label="Total hours" />
-                <StatRow icon={<CheckCircle2 size={20} className="text-muted" strokeWidth={1.5} />} value="100%" label="Job success" />
+                <StatRow icon={<DollarSign size={20} className="text-muted" strokeWidth={1.5} />} value={minBudget} label="Min. project budget" />
+                <StatRow icon={<Wallet size={20} className="text-muted" strokeWidth={1.5} />} value={totalEarnings} label="Total earnings" />
+                <StatRow icon={<Briefcase size={20} className="text-muted" strokeWidth={1.5} />} value={`${completedJobs}`} label="Completed jobs" />
+                <StatRow icon={<Clock size={20} className="text-muted" strokeWidth={1.5} />} value={cantonStake} label="Canton Escrow Staked" />
+                <StatRow icon={<CheckCircle2 size={20} className="text-muted" strokeWidth={1.5} />} value={jobSuccess} label="Job success" />
+                <StatRow
+                  icon={<Star size={20} className="text-muted" strokeWidth={1.5} />}
+                  value={reviewsCount > 0 ? `${rating.toFixed(1)} / 5` : 'No reviews yet'}
+                  label={`Client rating (${reviewsCount} review${reviewsCount !== 1 ? 's' : ''})`}
+                />
               </div>
               <div className="h-px bg-card-border w-full shrink-0" />
               <div className="flex gap-[12px] items-center shrink-0 w-full">
                 <Star size={24} className="text-yellow-400 fill-yellow-400 shrink-0" />
                 <div className="flex flex-col gap-[2px] flex-1 min-w-0">
-                  <p className="font-semibold text-[14px] text-foreground/80 leading-normal">Top Rated Plus</p>
-                  <p className="font-medium text-[12px] text-muted leading-normal">Top 3% of freelancers</p>
+                  <p className="font-semibold text-[14px] text-foreground/80 leading-normal">{level}</p>
+                  <p className="font-medium text-[12px] text-muted leading-normal">Active Member</p>
                 </div>
               </div>
             </div>
@@ -86,7 +113,7 @@ export default function ProfileOverviewCard() {
           <div className="flex flex-1 min-w-0 flex-col gap-[24px] self-stretch">
             <div className="bg-card border border-card-border flex flex-col gap-[16px] items-start p-[24px] rounded-[16px] shrink-0 w-full">
               <p className="font-medium text-[13px] text-foreground/80 leading-[18px] whitespace-nowrap">Verification</p>
-              {['Email Verified', 'ID Verified', 'Phone Verified', 'Payment Verified'].map((item) => (
+              {verifications.map((item) => (
                 <div key={item} className="flex gap-[16px] items-center shrink-0 w-full">
                   <DoneOutlined />
                   <p className="font-medium text-[13px] text-muted leading-[18px] whitespace-nowrap">{item}</p>
@@ -110,9 +137,9 @@ export default function ProfileOverviewCard() {
                 <p className="font-bold text-[12px] text-green-600 dark:text-[#4ade80] whitespace-nowrap leading-normal">Available</p>
               </div>
               <div className="flex flex-col gap-[4px] items-start w-full">
-                <p className="font-semibold text-[14px] text-foreground/80 leading-normal">As needed - open to offers</p>
+                <p className="font-semibold text-[14px] text-foreground/80 leading-normal">{availability}</p>
                 <div className="flex gap-[4px] items-center">
-                  <p className="font-normal text-[14px] text-muted whitespace-nowrap leading-normal">{'< 24 hrs'}</p>
+                  <p className="font-normal text-[14px] text-muted whitespace-nowrap leading-normal">{responseTime}</p>
                   <p className="font-medium text-[12px] text-muted whitespace-nowrap leading-normal">Response time</p>
                   <Info size={14} className="text-muted shrink-0" />
                 </div>
@@ -137,11 +164,7 @@ export default function ProfileOverviewCard() {
           </button>
         </div>
         <div className="flex flex-col gap-[12px] items-start w-full">
-          {[
-            { lang: 'English', level: 'Native' },
-            { lang: 'Yoruba', level: 'Native' },
-            { lang: 'Yoruba', level: 'Conversational' },
-          ].map((row, i) => (
+          {languages.map((row, i) => (
             <div key={i} className="flex items-center justify-between shrink-0 w-full">
               <div className="flex gap-[8px] items-baseline whitespace-nowrap">
                 <p className="font-semibold text-[14px] text-foreground/80">{row.lang}</p>

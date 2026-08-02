@@ -182,7 +182,7 @@ export default function AdminApp() {
   useEffect(() => {
     if (!authed) return;
 
-    const API = 'http://localhost:3001';
+    const API_BASE = '/api';
     let intervalId: NodeJS.Timeout | null = null;
 
     const checkSession = async () => {
@@ -194,7 +194,7 @@ export default function AdminApp() {
         : null;
       if (!tok) { handleLogout(); return; }
       try {
-        const res = await fetch(`${API}/admin/me`, {
+        const res = await fetch(`${API_BASE}/admin/me`, {
           headers: { Authorization: `Bearer ${tok}` },
         });
         if (res.status === 401 || res.status === 403) {

@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useRef } from "react";
-import { FileCheck, Link2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Upload, FileCheck, Link2 } from "lucide-react";
+import { usePlatformConfig } from "@/lib/platform-config-context";
+import { MaintenanceTooltip } from "@/components/ui/maintenance-tooltip";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,8 +41,10 @@ function FormField({
   placeholder,
   value,
   onChange,
-  maxLength = 300,
+  maxLength = 1800,
+  minLength,
   hint,
+  error,
 }: {
   label: string;
   required?: boolean;
@@ -48,8 +52,14 @@ function FormField({
   value: string;
   onChange: (v: string) => void;
   maxLength?: number;
+  minLength?: number;
   hint?: string;
+  error?: string;
 }) {
+  const charCount = value.length;
+  const isOverMax = charCount > maxLength;
+  const isUnderMin = minLength ? (charCount > 0 && charCount < minLength) : false;
+
   return (
     <div className="flex flex-col gap-[5px]">
       <label className="text-[13px] font-medium leading-[18px] text-[#010101]/80 dark:text-[rgba(255,255,255,0.8)]">
@@ -57,19 +67,27 @@ function FormField({
       </label>
       <div className="relative">
         <textarea
-          className="w-full min-h-[90px] px-3 py-3 rounded-[5px] border border-[#D8D8D8] dark:border-[#121212] bg-[#F5F8FB] dark:bg-[#161616] text-[13px] font-normal leading-5 text-[#010101]/80 dark:text-[rgba(255,255,255,0.8)] placeholder:text-muted resize-none focus:outline-none focus:border-[#8C5CFF] transition-colors"
+          className={`w-full min-h-[90px] px-3 py-3 rounded-[5px] border ${
+            error || isOverMax
+              ? 'border-red-500 focus:border-red-500'
+              : 'border-[#D8D8D8] dark:border-[#121212] focus:border-[#8C5CFF]'
+          } bg-[#F5F8FB] dark:bg-[#161616] text-[13px] font-normal leading-5 text-[#010101]/80 dark:text-[rgba(255,255,255,0.8)] placeholder:text-muted resize-none focus:outline-none transition-colors`}
           placeholder={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           maxLength={maxLength}
         />
-        <span className="absolute bottom-2 right-3 text-[10px] font-normal leading-[13px] text-muted">
-          {value.length}/{maxLength}
+        <span className={`absolute bottom-2 right-3 text-[10px] font-normal leading-[13px] ${
+          isOverMax || isUnderMin ? 'text-red-500 font-semibold' : 'text-muted'
+        }`}>
+          {charCount}/{maxLength}
         </span>
       </div>
-      {hint && (
+      {error ? (
+        <p className="text-[11px] font-medium leading-[14px] text-red-500">{error}</p>
+      ) : hint ? (
         <p className="text-[10px] font-normal leading-[13px] text-muted">{hint}</p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -132,6 +150,7 @@ function TermInput({
 }
 
 function TipsSidebar({ onSubmit, onSave }: { onSubmit: () => void; onSave: () => void }) {
+  const { config } = usePlatformConfig();
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-[9px] p-6 rounded-2xl bg-[#8C5CFF]/10 dark:bg-[rgba(140,92,255,0.12)]">
@@ -154,12 +173,18 @@ function TipsSidebar({ onSubmit, onSave }: { onSubmit: () => void; onSave: () =>
       </div>
 
       <div className="flex flex-col gap-3">
-        <button
-          onClick={onSubmit}
-          className="flex items-center justify-center h-[34px] w-full px-4 py-2 rounded-[12px] bg-[#8C5CFF] text-white text-[13px] font-semibold leading-[18px] hover:opacity-90 transition-opacity"
+        <MaintenanceTooltip
+          active={config.freelancingMaintenance}
+          reason={config.freelancingMaintenanceReason}
+          defaultMessage="The freelancing service is currently under maintenance. Please check back later."
         >
-          Submit proposal
-        </button>
+          <button
+            onClick={onSubmit}
+            className="flex items-center justify-center h-[34px] w-full px-4 py-2 rounded-[12px] bg-[#8C5CFF] text-white text-[13px] font-semibold leading-[18px] hover:opacity-90 transition-opacity"
+          >
+            Submit proposal
+          </button>
+        </MaintenanceTooltip>
         <button
           onClick={onSave}
           className="flex items-center justify-center w-full px-4 py-2 rounded-[12px] border border-[#8C5CFF]/30 dark:border-[#8C5CFF]/20 text-[#8C5CFF] text-[13px] font-semibold leading-[18px] hover:bg-[#8C5CFF]/5 dark:hover:bg-[#8C5CFF]/10 transition-colors"
@@ -221,26 +246,50 @@ export default function ApplyJobPage({ job, onBack, jobQuestions }: ApplyJobPage
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = () => {
-    // Compulsory field validation checks
-    if (!coverLetter.trim()) {
+  const handleSubmit = async () => {
+    // 1. Cover Letter Validation (Min 100, Max 1,800)
+    const trimmedCover = coverLetter.trim();
+    if (!trimmedCover) {
       alert("Cover Letter is compulsory. Please explain why you are a great fit.");
       return;
     }
-    if (coverLetter.trim().length < 100) {
-      alert("Cover Letter must be at least 100 characters.");
+    if (coverLetter.length < 100) {
+      alert(`Cover Letter must be at least 100 characters. Currently ${coverLetter.length} characters (needs ${100 - coverLetter.length} more).`);
       return;
     }
-    if (!approach.trim()) {
+    if (coverLetter.length > 1800) {
+      alert(`Cover Letter cannot exceed 1,800 characters. Currently ${coverLetter.length} characters.`);
+      return;
+    }
+
+    // 2. Your Approach Validation (Min 100, Max 1,800)
+    const trimmedApproach = approach.trim();
+    if (!trimmedApproach) {
       alert("Your Approach is compulsory. Please describe how you will complete the project.");
       return;
     }
-    // Validate all job questions are answered
-    const unanswered = questionAnswers.findIndex((a) => !a.trim());
-    if (unanswered !== -1) {
-      alert(`Please answer question ${unanswered + 1}: "${questions[unanswered]}"`);
+    if (approach.length < 100) {
+      alert(`Your Approach must be at least 100 characters. Currently ${approach.length} characters (needs ${100 - approach.length} more).`);
       return;
     }
+    if (approach.length > 1800) {
+      alert(`Your Approach cannot exceed 1,800 characters. Currently ${approach.length} characters.`);
+      return;
+    }
+
+    // 3. Screening Questions Validation (Max 1,000 per answer)
+    for (let i = 0; i < questions.length; i++) {
+      const ans = (questionAnswers[i] ?? "").trim();
+      if (!ans) {
+        alert(`Please answer question ${i + 1}: "${questions[i]}"`);
+        return;
+      }
+      if (questionAnswers[i].length > 1000) {
+        alert(`Answer to question ${i + 1} cannot exceed 1,000 characters. Currently ${questionAnswers[i].length} characters.`);
+        return;
+      }
+    }
+
     if (!rate.trim()) {
       alert("Your Rate is compulsory. Please enter your rate.");
       return;
@@ -248,6 +297,34 @@ export default function ApplyJobPage({ job, onBack, jobQuestions }: ApplyJobPage
     if (!delivery.trim()) {
       alert("Estimated Delivery is compulsory. Please enter the estimated delivery time.");
       return;
+    }
+
+    // Call API if user is authenticated
+    const token = typeof window !== "undefined" ? localStorage.getItem("canafri_access_token") : null;
+    if (token && job?.id) {
+      try {
+        const res = await fetch(`/api/jobs/${job.id}/proposals`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            coverLetter,
+            approach,
+            answers: questionAnswers,
+            rateCC: parseFloat(rate) || 1200,
+            deliveryDays: parseInt(delivery) || 30,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.message || data.error || "Failed to submit proposal due to server validation.");
+          return;
+        }
+      } catch (err) {
+        console.error("API proposal submit error:", err);
+      }
     }
 
     if (typeof window !== "undefined") {
@@ -343,11 +420,12 @@ export default function ApplyJobPage({ job, onBack, jobQuestions }: ApplyJobPage
               <FormField
                 label="Why are you a great fit for this job?"
                 required
-                placeholder="Introduce yourself and explain why you are the right person for this job, mention relevance experience, past projects..."
+                placeholder="Introduce yourself and explain why you are the right person for this job, mention relevant experience, past projects..."
                 value={coverLetter}
                 onChange={setCoverLetter}
-                maxLength={300}
-                hint="Minimum 100 characters. Be specific — generic proposals are less likely to be selected."
+                maxLength={1800}
+                minLength={100}
+                hint="Minimum 100 characters, maximum 1,800 characters. Be specific — generic proposals are less likely to be selected."
               />
             </FormCard>
 
@@ -359,14 +437,16 @@ export default function ApplyJobPage({ job, onBack, jobQuestions }: ApplyJobPage
                 placeholder="Describe your plan, tools you will use, and how you will handle each milestone..."
                 value={approach}
                 onChange={setApproach}
-                maxLength={300}
+                maxLength={1800}
+                minLength={100}
+                hint="Minimum 100 characters, maximum 1,800 characters. Outline your workflow, milestones, and technical implementation plan."
               />
             </FormCard>
 
             {/* Job Questions card */}
             <FormCard title="Job Questions">
               <p className="text-[10px] font-normal leading-[13px] text-muted -mt-1">
-                The client requires answers to the following screening questions. All answers are required.
+                The client requires answers to the following screening questions. All answers are required (maximum 1,000 characters per answer).
               </p>
               {questions.map((q, i) => (
                 <FormField
@@ -376,7 +456,8 @@ export default function ApplyJobPage({ job, onBack, jobQuestions }: ApplyJobPage
                   placeholder="Write your answer here..."
                   value={questionAnswers[i] ?? ""}
                   onChange={(v) => handleAnswerChange(i, v)}
-                  maxLength={400}
+                  maxLength={1000}
+                  hint="Maximum 1,000 characters."
                 />
               ))}
             </FormCard>
@@ -454,14 +535,14 @@ export default function ApplyJobPage({ job, onBack, jobQuestions }: ApplyJobPage
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M8.00033 3.66602C8.08873 3.66602 8.17352 3.70113 8.23603 3.76365C8.29854 3.82616 8.33366 3.91094 8.33366 3.99935V7.66602H12.0003C12.0887 7.66602 12.1735 7.70113 12.236 7.76365C12.2985 7.82616 12.3337 7.91094 12.3337 7.99935C12.3337 8.08775 12.2985 8.17254 12.236 8.23505C12.1735 8.29756 12.0887 8.33268 12.0003 8.33268H8.33366V11.9993C8.33366 12.0878 8.29854 12.1725 8.23603 12.2351C8.17352 12.2976 8.00033 12.3327 8.00033 12.3327C7.91192 12.3327 7.82714 12.2976 7.76462 12.2351C7.70211 12.1725 7.66699 12.0878 7.66699 11.9993V8.33268H4.00033C3.91192 8.33268 3.82714 8.29756 3.76462 8.23505C3.70211 8.17254 3.66699 8.08775 3.66699 7.99935C3.66699 7.91094 3.70211 7.82616 3.76462 7.76365C3.82714 7.70113 3.91192 7.66602 4.00033 7.66602H7.66699V3.99935C7.66699 3.91094 7.70211 3.82616 7.76462 3.76365C7.82714 3.70113 7.91192 3.66602 8.00033 3.66602Z" fill="currentColor" className="text-muted"/>
+                      <path d="M8.00033 3.66602C8.08873 3.66602 8.17352 3.70113 8.23603 3.76365C8.29854 3.82616 8.33366 3.91094 8.33366 3.99935V7.66602H12.0003C12.0887 7.66602 12.1735 7.70113 12.236 7.76365C12.2985 7.82616 12.0337 7.91094 12.3337 7.99935C12.3337 8.08775 12.2985 8.17254 12.236 8.23505C12.1735 8.29756 12.0887 8.33268 12.0003 8.33268H8.33366V11.9993C8.33366 12.0878 8.29854 12.1725 8.23603 12.2351C8.17352 12.2976 8.00033 12.3327 8.00033 12.3327C7.91192 12.3327 7.82714 12.2976 7.76462 12.2351C7.70211 12.1725 7.66699 12.0878 7.66699 11.9993V8.33268H4.00033C3.91192 8.33268 3.82714 8.29756 3.76462 8.23505C3.70211 8.17254 3.66699 8.08775 3.66699 7.99935C3.66699 7.91094 3.70211 7.82616 3.76462 7.76365C3.82714 7.70113 3.91192 7.66602 4.00033 7.66602H7.66699V3.99935C7.66699 3.91094 7.70211 3.82616 7.76462 3.76365C7.82714 3.70113 7.91192 3.66602 8.00033 3.66602Z" fill="currentColor" className="text-muted"/>
                     </svg>
                     <span className="text-[10px] font-normal leading-[13px] text-muted">Add link or file</span>
                   </button>
                 )}
 
                 <p className="text-[10px] font-normal leading-[13px] text-muted">
-                  Minimum 100 characters. Be specific — generic proposals are less likely to be selected.
+                  Attach up to 3 relevant project files or portfolio links to demonstrate past work.
                 </p>
               </div>
             </FormCard>

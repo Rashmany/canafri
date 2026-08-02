@@ -9,7 +9,7 @@ interface AdminAcceptInvitePageProps {
   onComplete: () => void; // redirect to login after setup
 }
 
-const API = 'http://localhost:3001';
+const API = '/api';
 
 type Step = 'validating' | 'setup' | 'done' | 'error';
 

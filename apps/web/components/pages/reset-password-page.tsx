@@ -20,6 +20,7 @@ interface InputFieldProps {
   onChange: (value: string) => void;
   placeholder: string;
   showToggle?: boolean;
+  autoComplete?: string;
 }
 
 function InputField({
@@ -28,6 +29,7 @@ function InputField({
   onChange,
   placeholder,
   showToggle = true,
+  autoComplete,
 }: InputFieldProps) {
   const [showText, setShowText] = useState(false);
 
@@ -45,6 +47,7 @@ function InputField({
           placeholder={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          autoComplete={autoComplete}
           className="flex-1 bg-transparent text-xs text-[#e0e0e0] placeholder:text-[#a0a0a0]/40 font-normal leading-[16px] outline-none min-w-0"
         />
         {showToggle && (
@@ -96,7 +99,7 @@ export default function ResetPasswordPage({
     setApiError(null);
 
     try {
-      const res = await fetch('http://localhost:3001/auth/reset-password', {
+      const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -156,6 +159,7 @@ export default function ResetPasswordPage({
                 placeholder="••••••••"
                 value={newPassword}
                 onChange={setNewPassword}
+                autoComplete="new-password"
               />
             </div>
 
@@ -209,6 +213,7 @@ export default function ResetPasswordPage({
                 placeholder="••••••••"
                 value={confirmPassword}
                 onChange={setConfirmPassword}
+                autoComplete="new-password"
               />
               {confirmPassword !== '' && (
                 <div className="flex items-center gap-1.5 px-1 mt-1">

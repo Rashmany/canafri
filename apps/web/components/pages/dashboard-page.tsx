@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { DashboardPageSkeleton } from '@/components/ui/skeleton';
 import Footer from '@/components/layout/footer';
 import {
-  Sparkles,
+  Sparkle,
   MessageSquare,
   Heart,
   Bookmark,
@@ -28,13 +28,14 @@ import {
   ChevronDown,
   ChevronRight,
   MoreVertical,
+  HelpCircle,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 
 // â”€â”€â”€ Data Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface Post {
-  id: number;
+  id: number | string;
   name: string;
   handle: string;
   date: string;
@@ -48,70 +49,57 @@ export interface Post {
   image?: string;
   topic?: string;
   publication?: string;
+  contentStatus?: 'PENDING' | 'LIVE' | 'REJECTED' | 'DELISTED'; // backend status
 }
 
-// â”€â”€â”€ Sample Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Helper: map a backend content record to the Post UI type ─────────────────────
 
-const SAMPLE_POSTS: Post[] = [
-  {
-    id: 3,
-    name: 'Alex Rivera',
-    handle: '@arivera_canton',
-    date: 'May 14',
-    avatarSrc: '/images/default-avatar.png',
+function mapContentToPost(c: any): Post {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const d = new Date(c.publishedAt || c.createdAt || Date.now());
+  const dateStr = `${months[d.getMonth()]} ${d.getDate()}`;
+
+  const creatorName = c.creator?.displayName || c.creator?.username || 'Creator';
+  const creatorHandle = c.creator?.username
+    ? `@${c.creator.username.replace(/^@/, '')}`
+    : '@creator';
+
+  // Strip HTML tags for the feed card snippet
+  const plainText = (c.bodyIpfsHash || c.body || c.title || '').replace(/<[^>]*>/g, '');
+  const snippet = plainText.length > 200 ? plainText.slice(0, 200) + '…' : plainText;
+
+  return {
+    id: c.id,
+    name: creatorName,
+    handle: creatorHandle,
+    date: dateStr,
+    avatarSrc: c.creator?.avatarUrl || '',
+    text: snippet || c.title,
+    fullText: c.body || c.bodyIpfsHash || c.title || '',
     category: 'premium',
-    stakeReward: '5 CC Read-Stake Required',
-    likesCount: 310,
-    commentsCount: 3,
-    text: "EXCLUSIVE: Alpha report on Canton Network node staking yields and institutional Liquidity Pool migration patterns for Q3 2026.",
-    fullText: `EXCLUSIVE: Alpha report on Canton Network node staking yields and institutional Liquidity Pool migration patterns for Q3 2026.
+    stakeReward: `${c.priceCC || 5} CC Read-Stake Required`,
+    likesCount: c.readCount || 0,
+    commentsCount: 0,
+    image: c.coverImageUrl || undefined,
+    topic: c.topic || undefined,
+    publication: c.publication || undefined,
+    contentStatus: c.status || undefined,
+  };
+}
 
-[PREMIUM UNLOCKED VIA CANTON COIN READ-STAKE]
+// ──────────────────────────────────────────────────────────────────────────────────
+// Comment Item Type
+// ──────────────────────────────────────────────────────────────────────────────────
 
-Our automated chain indexing service has detected a 45% surge in institutional validator nodes staking Canton Coin over the last 14 days.
-
-Key Insights:
-1. Average annual percentage yield (APY) for active validators currently sits at 14.2% in CC tokens.
-2. Cross-domain privacy bridges have handled over 12,000 confidential asset swaps without single-party verification bottlenecks.
-3. Recommended staking strategy for maximum compound yield: Re-invest daily micro-rewards into tier-1 verification pools before bi-weekly epoch settlements.`,
-  },
-  {
-    id: 4,
-    name: 'Sarah Chen',
-    handle: '@sarahc_web3',
-    date: 'May 16',
-    avatarSrc: '/images/default-avatar.png',
-    category: 'premium',
-    stakeReward: '10 CC Read-Stake Required',
-    likesCount: 189,
-    commentsCount: 2,
-    text: "DEEP DIVE: Architecture guide on building privacy-preserving confidential sub-accounts with Canton Coin.",
-    fullText: `DEEP DIVE: Architecture guide on building privacy-preserving confidential sub-accounts with Canton Coin.
-
-[PREMIUM UNLOCKED VIA CANTON COIN READ-STAKE]
-
-Integrating enterprise sub-ledgers requires structured ZK proof verification schemas. This technical architectural guide walks through:
-- Designing non-custodial deposit contracts.
-- Encrypting state transitions across sub-ledger channels.
-- Mitigating front-running risks using optimistic commitments.`,
-  }
-];
-
-// â”€â”€â”€ Comment Item Type â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-interface CommentItem {
+export interface CommentItem {
   id: string;
-  postId: number;
+  postId: number | string;
   name: string;
   handle: string;
   text: string;
   time: string;
 }
 
-const INITIAL_COMMENTS: CommentItem[] = [
-  { id: 'c4', postId: 3, name: 'Crypto King', handle: '@cryptoking', text: 'Unlocking this with stake was worth every CC. Insane returns.', time: '10m ago' },
-  { id: 'c5', postId: 4, name: 'Dev Josh', handle: '@joshdev', text: 'Exactly the sub-account pattern I was looking for. Simple and elegant.', time: '1h ago' },
-];
 
 // â”€â”€â”€ Action Bar Component (Refactored Gap & Icons) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -153,7 +141,7 @@ function ActionBar({
           }`}
           title="Confidential Read-Stake"
         >
-          <Sparkles size={16} fill="currentColor" />
+          <Sparkle size={16} fill="currentColor" />
         </button>
       )}
       <button
@@ -215,6 +203,7 @@ export interface PostCardProps {
   onDislikePost: () => void;
   onShareOpen: () => void;
   onCommentsOpen?: () => void;
+  showLiveBadge?: boolean;
 }
 
 export function PostCard({
@@ -232,6 +221,7 @@ export function PostCard({
   onDislikePost,
   onShareOpen,
   onCommentsOpen,
+  showLiveBadge = false,
 }: PostCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -367,7 +357,6 @@ export function PostCard({
           </div>
 
           <div className="flex flex-wrap gap-1.5 items-center">
-            {/* Always show stake badge — every post is premium */}
             <span className="rounded-full bg-[#8C5CFF]/15 px-2.5 py-0.5 font-sans text-[10px] font-semibold text-[#AC8EF3]">
               {post.stakeReward || '5 CC Read-Stake Required'}
             </span>
@@ -376,9 +365,26 @@ export function PostCard({
                 #{post.topic}
               </span>
             )}
+            {post.contentStatus && (post.contentStatus !== 'LIVE' || showLiveBadge) && (
+              <span
+                className={`rounded-full px-2.5 py-0.5 font-sans text-[10px] font-semibold ${
+                  post.contentStatus === 'PENDING'
+                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                    : post.contentStatus === 'REJECTED'
+                    ? 'bg-rose-500/15 text-rose-500'
+                    : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                }`}
+              >
+                {post.contentStatus === 'PENDING'
+                  ? 'Pending Review'
+                  : post.contentStatus === 'REJECTED'
+                  ? 'Rejected'
+                  : 'Live'}
+              </span>
+            )}
             {post.publication && (
               <span className="rounded-full bg-foreground/5 border border-border px-2 py-0.5 font-sans text-[9px] font-semibold text-foreground/75 uppercase tracking-wide">
-                📖 {post.publication}
+                {post.publication}
               </span>
             )}
           </div>
@@ -434,11 +440,11 @@ interface PublishComposerProps {
 function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
   const [draftHtml, setDraftHtml] = useState('');
-  const [visibility, setVisibility] = useState<'everyone' | 'premium'>('everyone');
+  const [visibility, setVisibility] = useState<'everyone' | 'premium'>('premium');
   const [showVisibility, setShowVisibility] = useState(false);
   
   // Customization States
-  const [postImage, setPostImage] = useState<string | null>(null);
+  const [postImages, setPostImages] = useState<string[]>([]);
   const [topic, setTopic] = useState('');
   const [publication, setPublication] = useState('');
   
@@ -504,17 +510,20 @@ function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setPostImage(event.target.result as string);
-          toast('Image attached to draft', 'success');
-        }
-      };
-      reader.readAsDataURL(file);
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      files.forEach((file) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) {
+            setPostImages((prev) => [...prev, event.target!.result as string]);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+      toast(`${files.length} ${files.length === 1 ? 'image' : 'images'} attached`, 'success');
     }
+    if (e.target) e.target.value = '';
   };
 
   const isOverLimit = charCount > MAX_PUBLISH_CHARS;
@@ -524,10 +533,14 @@ function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
   const strokeDashoffset = circumference * (1 - progress);
 
   const handlePublish = () => {
-    const finalHtml = editorRef.current?.innerHTML || draftHtml;
-    if (!finalHtml.trim() && !postImage) return;
+    let finalHtml = editorRef.current?.innerHTML || draftHtml;
+    if (postImages.length > 0) {
+      const imgTags = postImages.map(img => `<img src="${img}" alt="Attached media" class="my-4 rounded-xl max-h-[400px] w-full object-cover" />`).join('');
+      finalHtml = `${finalHtml}\n${imgTags}`;
+    }
+    if (!finalHtml.trim()) return;
     if (isOverLimit) return;
-    onPublish(finalHtml, visibility, postImage || undefined, topic || undefined, publication || undefined);
+    onPublish(finalHtml, visibility, postImages[0] || undefined, topic || undefined, publication || undefined);
     onClose();
   };
 
@@ -561,8 +574,9 @@ function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
         type="file"
         ref={fileInputRef}
         onChange={handleImageChange}
-        className="hidden"
         accept="image/*"
+        multiple
+        className="hidden"
       />
 
       {/* Main Composer Box */}
@@ -593,7 +607,7 @@ function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
             <button
               type="button"
               onClick={() => setViewMode('preview')}
-              disabled={isEmpty && !postImage}
+              disabled={isEmpty && postImages.length === 0}
               className="md:hidden rounded-full bg-[#8C5CFF] hover:bg-[#AC8EF3] disabled:opacity-40 disabled:cursor-not-allowed px-4 py-1.5 font-sans text-[12px] font-bold text-white transition-all cursor-pointer"
             >
               Preview
@@ -663,37 +677,10 @@ function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
             </div>
 
             <div className="flex flex-col flex-1 gap-3 min-w-0">
-              {/* Audience Selector */}
-              <div className="relative self-start shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowVisibility(!showVisibility)}
-                  className="flex items-center gap-1.5 bg-[#8C5CFF]/10 border border-[#8C5CFF]/30 rounded-full px-3 py-1 text-[11px] font-bold text-[#AC8EF3] hover:bg-[#8C5CFF]/20 transition-colors cursor-pointer"
-                >
-                  <Globe size={11} />
-                  {visibility === 'everyone' ? 'Everyone' : 'Premium only'}
-                  <ChevronDown size={11} />
-                </button>
-                {showVisibility && (
-                  <div className="absolute top-8 left-0 z-20 bg-card border border-border rounded-xl shadow-xl py-1 w-44 animate-in fade-in zoom-in-95 duration-150">
-                    {(['everyone', 'premium'] as const).map((v) => (
-                      <button
-                        key={v}
-                        type="button"
-                        onClick={() => { setVisibility(v); setShowVisibility(false); }}
-                        className={`flex w-full items-center justify-between px-4 py-2.5 text-[12px] font-semibold transition-colors ${
-                          visibility === v ? 'text-[#8C5CFF] bg-[#8C5CFF]/5' : 'text-foreground hover:bg-foreground/5'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          {v === 'everyone' ? <Globe size={13} /> : <Lock size={13} />}
-                          {v === 'everyone' ? 'Everyone' : 'Premium only'}
-                        </span>
-                        {visibility === v && <Check size={13} />}
-                      </button>
-                    ))}
-                  </div>
-                )}
+              {/* Audience Indicator — All posts on platform require 5 CC Read-Stake */}
+              <div className="flex items-center gap-1.5 bg-[#8C5CFF]/10 border border-[#8C5CFF]/30 rounded-full px-3 py-1 text-[11px] font-bold text-[#AC8EF3] self-start shrink-0">
+                <Lock size={11} />
+                <span>Premium (5 CC Read-Stake Required)</span>
               </div>
 
               {/* Rich-Text Input field */}
@@ -708,18 +695,22 @@ function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
                 className="publish-editor outline-none font-sans text-[15px] leading-relaxed text-foreground min-h-[160px] w-full focus:outline-none"
               />
 
-              {/* Inline Uploaded Image Preview (Twitter/Bluesky Style) */}
-              {postImage && (
-                <div className="relative rounded-xl overflow-hidden max-h-[220px] border border-border/40 mt-2.5 group">
-                  <img src={postImage} alt="Post preview" className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => setPostImage(null)}
-                    className="absolute top-2 right-2 size-7 rounded-full bg-black/75 hover:bg-black text-white flex items-center justify-center transition cursor-pointer"
-                    title="Remove image"
-                  >
-                    <X size={14} />
-                  </button>
+              {/* Inline Uploaded Images Preview Grid */}
+              {postImages.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 mt-2.5">
+                  {postImages.map((img, idx) => (
+                    <div key={idx} className="relative rounded-xl overflow-hidden max-h-[160px] border border-border/40 group">
+                      <img src={img} alt={`Attached ${idx + 1}`} className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setPostImages(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute top-2 right-2 size-6 rounded-full bg-black/75 hover:bg-black text-white flex items-center justify-center transition cursor-pointer"
+                        title="Remove image"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -857,7 +848,7 @@ function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
                   commentsCount: 0,
                   text: draftHtml || '<i>No content drafted yet.</i>',
                   fullText: draftHtml || '',
-                  image: postImage ?? undefined,
+                  image: postImages[0] ?? undefined,
                   topic: topic || undefined,
                   publication: publication || undefined,
                 }}
@@ -916,7 +907,7 @@ function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
             <button
               type="button"
               onClick={handlePublish}
-              disabled={isEmpty && !postImage}
+              disabled={isEmpty && postImages.length === 0}
               className="w-full rounded-xl bg-primary hover:bg-primary-hover active:scale-[0.98] transition-all py-2.5 font-sans text-[13px] font-semibold text-white flex items-center justify-center cursor-pointer shadow-lg shadow-primary/10 mt-auto disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Publish
@@ -1067,7 +1058,7 @@ function ReplyComposer({ post, onClose, onSubmit }: ReplyComposerProps) {
 
 // ─── Post Detail Reader Component (Canton Coin Stakewall & Medium layout) ───
 
-interface PostDetailProps {
+export interface PostDetailProps {
   post: Post;
   onBack: () => void;
   isUnlocked: boolean;
@@ -1079,9 +1070,10 @@ interface PostDetailProps {
   onShareOpen: () => void;
   comments: CommentItem[];
   onAddComment: (text: string) => void;
+  currentUser?: { id: string; displayName: string; username: string; avatarUrl?: string } | null;
 }
 
-function PostDetail({
+export function PostDetail({
   post,
   onBack,
   isUnlocked,
@@ -1093,6 +1085,7 @@ function PostDetail({
   onShareOpen,
   comments,
   onAddComment,
+  currentUser,
 }: PostDetailProps) {
   const [staking, setStaking] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -1110,20 +1103,62 @@ function PostDetail({
 
   const handleStakeClick = async () => {
     setStaking(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    setStaking(false);
-    onUnlock();
-    toast('Confidential read-stake registered: 5 CC locked', 'success');
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+      if (!token) {
+        toast('Please log in to stake and read premium content', 'error');
+        setStaking(false);
+        return;
+      }
+      const postId = String(post.id);
+      const res = await fetch(`/api/content/${postId}/stake`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        onUnlock();
+        toast('Read-stake registered: 5 CC locked on Canton sub-ledger ✓', 'success');
+      } else if (data.message?.includes('already have an active read-stake')) {
+        // Already staked — just unlock the view
+        onUnlock();
+        toast('Read-stake already active — unlocking content', 'success');
+      } else {
+        toast(data.message || 'Failed to stake. Please try again.', 'error');
+      }
+    } catch (err) {
+      console.error('Stake error:', err);
+      toast('Network error — could not complete stake', 'error');
+    } finally {
+      setStaking(false);
+    }
   };
 
+  const [showTooltip, setShowTooltip] = useState(false);
   const isPremium = post.category === 'premium';
   const showContent = !isPremium || isUnlocked;
 
-  const getPreviewText = () => {
-    const stripped = post.fullText.replace(/<[^>]*>/g, '');
-    const paragraphs = stripped.split('\n\n');
-    const previewCount = Math.ceil(paragraphs.length * 0.6);
-    return paragraphs.slice(0, previewCount).join('\n\n');
+  const getPreviewHtml = () => {
+    if (!post.fullText) return '';
+    const text = post.fullText;
+
+    // Split HTML by paragraph or block elements to get ~40% of paragraphs
+    const pBlocks = text.match(/<(p|div|h[1-6]|blockquote)[^>]*>[\s\S]*?<\/\1>/gi);
+    if (pBlocks && pBlocks.length > 1) {
+      const count = Math.max(1, Math.ceil(pBlocks.length * 0.4));
+      return pBlocks.slice(0, count).join('');
+    }
+
+    const lines = text.split(/\n\n|<br\s*\/?>/i);
+    if (lines && lines.length > 1) {
+      const count = Math.max(1, Math.ceil(lines.length * 0.4));
+      return lines.slice(0, count).join('<br/>');
+    }
+
+    // Fallback for single text block: take 40% of character length cleanly at tag boundary
+    const targetLen = Math.floor(text.length * 0.4);
+    const safeTagEnd = text.indexOf('>', targetLen);
+    return text.slice(0, safeTagEnd > -1 ? safeTagEnd + 1 : targetLen);
   };
 
   const scrollToComments = () => {
@@ -1133,9 +1168,9 @@ function PostDetail({
   const postComments = comments.filter((c) => c.postId === post.id);
 
   return (
-    <div className="flex flex-col flex-1 bg-background min-h-0 overflow-hidden relative">
+    <div className="flex flex-col flex-1 bg-background h-full min-h-0 overflow-hidden relative">
       {/* Scrollable article + comments area */}
-      <div className="flex-1 overflow-y-auto no-scrollbar py-4 lg:py-6 px-0 pb-20 flex flex-col items-center gap-6">
+      <div className="flex-1 overflow-y-auto no-scrollbar py-4 lg:py-6 px-0 pb-28 flex flex-col items-center gap-6">
 
         {/* Top back button row */}
         <div className="flex items-center justify-between w-full max-w-2xl gap-4 px-4 lg:px-6">
@@ -1185,7 +1220,7 @@ function PostDetail({
                 )}
                 {post.publication && (
                   <span className="rounded-full bg-foreground/5 border border-border px-2 py-0.5 font-sans text-[9px] font-semibold text-foreground/75 uppercase tracking-wide">
-                    📖 {post.publication}
+                    {post.publication}
                   </span>
                 )}
               </div>
@@ -1205,34 +1240,59 @@ function PostDetail({
               </div>
             ) : (
               <div className="flex flex-col gap-0">
-                {/* 60% preview — fully readable, only a thin fade at the very last line */}
+                {/* 40% preview — exact rich HTML formatting matching full text */}
                 <div className="relative space-y-4">
-                  <p className="whitespace-pre-line text-foreground/80 leading-relaxed font-sans text-[14px]">
-                    {getPreviewText()}
-                  </p>
-                  {/* Thin fade — only covers the last ~2 lines */}
-                  <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+                  <div
+                    dangerouslySetInnerHTML={{ __html: getPreviewHtml() }}
+                    className="publish-editor whitespace-pre-wrap break-words opacity-90"
+                  />
+                  {/* Thin fade — covers bottom lines */}
+                  <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background to-transparent pointer-events-none" />
                 </div>
 
-                {/* Stakewall card — sits directly below the preview */}
-                <div className="flex flex-col items-center text-center gap-4 pt-8 pb-6 animate-in fade-in slide-in-from-bottom-4 duration-300 w-full">
-                  {/* Small transparent "Read More" badge */}
-                  <div
-                    className="rounded-lg border border-[#8C5CFF]/30 bg-[#8C5CFF]/5 inline-flex items-center justify-center self-center"
-                    style={{ paddingTop: '0.5px', paddingBottom: '0.5px', paddingLeft: '5px', paddingRight: '5px' }}
-                  >
-                    <span className="font-sans text-[10px] font-bold uppercase tracking-wider text-[#AC8EF3]">
-                      Read More
-                    </span>
+                {/* Stakewall card — sits directly below preview */}
+                <div className="flex flex-col items-center text-center gap-4 pt-6 pb-6 animate-in fade-in slide-in-from-bottom-4 duration-300 w-full">
+                  
+                  {/* "Read More" chip + Question mark tooltip */}
+                  <div className="flex items-center gap-2 self-center relative">
+                    <div
+                      className="rounded-lg border border-[#8C5CFF]/30 bg-[#8C5CFF]/5 inline-flex items-center justify-center"
+                      style={{ paddingTop: '0.5px', paddingBottom: '0.5px', paddingLeft: '6px', paddingRight: '6px' }}
+                    >
+                      <span className="font-sans text-[10px] font-bold uppercase tracking-wider text-[#AC8EF3]">
+                        Read More
+                      </span>
+                    </div>
+
+                    {/* Question mark Tooltip Button */}
+                    <div className="relative inline-block">
+                      <button
+                        type="button"
+                        onClick={() => setShowTooltip(!showTooltip)}
+                        onMouseEnter={() => setShowTooltip(true)}
+                        onMouseLeave={() => setShowTooltip(false)}
+                        className="size-4 rounded-full bg-[#8C5CFF]/15 hover:bg-[#8C5CFF]/30 border border-[#8C5CFF]/40 flex items-center justify-center text-[#AC8EF3] transition-all cursor-pointer"
+                        title="View Read-Stake info"
+                        aria-label="Confidential Read-Stake Info"
+                      >
+                        <HelpCircle size={11} />
+                      </button>
+
+                      {/* Tooltip Popup */}
+                      {showTooltip && (
+                        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64 p-3 bg-card border border-border/80 rounded-xl shadow-2xl z-30 text-left animate-in fade-in zoom-in-95 duration-150 pointer-events-none">
+                          <h5 className="font-sans text-[11px] font-bold text-foreground mb-1">
+                            Confidential Read-Stake Lock
+                          </h5>
+                          <p className="font-sans text-[10px] leading-relaxed text-muted">
+                            This premium content requires a cryptographic read-stake on the Canton sub-ledger. Stake 5 Canton Coins (CC) to immediately unlock and decrypt this creator's work.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex flex-col gap-1 max-w-md px-4">
-                    <h4 className="font-sans text-sm font-bold text-foreground">Confidential Read-Stake Lock</h4>
-                    <p className="font-sans text-[12px] leading-relaxed text-muted mt-1">
-                      This premium content requires a cryptographic read-stake on the Canton sub-ledger. Stake 5 Canton Coins (CC) to immediately unlock and decrypt this creator's work.
-                    </p>
-                  </div>
-
+                  {/* Stake Button */}
                   <button
                     type="button"
                     onClick={handleStakeClick}
@@ -1271,7 +1331,7 @@ function PostDetail({
 
           {/* Timestamp moved below ActionBar icons without extra border line */}
           <div className="font-sans text-[11px] text-muted/60 pt-2 px-1">
-            {post.id === 1 ? '2:09pm · 5/10/2026' : post.id === 2 ? '3:45pm · 5/12/2026' : '10:14am · 5/15/2026'}
+            {post.date || ''}
           </div>
         </div>
 
@@ -1338,15 +1398,19 @@ function PostDetail({
         </div>
       </div>
 
-      {/* ── Sticky Floating Reply Input Bar — pinned to bottom, no gap ── */}
-      <div className="sticky bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md px-4 py-2.5 flex items-center gap-3 shrink-0 z-20">
-        <div className="size-8 rounded-full bg-[#8C5CFF]/15 border border-[#8C5CFF]/30 flex items-center justify-center font-bold text-xs text-[#AC8EF3] shrink-0">
-          J
+      {/* ── Sticky Floating Reply Input Bar — pinned/floating at bottom of column on desktop, floating above bottom navbar on mobile ── */}
+      <div className="fixed md:absolute bottom-[60px] md:bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t border-border px-4 py-2.5 md:py-3.5 flex items-center gap-3 shrink-0 z-30 shadow-lg">
+        <div className="size-8 md:size-9 rounded-full bg-[#8C5CFF]/15 border border-[#8C5CFF]/30 flex items-center justify-center font-bold text-xs md:text-sm text-[#AC8EF3] shrink-0 overflow-hidden">
+          {currentUser?.avatarUrl ? (
+            <img src={currentUser.avatarUrl} alt={currentUser.displayName} className="w-full h-full object-cover" />
+          ) : (
+            (currentUser?.displayName || currentUser?.username || 'U').charAt(0).toUpperCase()
+          )}
         </div>
         <button
           type="button"
           onClick={() => setComposerOpen(true)}
-          className="flex-1 text-left bg-card border border-border rounded-full px-4 py-2 font-sans text-[12px] text-muted hover:border-[#8C5CFF]/40 hover:bg-card/80 transition-all duration-200 cursor-text"
+          className="flex-1 text-left bg-card border border-border rounded-full px-4 py-2 md:py-3 font-sans text-[12px] md:text-[13px] text-muted hover:border-[#8C5CFF]/40 hover:bg-card/80 transition-all duration-200 cursor-text shadow-sm"
         >
           Post your reply…
         </button>
@@ -1467,31 +1531,60 @@ interface DashboardPageProps {
 export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: DashboardPageProps) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'premium' | 'bookmarks' | 'favorites'>('premium');
-  const [selectedPost, setSelectedPost] = useState<Post>(SAMPLE_POSTS[0]);
+  const [apiPosts, setApiPosts] = useState<Post[]>([]);
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [mobileView, setMobileView] = useState<'feed' | 'detail'>('feed');
   const [publishComposerOpen, setPublishComposerOpen] = useState(false);
   const [publishedPosts, setPublishedPosts] = useState<Post[]>([]);
 
-  // Skeleton loading: clears after mount; swap setTimeout for API finally() when real data arrives
-  useEffect(() => { const t = setTimeout(() => setLoading(false), 800); return () => clearTimeout(t); }, []);
+  // Fetch real content from API
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    // Fetch current user profile
+    if (token) {
+      fetch('/api/users/me', { headers })
+        .then(r => r.json())
+        .then(data => {
+          if (data.user) setCurrentUser(data.user);
+        })
+        .catch(err => console.error('Failed to load user profile:', err));
+    }
+
+    // Fetch content feed
+    fetch('/api/content', { headers })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.content)) {
+          const mapped = data.content.map(mapContentToPost);
+          setApiPosts(mapped);
+          // Auto-select the first post
+          if (mapped.length > 0) setSelectedPost(mapped[0]);
+        }
+      })
+      .catch(err => console.error('Failed to load content:', err))
+      .finally(() => setLoading(false));
+  }, []);
 
   // Sync activeTab with activePage prop changes
   useEffect(() => {
     if (activePage === 'Bookmarks') {
       setActiveTab('bookmarks');
-      const firstBookmarked = SAMPLE_POSTS.find(p => bookmarkedPostIds.includes(p.id));
+      const firstBookmarked = apiPosts.find(p => bookmarkedPostIds.includes(p.id as any));
       if (firstBookmarked) setSelectedPost(firstBookmarked);
     } else if (activePage === 'Favorites') {
       setActiveTab('favorites');
-      const firstFav = SAMPLE_POSTS.find(p => favoriteCreatorHandles.includes(p.handle));
+      const firstFav = apiPosts.find(p => favoriteCreatorHandles.includes(p.handle));
       if (firstFav) setSelectedPost(firstFav);
     } else {
       if (activeTab === 'bookmarks' || activeTab === 'favorites') {
         setActiveTab('premium');
-        setSelectedPost(SAMPLE_POSTS[0]);
+        if (apiPosts.length > 0) setSelectedPost(apiPosts[0]);
       }
     }
-  }, [activePage]);
+  }, [activePage, apiPosts]);
 
   // Tab change wrapper to navigate back to dashboard when clicks premium tab
   const selectTab = (tab: 'premium') => {
@@ -1499,68 +1592,144 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
     if (activePage === 'Bookmarks' || activePage === 'Favorites') {
       onNavigate?.('Dashboard');
     }
-    const firstOfCat = SAMPLE_POSTS.find(p => p.category === tab);
+    const firstOfCat = [...publishedPosts, ...apiPosts].find(p => p.category === tab);
     if (firstOfCat) setSelectedPost(firstOfCat);
   };
 
   // Interactive States
-  const [unlockedPremiumIds, setUnlockedPremiumIds] = useState<number[]>([]); // posts 1 & 2 are free / unlocked
-  const [bookmarkedPostIds, setBookmarkedPostIds] = useState<number[]>([]);
+  const [unlockedPremiumIds, setUnlockedPremiumIds] = useState<(number | string)[]>([]);
+  const [bookmarkedPostIds, setBookmarkedPostIds] = useState<(number | string)[]>([]);
   const [favoriteCreatorHandles, setFavoriteCreatorHandles] = useState<string[]>([]);
-  const [likedPostIds, setLikedPostIds] = useState<number[]>([]);
+  const [likedPostIds, setLikedPostIds] = useState<(number | string)[]>([]);
   const [mutedUserHandles, setMutedUserHandles] = useState<string[]>([]);
   const [blockedUserHandles, setBlockedUserHandles] = useState<string[]>([]);
-  const [dislikedPostIds, setDislikedPostIds] = useState<number[]>([]);
+  const [dislikedPostIds, setDislikedPostIds] = useState<(number | string)[]>([]);
+
+  // Current logged-in user
+  const [currentUser, setCurrentUser] = useState<{ id: string; displayName: string; username: string; avatarUrl?: string } | null>(null);
 
   // Dialog Overlays
   const [sharingPost, setSharingPost] = useState<Post | null>(null);
-  const [commentsList, setCommentsList] = useState<CommentItem[]>(INITIAL_COMMENTS);
+  const [commentsList, setCommentsList] = useState<CommentItem[]>([]);
+  const [repliesLoading, setRepliesLoading] = useState(false);
 
   const { toast } = useToast();
 
-  if (loading) return <DashboardPageSkeleton />;
+  // Fetch replies whenever the selected post changes
+  useEffect(() => {
+    if (!selectedPost?.id) { setCommentsList([]); return; }
+    const postId = selectedPost.id;
+    // Skip fetching replies for locally-published posts (numeric timestamp IDs)
+    if (typeof postId === 'number') { setCommentsList([]); return; }
+    setRepliesLoading(true);
+    fetch(`/api/content/${postId}/replies`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.replies)) {
+          const mapped: CommentItem[] = data.replies.map((r: any) => {
+            const authorName = r.author?.displayName || r.author?.username || 'User';
+            const authorHandle = r.author?.username ? `@${r.author.username.replace(/^@/, '')}` : '@user';
+            const d = new Date(r.createdAt);
+            const now = Date.now();
+            const diffMs = now - d.getTime();
+            const diffMin = Math.floor(diffMs / 60000);
+            const timeStr = diffMin < 1 ? 'Just now'
+              : diffMin < 60 ? `${diffMin}m ago`
+              : diffMin < 1440 ? `${Math.floor(diffMin / 60)}h ago`
+              : `${Math.floor(diffMin / 1440)}d ago`;
+            return {
+              id: r.id,
+              postId: r.contentId,
+              name: authorName,
+              handle: authorHandle,
+              text: r.body,
+              time: timeStr,
+              avatarUrl: r.author?.avatarUrl || undefined,
+            };
+          });
+          setCommentsList(mapped);
+        }
+      })
+      .catch(err => console.error('Failed to load replies:', err))
+      .finally(() => setRepliesLoading(false));
+  }, [selectedPost?.id]);
 
-  const handlePublish = (html: string, visibility: string, image?: string, topic?: string, publication?: string) => {
+  if (loading) return <DashboardPageSkeleton />;
+  if (!selectedPost && (apiPosts.length > 0 || publishedPosts.length > 0)) {
+    setSelectedPost([...publishedPosts, ...apiPosts][0]);
+  }
+
+  const handlePublish = async (html: string, visibility: string, image?: string, topic?: string, publication?: string) => {
     // Strip HTML tags for feed snippet fallback text
     const textSnippet = html.replace(/<[^>]*>/g, '') || (image ? 'Shared an image' : '');
 
-    let authorName = 'Josh Trek';
-    let authorHandle = '@joshtrek';
-    let authorAvatar = '/images/default-avatar.png';
+    const token = typeof window !== 'undefined'
+      ? localStorage.getItem('canafri_access_token') || localStorage.getItem('canafri_admin_access_token')
+      : null;
+    const authorName = currentUser?.displayName || 'You';
+    const authorHandle = currentUser?.username ? `@${currentUser.username.replace(/^@/, '')}` : '@me';
+    const authorAvatar = currentUser?.avatarUrl || '';
 
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('canafri_user_profile');
-      if (stored) {
-        try {
-          const profile = JSON.parse(stored);
-          if (profile.fullName) authorName = profile.fullName;
-          if (profile.username) authorHandle = `@${profile.username}`;
-          if (profile.avatarSrc) authorAvatar = profile.avatarSrc;
-        } catch (e) {
-          console.error(e);
+    let titleText = textSnippet.slice(0, 80).trim();
+    if (titleText.length < 3) titleText = (titleText + ' Article Submission').slice(0, 80);
+    let bodyText = html || textSnippet || 'Content article body';
+    if (bodyText.length < 5) bodyText = bodyText + ' ...';
+
+    let publishedId: string | number = Date.now();
+
+    if (token) {
+      try {
+        const res = await fetch('/api/content', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            title: titleText,
+            bodyIpfsHash: bodyText,
+            type: visibility === 'premium' ? 'PREMIUM' : 'FREE',
+            priceCC: 5,
+            topic: topic || undefined,
+            publication: publication || undefined,
+          }),
+        });
+        const data = await res.json();
+        if (data.success && data.content) {
+          publishedId = data.content.id;
+          toast('Post submitted! Pending admin review.', 'success');
+          // Signal profile & admin review queue to refetch
+          window.dispatchEvent(new CustomEvent('canafri:content-published', { detail: { id: publishedId } }));
+        } else if (data.message) {
+          toast(data.message, 'error');
         }
+      } catch (err) {
+        console.error('Failed to post content to server:', err);
       }
+    } else {
+      toast('Post published locally.', 'success');
     }
 
     const newPost: Post = {
-      id: Date.now(),
+      id: publishedId,
       name: authorName,
       handle: authorHandle,
       date: 'Just now',
       avatarSrc: authorAvatar,
-      category: 'premium',
+      category: visibility === 'premium' ? 'premium' : 'free',
       stakeReward: '5 CC Read-Stake Required',
       likesCount: 0,
       commentsCount: 0,
       text: textSnippet,
-      fullText: html, // Stores rich HTML content
+      fullText: html,
       image,
       topic,
       publication,
+      contentStatus: 'PENDING',
     };
-    setPublishedPosts([newPost, ...publishedPosts]);
-    setSelectedPost(newPost); // Auto select the newly published post
-    toast('Post published successfully!', 'success');
+
+    setPublishedPosts(prev => [newPost, ...prev]);
+    setSelectedPost(newPost);
   };
 
   const handlePostClick = (post: Post) => {
@@ -1572,50 +1741,84 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
     setMobileView('feed');
   };
 
-  const handleAddComment = (text: string) => {
-    const newC: CommentItem = {
+  const handleAddComment = async (text: string) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+    const postId = displayPost?.id;
+
+    // Optimistic local add with real user identity
+    const optimistic: CommentItem = {
       id: `c_${Date.now()}`,
-      postId: selectedPost.id,
-      name: 'Josh Trek',
-      handle: '@joshtrek',
+      postId: postId ?? '',
+      name: currentUser?.displayName || 'You',
+      handle: currentUser?.username ? `@${currentUser.username.replace(/^@/, '')}` : '@me',
       text,
       time: 'Just now',
     };
-    setCommentsList([newC, ...commentsList]);
+    setCommentsList([optimistic, ...commentsList]);
+
+    // POST to API for persisted replies (only for real API content, not local drafts)
+    if (token && postId && typeof postId === 'string') {
+      try {
+        const res = await fetch(`/api/content/${postId}/replies`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ body: text }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          toast(data.message || 'Failed to post reply', 'error');
+          // Remove optimistic entry on failure
+          setCommentsList(prev => prev.filter(c => c.id !== optimistic.id));
+          return;
+        }
+        // Replace optimistic with real ID from server
+        if (data.reply) {
+          setCommentsList(prev =>
+            prev.map(c => c.id === optimistic.id ? { ...optimistic, id: data.reply.id } : c)
+          );
+        }
+      } catch (err) {
+        console.error('Failed to post reply:', err);
+      }
+    }
+
     toast('Reply posted', 'success');
   };
 
-  // Filtering lists of posts
-  const filteredPosts = [...publishedPosts, ...SAMPLE_POSTS].filter((post) => {
+  // Filtering lists of posts — merge locally published + API fetched posts
+  const allPosts = [...publishedPosts, ...apiPosts];
+  const filteredPosts = allPosts.filter((post) => {
     // Filter out posts from blocked or muted creators
     if (blockedUserHandles.includes(post.handle)) return false;
     if (mutedUserHandles.includes(post.handle)) return false;
     // Filter out explicitly disliked posts
-    if (dislikedPostIds.includes(post.id)) return false;
+    if (dislikedPostIds.includes(post.id as any)) return false;
 
-    // Always show user's own published posts in the feed
-    if (post.handle === '@joshtrek') return true;
-
-    if (activeTab === 'premium') {
-      return post.category === 'premium';
-    }
     if (activeTab === 'bookmarks') {
-      return bookmarkedPostIds.includes(post.id);
+      return bookmarkedPostIds.includes(post.id as any);
     }
     if (activeTab === 'favorites') {
       return favoriteCreatorHandles.includes(post.handle);
     }
+    // 'premium' tab: show all posts (free and premium mixed)
     return true;
   });
 
+  // Derive a safe selected post (first if none selected)
+  const displayPost = selectedPost ?? (filteredPosts[0] ?? null);
+
   return (
-    <div className="h-full w-full bg-background flex flex-col overflow-y-auto no-scrollbar">
-      <div className="flex flex-1 gap-6 px-0 py-0 max-w-[1400px] mx-auto w-full">
+    <div className="min-h-full w-full bg-background flex flex-col">
+      {/* 100% Viewport Split Pane */}
+      <div className="flex flex-1 min-h-[calc(100vh-70px)] w-full max-w-[1400px] mx-auto">
         
         {/* Left Panel: Feed List */}
         <div
           className={[
-            'flex flex-col flex-1 bg-background relative md:h-auto md:overflow-visible h-full overflow-hidden',
+            'flex flex-col flex-1 md:flex-none md:w-[420px] lg:w-[480px] h-auto overflow-y-auto no-scrollbar bg-background relative border-r border-border/40',
             mobileView === 'detail' ? 'hidden md:flex' : 'flex',
           ].join(' ')}
         >
@@ -1639,7 +1842,7 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
               <div className="flex h-14 items-center justify-between px-5">
                 <div className="flex flex-col gap-0.5">
                   <h2 className="flex items-center gap-1.5 font-sans text-[13px] font-bold text-foreground">
-                    <Sparkles size={14} className="text-[#8C5CFF]" fill="currentColor" />
+                    <Sparkle size={14} className="text-[#8C5CFF]" fill="currentColor" />
                     Premium Content
                   </h2>
                   <span className="font-sans text-[10px] text-muted">Exclusive research and insights unlocked via CC read-stakes</span>
@@ -1653,8 +1856,12 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
             className="flex items-center gap-3 px-4 py-3 border-b border-border cursor-text hover:bg-card/30 transition-colors shrink-0"
             onClick={() => setPublishComposerOpen(true)}
           >
-            <div className="size-9 rounded-full bg-[#8C5CFF]/15 border border-[#8C5CFF]/30 flex items-center justify-center font-bold text-xs text-[#AC8EF3] shrink-0">
-              J
+            <div className="size-9 rounded-full bg-[#8C5CFF]/15 border border-[#8C5CFF]/30 flex items-center justify-center font-bold text-xs text-[#AC8EF3] shrink-0 overflow-hidden">
+              {currentUser?.avatarUrl ? (
+                <img src={currentUser.avatarUrl} alt={currentUser.displayName} className="w-full h-full object-cover" />
+              ) : (
+                (currentUser?.displayName || currentUser?.username || 'U').charAt(0).toUpperCase()
+              )}
             </div>
             <div className="flex-1 text-left">
             <span className="font-sans text-[13px] text-muted/60 select-none">
@@ -1672,26 +1879,26 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
           </div>
 
           {/* Posts Feed Scroll Area */}
-          <div className="flex flex-col overflow-y-auto no-scrollbar flex-1">
+          <div className="flex flex-col overflow-y-auto no-scrollbar flex-1 pb-20 md:pb-4">
             {filteredPosts.length > 0 ? (
               filteredPosts.map((post) => (
                 <PostCard
                   key={post.id}
                   post={post}
-                  isSelected={selectedPost.id === post.id}
+                  isSelected={displayPost?.id === post.id}
                   onClick={() => handlePostClick(post)}
-                  liked={likedPostIds.includes(post.id)}
-                  bookmarked={bookmarkedPostIds.includes(post.id)}
+                  liked={likedPostIds.includes(post.id as any)}
+                  bookmarked={bookmarkedPostIds.includes(post.id as any)}
                   isFavoriteCreator={favoriteCreatorHandles.includes(post.handle)}
                   onLikeToggle={() => {
-                    if (likedPostIds.includes(post.id)) {
+                    if (likedPostIds.includes(post.id as any)) {
                       setLikedPostIds(likedPostIds.filter((id) => id !== post.id));
                     } else {
                       setLikedPostIds([...likedPostIds, post.id]);
                     }
                   }}
                   onBookmarkToggle={() => {
-                    if (bookmarkedPostIds.includes(post.id)) {
+                    if (bookmarkedPostIds.includes(post.id as any)) {
                       setBookmarkedPostIds(bookmarkedPostIds.filter((id) => id !== post.id));
                     } else {
                       setBookmarkedPostIds([...bookmarkedPostIds, post.id]);
@@ -1737,7 +1944,7 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
           <button
             type="button"
             onClick={() => setPublishComposerOpen(true)}
-            className="fixed bottom-20 right-5 z-30 size-[52px] rounded-full bg-[#8C5CFF] hover:bg-[#AC8EF3] flex items-center justify-center text-white shadow-2xl shadow-[#8C5CFF]/40 transition-all duration-200 active:scale-90 hover:scale-105 md:bottom-6 md:right-6 cursor-pointer"
+            className="fixed bottom-20 right-5 z-30 size-[52px] rounded-full bg-[#8C5CFF] hover:bg-[#AC8EF3] flex items-center justify-center text-white shadow-2xl shadow-[#8C5CFF]/40 transition-all duration-200 active:scale-90 hover:scale-105 md:bottom-20 md:right-8 md:z-50 cursor-pointer"
             title="Publish new content"
             aria-label="Publish new post"
           >
@@ -1748,46 +1955,48 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
         {/* Right Panel: Detail Article Reader */}
         <div
           className={[
-            'flex flex-col flex-1 bg-background h-full overflow-hidden md:h-auto md:overflow-visible',
+            'flex flex-col flex-1 min-w-0 overflow-hidden bg-background relative',
             mobileView === 'feed' ? 'hidden md:flex' : 'flex',
           ].join(' ')}
         >
-          {selectedPost ? (
+          {displayPost ? (
             <PostDetail
-              post={selectedPost}
+              post={displayPost}
               onBack={handleBack}
-              isUnlocked={unlockedPremiumIds.includes(selectedPost.id) || selectedPost.handle === '@joshtrek'}
-              onUnlock={() => setUnlockedPremiumIds([...unlockedPremiumIds, selectedPost.id])}
-              liked={likedPostIds.includes(selectedPost.id)}
-              bookmarked={bookmarkedPostIds.includes(selectedPost.id)}
+              isUnlocked={unlockedPremiumIds.includes(displayPost.id as any)}
+              onUnlock={() => setUnlockedPremiumIds([...unlockedPremiumIds, displayPost.id])}
+              liked={likedPostIds.includes(displayPost.id as any)}
+              bookmarked={bookmarkedPostIds.includes(displayPost.id as any)}
               onLikeToggle={() => {
-                if (likedPostIds.includes(selectedPost.id)) {
-                  setLikedPostIds(likedPostIds.filter((id) => id !== selectedPost.id));
+                if (likedPostIds.includes(displayPost.id as any)) {
+                  setLikedPostIds(likedPostIds.filter((id) => id !== displayPost.id));
                 } else {
-                  setLikedPostIds([...likedPostIds, selectedPost.id]);
+                  setLikedPostIds([...likedPostIds, displayPost.id]);
                 }
               }}
               onBookmarkToggle={() => {
-                if (bookmarkedPostIds.includes(selectedPost.id)) {
-                  setBookmarkedPostIds(bookmarkedPostIds.filter((id) => id !== selectedPost.id));
+                if (bookmarkedPostIds.includes(displayPost.id as any)) {
+                  setBookmarkedPostIds(bookmarkedPostIds.filter((id) => id !== displayPost.id));
                 } else {
-                  setBookmarkedPostIds([...bookmarkedPostIds, selectedPost.id]);
+                  setBookmarkedPostIds([...bookmarkedPostIds, displayPost.id]);
                 }
               }}
-              onShareOpen={() => setSharingPost(selectedPost)}
+              onShareOpen={() => setSharingPost(displayPost)}
               comments={commentsList}
               onAddComment={handleAddComment}
+              currentUser={currentUser}
             />
           ) : (
             <div className="flex flex-col items-center justify-center flex-1 text-muted text-[13px] p-6">
-              Select an article from the feed to read
+              {loading ? 'Loading content…' : 'No content yet. Be the first to publish!'}
             </div>
           )}
         </div>
 
       </div>
 
-      <div className="hidden md:block w-full mt-8">
+      {/* Single Full-Width Footer */}
+      <div className="hidden md:block w-full mt-[24px] shrink-0 border-t border-[#D8D8D8] dark:border-[#121212]">
         <Footer />
       </div>
 

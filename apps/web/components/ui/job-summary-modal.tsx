@@ -1,14 +1,15 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { X, User, FileText, Calendar, DollarSign, Clock, ShieldAlert, Award } from 'lucide-react';
+import { X, User, FileText, DollarSign, Clock, ShieldAlert } from 'lucide-react';
 
 interface JobSummaryModalProps {
   open: boolean;
   onClose: () => void;
+  job?: any;
 }
 
-export function JobSummaryModal({ open, onClose }: JobSummaryModalProps) {
+export function JobSummaryModal({ open, onClose, job }: JobSummaryModalProps) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -30,23 +31,23 @@ export function JobSummaryModal({ open, onClose }: JobSummaryModalProps) {
   };
 
   const jobDetails = {
-    orderId: "FO4564554",
-    title: "Create a landing page for my web3 blog",
-    category: "Web Programming & Design",
-    revisions: "2 Revisions Allowed",
-    duration: "7 Days Delivery",
-    amount: "$25.00",
-    date: "March 20, 2026",
-    brief: "Please create a responsive landing page for my new Web3 blog. The design needs to be dark-themed, using modern typography, with elements for featured articles, a newsletter subscription form, and a placeholder Connect Wallet button. I'll need source files delivered in a structured zip format.",
+    orderId: job?.id ? job.id.slice(-8).toUpperCase() : "FO4564554",
+    title: job?.title || "Create a landing page for my web3 blog",
+    category: job?.category || "Web Programming & Design",
+    revisions: "Fixed-Price Escrow",
+    duration: `${job?.deadlineDays || 7} Days Delivery`,
+    amount: job?.amountCC ? `${job.amountCC} CC` : "$25.00",
+    date: job?.createdAt ? new Date(job.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : "March 20, 2026",
+    brief: job?.description || "Please create a responsive landing page for my new Web3 blog. The design needs to be dark-themed, using modern typography, with elements for featured articles, a newsletter subscription form, and a placeholder Connect Wallet button.",
   };
 
   const buyerDetails = {
-    username: "keneweight",
-    rating: "4.9",
-    reviewsCount: 12,
-    memberSince: "March 2024",
-    totalOrders: 24,
-    level: "Level 2 Buyer",
+    username: job?.client?.displayName || job?.client?.username || "keneweight",
+    rating: job?.buyerRating ? job.buyerRating.toFixed(1) : "5.0",
+    reviewsCount: job?.buyerReviewsCount ?? 0,
+    memberSince: job?.client?.createdAt ? new Date(job.client.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : "March 2026",
+    totalOrders: job?.client?.jobsPostedCount ?? 1,
+    level: job?.client?.trustScore && job.client.trustScore > 50 ? "Verified Buyer" : "Registered Buyer",
   };
 
   return (

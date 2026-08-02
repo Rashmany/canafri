@@ -7,6 +7,7 @@ interface OtpVerificationPageProps {
   email?: string;
   length?: number;
   isForgotPassword?: boolean;
+  devOtp?: string; // Dev-mode code exposed by backend when no email provider is configured
   onBack?: () => void;
   onVerificationSuccess?: (code?: string) => void;
 }
@@ -15,6 +16,7 @@ export default function OtpVerificationPage({
   email = 'user@gmail.com',
   length = 6,
   isForgotPassword = false,
+  devOtp,
   onBack,
   onVerificationSuccess,
 }: OtpVerificationPageProps) {
@@ -23,6 +25,7 @@ export default function OtpVerificationPage({
   const [canResend, setCanResend] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [devHint, setDevHint] = useState<string | undefined>(devOtp);
   
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -71,7 +74,7 @@ export default function OtpVerificationPage({
     setError('');
 
     try {
-      const res = await fetch('http://localhost:3001/auth/resend-otp', {
+      const res = await fetch('/api/auth/resend-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -81,6 +84,9 @@ export default function OtpVerificationPage({
       if (!res.ok) {
         throw new Error(data.message || 'Failed to resend verification code.');
       }
+
+      // Capture fresh dev OTP hint if provided
+      if (data.devOtp) setDevHint(data.devOtp);
 
       setTimer(59);
       setCanResend(false);
@@ -105,8 +111,8 @@ export default function OtpVerificationPage({
 
     try {
       const endpoint = isForgotPassword
-        ? 'http://localhost:3001/auth/verify-forgot-otp'
-        : 'http://localhost:3001/auth/verify-email';
+        ? '/api/auth/verify-forgot-otp'
+        : '/api/auth/verify-email';
 
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -188,6 +194,14 @@ export default function OtpVerificationPage({
                 />
               ))}
             </div>
+
+            {/* Dev-mode OTP hint banner */}
+            {devHint && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-primary/10 border border-primary/25 text-[11px] text-primary/80">
+                <span className="font-bold text-primary">DEV</span>
+                <span>Your code: <span className="font-mono font-bold text-primary tracking-widest">{devHint}</span></span>
+              </div>
+            )}
 
             {error && (
               <p className="text-xs text-red-500 text-center -mt-4">{error}</p>
