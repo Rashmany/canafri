@@ -128,6 +128,19 @@ export default function OtpVerificationPage({
         throw new Error(data.message || 'Verification failed.');
       }
 
+      if (data.accessToken) {
+        localStorage.setItem('canafri_access_token', data.accessToken);
+      }
+      if (data.user) {
+        localStorage.setItem('canafri_user_profile', JSON.stringify({
+          fullName: data.user.displayName || data.user.username || '',
+          username: data.user.username || '',
+          email: data.user.email || '',
+          isSeller: !!data.user.isSeller,
+          sellerApproved: !!data.user.sellerApproved,
+        }));
+      }
+
       onVerificationSuccess?.(code);
     } catch (err: any) {
       setError(err.message || 'Invalid verification code. Please try again.');
@@ -194,14 +207,6 @@ export default function OtpVerificationPage({
                 />
               ))}
             </div>
-
-            {/* Dev-mode OTP hint banner */}
-            {devHint && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-primary/10 border border-primary/25 text-[11px] text-primary/80">
-                <span className="font-bold text-primary">DEV</span>
-                <span>Your code: <span className="font-mono font-bold text-primary tracking-widest">{devHint}</span></span>
-              </div>
-            )}
 
             {error && (
               <p className="text-xs text-red-500 text-center -mt-4">{error}</p>

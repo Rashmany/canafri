@@ -7,9 +7,32 @@ import { HashService } from '../lib/hash.js';
 import { AuditService } from '../services/audit.js';
 import { CantonService } from '../services/canton.js';
 import { RiskService } from '../middleware/riskCheck.js';
+import { NotificationService } from '../services/notification.js';
+import { getPlatformConfig, getFullPlatformConfig, updatePlatformConfig } from '../services/platform-config.js';
 
 const SuspendUserSchema = z.object({
   status: z.enum(['ACTIVE', 'SUSPENDED', 'BANNED']),
+  reason: z.string().optional(),
+});
+
+const UpdateUserFlagsSchema = z.object({
+  isCreator: z.boolean().optional(),
+  isSeller: z.boolean().optional(),
+  sellerApproved: z.boolean().optional(),
+});
+
+const UpdateSellerSchema = z.object({
+  status: z.enum(['ACTIVE', 'SUSPENDED', 'INACTIVE']).optional(),
+  sellerApproved: z.boolean().optional(),
+});
+
+const UpdateUserScoresSchema = z.object({
+  trustScore: z.number().int().min(0).max(100).optional(),
+  riskScore: z.number().int().min(0).max(100).optional(),
+});
+
+const WarnUserSchema = z.object({
+  warning: z.string().min(2).max(500).trim(),
 });
 
 const InviteCreateSchema = z.object({
@@ -47,7 +70,8 @@ const WithdrawalRequestSchema = z.object({
   destinationWallet: z.string().min(10),
 });
 
-const UpdateConfigSchema = z.object({
+/** Economics / Governance fields (any ADMIN level) */
+const UpdateEconomicsSchema = z.object({
   subscriptionAmountCC: z.number().positive().optional(),
   poolAllocationCC: z.number().positive().optional(),
   stakeBalanceCC: z.number().positive().optional(),
@@ -63,6 +87,51 @@ const UpdateConfigSchema = z.object({
   proposalDepositCC: z.number().positive().optional(),
   minTreasuryReserveCC: z.number().positive().optional(),
   incentivePhaseActive: z.boolean().optional(),
+});
+
+/** Full Platform Control Center schema (SUPER_ADMIN only) */
+const UpdateConfigSchema = UpdateEconomicsSchema.extend({
+  // Service maintenance flags & reasons
+  globalMaintenance: z.boolean().optional(),
+  globalMaintenanceReason: z.string().max(500).optional(),
+  freelancingMaintenance: z.boolean().optional(),
+  freelancingMaintenanceReason: z.string().max(500).optional(),
+  contentMaintenance: z.boolean().optional(),
+  contentMaintenanceReason: z.string().max(500).optional(),
+  messagingMaintenance: z.boolean().optional(),
+  messagingMaintenanceReason: z.string().max(500).optional(),
+  registrationPaused: z.boolean().optional(),
+  registrationPausedReason: z.string().max(500).optional(),
+  loginPaused: z.boolean().optional(),
+  loginPausedReason: z.string().max(500).optional(),
+  // Financial emergency controls
+  walletPaused: z.boolean().optional(),
+  walletPausedReason: z.string().max(500).optional(),
+  depositPaused: z.boolean().optional(),
+  depositPausedReason: z.string().max(500).optional(),
+  withdrawPaused: z.boolean().optional(),
+  withdrawPausedReason: z.string().max(500).optional(),
+  escrowCreatePaused: z.boolean().optional(),
+  escrowCreatePausedReason: z.string().max(500).optional(),
+  escrowReleasePaused: z.boolean().optional(),
+  escrowReleasePausedReason: z.string().max(500).optional(),
+  otcTradingPaused: z.boolean().optional(),
+  otcTradingPausedReason: z.string().max(500).optional(),
+  // System controls
+  creatorPaused: z.boolean().optional(),
+  creatorPausedReason: z.string().max(500).optional(),
+  notificationsPaused: z.boolean().optional(),
+  emailSendingPaused: z.boolean().optional(),
+  smsVerificationPaused: z.boolean().optional(),
+  // Country access control (array of ISO 3166-1 alpha-2 codes)
+  restrictedCountries: z.array(z.string().length(2).toUpperCase()).optional(),
+  // Scheduled maintenance banner
+  bannerEnabled: z.boolean().optional(),
+  bannerTitle: z.string().max(100).optional(),
+  bannerMessage: z.string().max(1000).optional(),
+  bannerStart: z.string().datetime().optional().nullable(),
+  bannerEnd: z.string().datetime().optional().nullable(),
+  bannerDismissible: z.boolean().optional(),
 });
 
 export async function adminRoutes(fastify: FastifyInstance) {
@@ -86,24 +155,453 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /admin/users - List all users
-  fastify.get('/users', async (request: FastifyRequest, reply: FastifyReply) => {
+  // GET /admin/dashboard-stats — Real live platform KPI metrics & system overview
+  fastify.get('/dashboard-stats', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const users = await prisma.user.findMany({
-        orderBy: { createdAt: 'desc' },
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const [
+        totalUsers,
+        creatorsCount,
+        sellersCount,
+        buyersCount,
+        suspendedCount,
+        bannedCount,
+        activeJobsCount,
+        disputesCount,
+        pendingContentCount,
+        riskFlagsCount,
+        sellerApplicationsCount,
+        jobsCompletedCount,
+        jobsPostedCount,
+        contentPublishedCount,
+        delistedContentCount,
+        totalJobsCC,
+        totalSubsCC,
+        totalStakesCC,
+        recentLogs,
+        recentUsers,
+        recentContent,
+        recentJobs,
+        recentSubscriptions,
+      ] = await Promise.all([
+        prisma.user.count({ where: { role: 'MEMBER' } }),
+        prisma.user.count({ where: { role: 'MEMBER', isCreator: true } }),
+        prisma.user.count({ where: { role: 'MEMBER', isSeller: true, sellerApproved: true } }),
+        prisma.user.count({ where: { role: 'MEMBER', phoneVerified: true, postedJobs: { some: {} } } }),
+        prisma.user.count({ where: { role: 'MEMBER', status: 'SUSPENDED' } }),
+        prisma.user.count({ where: { role: 'MEMBER', status: 'BANNED' } }),
+        prisma.job.count({ where: { status: { in: ['OPEN', 'IN_PROGRESS'] } } }),
+        prisma.job.count({ where: { status: 'DISPUTED' } }),
+        prisma.content.count({ where: { status: 'PENDING' } }),
+        prisma.riskFlag.count(),
+        prisma.user.count({ where: { sellerApplied: true, sellerApproved: false } }),
+        prisma.job.count({ where: { status: 'COMPLETED' } }),
+        prisma.job.count(),
+        prisma.content.count({ where: { status: 'LIVE' } }),
+        prisma.content.count({ where: { status: 'DELISTED' } }),
+        prisma.job.aggregate({ _sum: { amountCC: true } }),
+        prisma.subscription.aggregate({ _sum: { amountCC: true } }),
+        prisma.creatorStake.aggregate({ _sum: { amountCC: true } }),
+        prisma.auditLog.findMany({
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.user.findMany({
+          where: { createdAt: { gte: sevenDaysAgo } },
+          select: { createdAt: true, isCreator: true }
+        }),
+        prisma.content.findMany({
+          where: { createdAt: { gte: sevenDaysAgo } },
+          select: { createdAt: true, publishedAt: true, status: true }
+        }),
+        prisma.job.findMany({
+          where: { createdAt: { gte: sevenDaysAgo } },
+          select: { createdAt: true, updatedAt: true, status: true, amountCC: true, platformFee: true }
+        }),
+        prisma.subscription.findMany({
+          where: { createdAt: { gte: sevenDaysAgo } },
+          select: { createdAt: true, amountCC: true }
+        }),
+      ]);
+
+      const totalWalletBalance = (totalJobsCC._sum.amountCC ?? 0) + (totalSubsCC._sum.amountCC ?? 0) + (totalStakesCC._sum.amountCC ?? 0);
+      
+      // Aggregate daily registrations for the past 7 days
+      const daysMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const daysList: string[] = [];
+      const dailyTrendMap: Record<string, { users: number; creators: number }> = {};
+      const activityMetricsMap: Record<string, Record<string, number>> = {};
+      
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+        const dayLabel = daysMap[d.getDay()];
+        daysList.push(dayLabel);
+        dailyTrendMap[dayLabel] = { users: 0, creators: 0 };
+        activityMetricsMap[dayLabel] = {
+          'Jobs Posted': 0,
+          'Jobs Completed': 0,
+          'Content Published': 0,
+          'CC Spent': 0,
+          'CC Deposited': 0,
+          'CC Withdrawn': 0,
+          'Platform CC Earned': 0,
+        };
+      }
+
+      for (const u of recentUsers) {
+        const dayLabel = daysMap[new Date(u.createdAt).getDay()];
+        if (dailyTrendMap[dayLabel]) {
+          dailyTrendMap[dayLabel].users += 1;
+          if (u.isCreator) dailyTrendMap[dayLabel].creators += 1;
+        }
+      }
+
+      for (const c of recentContent) {
+        const pubDate = c.publishedAt || c.createdAt;
+        const dayLabel = daysMap[new Date(pubDate).getDay()];
+        if (activityMetricsMap[dayLabel]) {
+          activityMetricsMap[dayLabel]['Content Published'] += 1;
+        }
+      }
+
+      for (const j of recentJobs) {
+        const createLabel = daysMap[new Date(j.createdAt).getDay()];
+        if (activityMetricsMap[createLabel]) {
+          activityMetricsMap[createLabel]['Jobs Posted'] += 1;
+          activityMetricsMap[createLabel]['CC Spent'] += (j.amountCC || 0);
+        }
+        if (j.status === 'COMPLETED') {
+          const completeLabel = daysMap[new Date(j.updatedAt).getDay()];
+          if (activityMetricsMap[completeLabel]) {
+            activityMetricsMap[completeLabel]['Jobs Completed'] += 1;
+            activityMetricsMap[completeLabel]['CC Withdrawn'] += (j.amountCC || 0);
+            activityMetricsMap[completeLabel]['Platform CC Earned'] += (j.amountCC || 0) * (j.platformFee || 0.05);
+          }
+        }
+      }
+
+      for (const s of recentSubscriptions) {
+        const dayLabel = daysMap[new Date(s.createdAt).getDay()];
+        if (activityMetricsMap[dayLabel]) {
+          activityMetricsMap[dayLabel]['CC Deposited'] += (s.amountCC || 0);
+        }
+      }
+
+      const registrationTrendDaily = Object.entries(dailyTrendMap).map(([day, counts]) => ({
+        day,
+        users: counts.users,
+        creators: counts.creators,
+      }));
+
+      // ── Build Weekly buckets (last 4 weeks) ──────────────────────────────
+      const fourWeeksAgo = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
+      const weekLabels = ['Wk 1', 'Wk 2', 'Wk 3', 'Wk 4'];
+      const weeklyMap: Record<string, Record<string, number>> = {};
+      for (const wl of weekLabels) {
+        weeklyMap[wl] = { 'Jobs Posted': 0, 'Jobs Completed': 0, 'Content Published': 0, 'CC Spent': 0, 'CC Deposited': 0, 'CC Withdrawn': 0, 'Platform CC Earned': 0 };
+      }
+
+      const getWeekLabel = (date: Date): string | null => {
+        const diffMs = now.getTime() - date.getTime();
+        const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+        if (diffDays < 0 || diffDays >= 28) return null;
+        const weekIdx = 3 - Math.floor(diffDays / 7);
+        return weekLabels[weekIdx] || null;
+      };
+
+      const [weeklyContent, weeklyJobs, weeklySubscriptions] = await Promise.all([
+        prisma.content.findMany({
+          where: { createdAt: { gte: fourWeeksAgo } },
+          select: { createdAt: true, publishedAt: true }
+        }),
+        prisma.job.findMany({
+          where: { createdAt: { gte: fourWeeksAgo } },
+          select: { createdAt: true, updatedAt: true, status: true, amountCC: true, platformFee: true }
+        }),
+        prisma.subscription.findMany({
+          where: { createdAt: { gte: fourWeeksAgo } },
+          select: { createdAt: true, amountCC: true }
+        }),
+      ]);
+
+      for (const c of weeklyContent) {
+        const wl = getWeekLabel(new Date(c.publishedAt || c.createdAt));
+        if (wl) weeklyMap[wl]['Content Published'] += 1;
+      }
+      for (const j of weeklyJobs) {
+        const wl = getWeekLabel(new Date(j.createdAt));
+        if (wl) { weeklyMap[wl]['Jobs Posted'] += 1; weeklyMap[wl]['CC Spent'] += (j.amountCC || 0); }
+        if (j.status === 'COMPLETED') {
+          const wlC = getWeekLabel(new Date(j.updatedAt));
+          if (wlC) {
+            weeklyMap[wlC]['Jobs Completed'] += 1;
+            weeklyMap[wlC]['CC Withdrawn'] += (j.amountCC || 0);
+            weeklyMap[wlC]['Platform CC Earned'] += (j.amountCC || 0) * (j.platformFee || 0.05);
+          }
+        }
+      }
+      for (const s of weeklySubscriptions) {
+        const wl = getWeekLabel(new Date(s.createdAt));
+        if (wl) weeklyMap[wl]['CC Deposited'] += (s.amountCC || 0);
+      }
+
+      // ── Build Monthly buckets (last 12 months) ───────────────────────────
+      const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+      const monthLabels: string[] = [];
+      const monthlyMap: Record<string, Record<string, number>> = {};
+      const shortMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const ml = shortMonths[d.getMonth()];
+        monthLabels.push(ml);
+        monthlyMap[ml] = { 'Jobs Posted': 0, 'Jobs Completed': 0, 'Content Published': 0, 'CC Spent': 0, 'CC Deposited': 0, 'CC Withdrawn': 0, 'Platform CC Earned': 0 };
+      }
+
+      const getMonthLabel = (date: Date): string | null => {
+        const ml = shortMonths[date.getMonth()];
+        return monthlyMap[ml] !== undefined ? ml : null;
+      };
+
+      const [monthlyContent, monthlyJobs, monthlySubscriptions] = await Promise.all([
+        prisma.content.findMany({
+          where: { createdAt: { gte: twelveMonthsAgo } },
+          select: { createdAt: true, publishedAt: true }
+        }),
+        prisma.job.findMany({
+          where: { createdAt: { gte: twelveMonthsAgo } },
+          select: { createdAt: true, updatedAt: true, status: true, amountCC: true, platformFee: true }
+        }),
+        prisma.subscription.findMany({
+          where: { createdAt: { gte: twelveMonthsAgo } },
+          select: { createdAt: true, amountCC: true }
+        }),
+      ]);
+
+      for (const c of monthlyContent) {
+        const ml = getMonthLabel(new Date(c.publishedAt || c.createdAt));
+        if (ml) monthlyMap[ml]['Content Published'] += 1;
+      }
+      for (const j of monthlyJobs) {
+        const ml = getMonthLabel(new Date(j.createdAt));
+        if (ml) { monthlyMap[ml]['Jobs Posted'] += 1; monthlyMap[ml]['CC Spent'] += (j.amountCC || 0); }
+        if (j.status === 'COMPLETED') {
+          const mlC = getMonthLabel(new Date(j.updatedAt));
+          if (mlC) {
+            monthlyMap[mlC]['Jobs Completed'] += 1;
+            monthlyMap[mlC]['CC Withdrawn'] += (j.amountCC || 0);
+            monthlyMap[mlC]['Platform CC Earned'] += (j.amountCC || 0) * (j.platformFee || 0.05);
+          }
+        }
+      }
+      for (const s of monthlySubscriptions) {
+        const ml = getMonthLabel(new Date(s.createdAt));
+        if (ml) monthlyMap[ml]['CC Deposited'] += (s.amountCC || 0);
+      }
+
+      // ── Assemble realActivityMetrics with all 3 periods ──────────────────
+      const METRIC_KEYS = ['Jobs Posted', 'Jobs Completed', 'Content Published', 'CC Spent', 'CC Deposited', 'CC Withdrawn', 'Platform CC Earned'] as const;
+      type MetricKey = typeof METRIC_KEYS[number];
+
+      const realActivityMetrics: Record<MetricKey, { Daily: Array<{ label: string; value: number }>; Weekly: Array<{ label: string; value: number }>; Monthly: Array<{ label: string; value: number }> }> = {} as any;
+
+      for (const key of METRIC_KEYS) {
+        realActivityMetrics[key] = {
+          Daily:   daysList.map(day => ({ label: day, value: Math.round(activityMetricsMap[day][key]) })),
+          Weekly:  weekLabels.map(wl => ({ label: wl, value: Math.round(weeklyMap[wl][key]) })),
+          Monthly: monthLabels.map(ml => ({ label: ml, value: Math.round(monthlyMap[ml][key]) })),
+        };
+      }
+
+      const operatorIds = Array.from(new Set(recentLogs.map(l => l.adminId || l.userId).filter(Boolean))) as string[];
+      const operators = operatorIds.length > 0 ? await prisma.user.findMany({
+        where: { id: { in: operatorIds } },
+        select: { id: true, displayName: true, username: true, role: true },
+      }) : [];
+      const operatorMap = new Map(operators.map(op => [op.id, op]));
+
+      const enrichedLogs = recentLogs.map(l => {
+        const opId = l.adminId || l.userId;
+        const op = opId ? operatorMap.get(opId) : null;
+        return {
+          ...l,
+          admin: op ? {
+            displayName: op.displayName,
+            username: op.username,
+            role: op.role,
+          } : null,
+        };
       });
-      return reply.send({ success: true, users });
+
+      return reply.send({
+        success: true,
+        stats: {
+          totalUsers,
+          creatorsCount,
+          sellersCount,
+          buyersCount,
+          suspendedCount,
+          bannedCount,
+          activeJobsCount,
+          disputesCount,
+          pendingContentCount,
+          riskFlagsCount,
+          sellerApplicationsCount,
+          jobsCompletedCount,
+          jobsPostedCount,
+          contentPublishedCount,
+          delistedContentCount,
+          totalWalletBalance,
+        },
+        registrationTrendDaily,
+        activityMetrics: realActivityMetrics,
+        recentLogs: enrichedLogs,
+      });
     } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
   });
 
+  // GET /admin/sellers — List all sellers and calculate sellers overview statistics
+  fastify.get('/sellers', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const sellers = await prisma.user.findMany({
+        where: { role: 'MEMBER', isSeller: true },
+        include: {
+          creatorStake: true,
+          freelanceJobs: {
+            select: { id: true, status: true, amountCC: true }
+          },
+          riskFlags: {
+            orderBy: { createdAt: 'desc' }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
 
-  // PATCH /admin/users/:id/suspend - Update user status (suspend/ban)
-  fastify.patch('/users/:id/suspend', async (request: FastifyRequest, reply: FastifyReply) => {
+      const totalSellers    = sellers.length;
+      const activeSellers   = sellers.filter(s => s.status === 'ACTIVE').length;
+      const verifiedSellers = sellers.filter(s => s.sellerApproved).length;
+      let totalSalesCC = 0;
+      for (const s of sellers) {
+        for (const j of s.freelanceJobs) {
+          if (j.status === 'COMPLETED') totalSalesCC += j.amountCC ?? 0;
+        }
+      }
+
+      return reply.send({
+        success: true,
+        sellers,
+        stats: {
+          totalSellers,
+          activeSellers,
+          verifiedSellers,
+          totalSalesCC,
+        }
+      });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // PATCH /admin/sellers/:id/status — Suspend, verify, or update seller status
+  fastify.patch('/sellers/:id/status', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
-      const { status } = SuspendUserSchema.parse(request.body);
+      const { status, sellerApproved } = UpdateSellerSchema.parse(request.body);
+
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user || !user.isSeller) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Seller profile not found' });
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id },
+        data: {
+          ...(status ? { status: status as any } : {}),
+          ...(sellerApproved !== undefined ? { sellerApproved } : {}),
+        }
+      });
+
+      await AuditService.log({
+        adminId: (request.user as any).userId ?? (request.user as any).sub,
+        userId: id,
+        action: 'UPDATE_SELLER_STATUS',
+        target: id,
+        before: { status: user.status, sellerApproved: user.sellerApproved },
+        after: { status: updatedUser.status, sellerApproved: updatedUser.sellerApproved },
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, seller: updatedUser });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: error.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // GET /admin/seller-applications — List only users who submitted the seller application form
+  fastify.get('/seller-applications', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const applicants = await prisma.user.findMany({
+        where: { sellerApplied: true },
+        select: {
+          id: true,
+          displayName: true,
+          username: true,
+          email: true,
+          country: true,
+          bio: true,
+          avatarUrl: true,
+          createdAt: true,
+          phoneVerified: true,
+          walletAddress: true,
+          trustScore: true,
+          riskScore: true,
+          isSeller: true,
+          sellerApplied: true,
+          sellerApproved: true,
+          creatorStake: true,
+          riskFlags: {
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const userIds = applicants.map(a => a.id);
+      const notifications = await prisma.notification.findMany({
+        where: { userId: { in: userIds }, type: 'SELLER_APPLICATION' },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const notifMap = new Map<string, any>();
+      for (const n of notifications) {
+        if (!notifMap.has(n.userId)) {
+          notifMap.set(n.userId, n);
+        }
+      }
+
+      const applicantsWithNotifs = applicants.map(a => ({
+        ...a,
+        notifications: notifMap.has(a.id) ? [notifMap.get(a.id)] : [],
+      }));
+
+      return reply.send({ success: true, applicants: applicantsWithNotifs });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // POST /admin/seller-applications/:id/approve — Approve or reject seller application
+  fastify.post('/seller-applications/:id/approve', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { approved, note } = z.object({ approved: z.boolean(), note: z.string().optional() }).parse(request.body);
 
       const user = await prisma.user.findUnique({ where: { id } });
       if (!user) {
@@ -112,21 +610,95 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
       const updatedUser = await prisma.user.update({
         where: { id },
-        data: { status },
-      });
-
-      // Audit Log
-      await prisma.auditLog.create({
         data: {
-          adminId: request.user.userId,
-          action: 'UPDATE_USER_STATUS',
-          target: id,
-          before: JSON.stringify({ status: user.status }),
-          after: JSON.stringify({ status: updatedUser.status }),
+          isSeller: approved,
+          sellerApproved: approved,
+          sellerApplied: approved ? true : false,
         },
       });
 
-      // Revoke sessions if suspended/banned
+      await AuditService.log({
+        adminId: (request.user as any)?.userId ?? (request.user as any)?.sub ?? 'admin',
+        userId: id,
+        action: approved ? 'APPROVE_SELLER_APPLICATION' : 'REJECT_SELLER_APPLICATION',
+        target: `user:${id}`,
+        before: { isSeller: user.isSeller, sellerApproved: user.sellerApproved },
+        after: { isSeller: updatedUser.isSeller, sellerApproved: updatedUser.sellerApproved, note },
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      // Send real-time notification to the user
+      await NotificationService.send({
+        userId: id,
+        title: approved ? 'Seller Application Approved' : 'Seller Application Update',
+        body: approved
+          ? 'Congratulations! Your seller application has been approved. You can now toggle Seller Mode in your sidebar.'
+          : (note || 'Your seller application was reviewed and was not approved at this time.'),
+        type: approved ? 'SELLER_APPROVED' : 'SELLER_REJECTED',
+        category: 'ACCOUNT',
+        link: approved ? '/dashboard' : '/become-seller',
+      });
+
+      return reply.send({ success: true, user: updatedUser });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+  // GET /admin/users — List all registered members with buyer/seller signals
+  fastify.get('/users', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const users = await prisma.user.findMany({
+        where: { role: 'MEMBER' },
+        include: {
+          creatorStake: true,
+          riskFlags: {
+            orderBy: { createdAt: 'desc' },
+          },
+          _count: {
+            select: { postedJobs: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      return reply.send({ success: true, users });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // PATCH /admin/users/:id/suspend — Update user status (ACTIVE, SUSPENDED, BANNED)
+  fastify.patch('/users/:id/suspend', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { status, reason } = SuspendUserSchema.parse(request.body);
+
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user) {
+        return reply.status(404).send({ error: 'Not Found', message: 'User not found' });
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id },
+        data: {
+          status,
+          ...(reason ? { revokeReason: reason } : {}),
+        },
+      });
+
+      // Audit Log
+      await AuditService.log({
+        adminId: (request.user as any).userId ?? (request.user as any).sub,
+        userId: id,
+        action: `USER_${status}`,
+        target: id,
+        before: { status: user.status },
+        after: { status: updatedUser.status, reason },
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      // Revoke sessions if suspended or banned
       if (status !== 'ACTIVE') {
         const sessions = await prisma.session.findMany({ where: { userId: id } });
         for (const s of sessions) {
@@ -136,6 +708,124 @@ export async function adminRoutes(fastify: FastifyInstance) {
       }
 
       return reply.send({ success: true, user: updatedUser });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: error.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // PATCH /admin/users/:id/flags — Update Creator / Seller role flags
+  fastify.patch('/users/:id/flags', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const flags = UpdateUserFlagsSchema.parse(request.body);
+
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user) {
+        return reply.status(404).send({ error: 'Not Found', message: 'User not found' });
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id },
+        data: flags,
+      });
+
+      await AuditService.log({
+        adminId: (request.user as any).userId ?? (request.user as any).sub,
+        userId: id,
+        action: 'UPDATE_USER_FLAGS',
+        target: id,
+        before: { isCreator: user.isCreator, isSeller: user.isSeller, sellerApproved: user.sellerApproved },
+        after: flags,
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, user: updatedUser });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: error.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // PATCH /admin/users/:id/scores — Update Trust / Risk scores
+  fastify.patch('/users/:id/scores', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const scores = UpdateUserScoresSchema.parse(request.body);
+
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user) {
+        return reply.status(404).send({ error: 'Not Found', message: 'User not found' });
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id },
+        data: scores,
+      });
+
+      await AuditService.log({
+        adminId: (request.user as any).userId ?? (request.user as any).sub,
+        userId: id,
+        action: 'UPDATE_USER_SCORES',
+        target: id,
+        before: { trustScore: user.trustScore, riskScore: user.riskScore },
+        after: scores,
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, user: updatedUser });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: error.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // POST /admin/users/:id/warn — Send formal warning to user
+  fastify.post('/users/:id/warn', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { warning } = WarnUserSchema.parse(request.body);
+
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user) {
+        return reply.status(404).send({ error: 'Not Found', message: 'User not found' });
+      }
+
+      // Record a risk flag for the warning & increment risk score by 10
+      const newRiskScore = Math.min(100, user.riskScore + 10);
+      const [updatedUser] = await Promise.all([
+        prisma.user.update({
+          where: { id },
+          data: { riskScore: newRiskScore },
+        }),
+        prisma.riskFlag.create({
+          data: {
+            userId: id,
+            flag: `ADMIN WARNING: ${warning}`,
+            severity: 'MEDIUM',
+            metadata: { warning, issuedBy: (request.user as any).userId },
+          },
+        }),
+        AuditService.log({
+          adminId: (request.user as any).userId ?? (request.user as any).sub,
+          userId: id,
+          action: 'WARN_USER',
+          target: id,
+          after: { warning, newRiskScore },
+          ipAddress: request.ip,
+          device: request.headers['user-agent'] ?? undefined,
+        }),
+      ]);
+
+      return reply.send({ success: true, user: updatedUser, message: 'Warning issued successfully.' });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Validation Error', details: error.errors });
@@ -189,14 +879,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
       });
 
       // Audit Log
-      await prisma.auditLog.create({
-        data: {
-          adminId: request.user.userId,
-          action: `CONTENT_${status}`,
-          target: id,
-          before: JSON.stringify({ status: content.status }),
-          after: JSON.stringify({ status: updatedContent.status }),
-        },
+      await AuditService.log({
+        adminId: (request.user as any).userId ?? (request.user as any).sub,
+        action: `CONTENT_${status}`,
+        target: id,
+        before: { status: content.status },
+        after: { status: updatedContent.status },
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
       });
 
       return reply.send({
@@ -295,14 +985,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
       }
 
       // Audit Log
-      await prisma.auditLog.create({
-        data: {
-          adminId: request.user.userId,
-          action: 'RESOLVE_DISPUTE',
-          target: id,
-          before: JSON.stringify({ status: dispute.status }),
-          after: JSON.stringify({ status: updatedDispute.status, clientPct, freelancerPct }),
-        },
+      await AuditService.log({
+        adminId: (request.user as any).userId ?? (request.user as any).sub,
+        action: 'RESOLVE_DISPUTE',
+        target: id,
+        before: { status: dispute.status },
+        after: { status: updatedDispute.status, clientPct, freelancerPct },
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
       });
 
       return reply.send({
@@ -391,14 +1081,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
         await redis.del(activeWithdrawalKey);
 
         // Log in AuditLog
-        await prisma.auditLog.create({
-          data: {
-            adminId,
-            action: 'TREASURY_WITHDRAWAL',
-            target: destinationWallet,
-            before: JSON.stringify({ balance: currentBalance }),
-            after: JSON.stringify({ balance: finalBalance, withdrawnAmount: amountCC, signers }),
-          },
+        await AuditService.log({
+          adminId,
+          action: 'TREASURY_WITHDRAWAL',
+          target: destinationWallet,
+          before: { balance: currentBalance },
+          after: { balance: finalBalance, withdrawnAmount: amountCC, signers },
+          ipAddress: request.ip,
+          device: request.headers['user-agent'] ?? undefined,
         });
 
         return reply.send({
@@ -417,52 +1107,35 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /admin/config - Get platform configuration
+  // GET /admin/config — Full config for SUPER_ADMIN (includes economics + control fields)
+  // Redis-first with self-healing Postgres fallback
   fastify.get('/config', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      let config = await prisma.platformConfig.findFirst();
-      if (!config) {
-        config = await prisma.platformConfig.create({
-          data: {},
-        });
-      }
+      const config = await getFullPlatformConfig();
       return reply.send({ success: true, config });
     } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
   });
 
-  // PATCH /admin/config - Update platform config (Audit logged before/after)
-  fastify.patch('/config', async (request: FastifyRequest, reply: FastifyReply) => {
+  // PATCH /admin/config — Update platform config (ADMIN + SUPER_ADMIN)
+  // Atomically increments version, overwrites Redis cache, broadcasts Socket.IO, writes AuditLog
+  fastify.patch('/config', { preHandler: [roleGuard(['ADMIN', 'SUPER_ADMIN'])] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const configData = UpdateConfigSchema.parse(request.body);
-      const adminId = request.user.userId;
+      const adminId = (request.user as any).userId;
 
-      let currentConfig = await prisma.platformConfig.findFirst();
-      if (!currentConfig) {
-        currentConfig = await prisma.platformConfig.create({ data: {} });
+      // Convert nullable datetime strings to Date objects for Prisma
+      const prepared: Record<string, any> = { ...configData };
+      if ('bannerStart' in prepared) {
+        prepared.bannerStart = prepared.bannerStart ? new Date(prepared.bannerStart) : null;
+      }
+      if ('bannerEnd' in prepared) {
+        prepared.bannerEnd = prepared.bannerEnd ? new Date(prepared.bannerEnd) : null;
       }
 
-      const updatedConfig = await prisma.platformConfig.update({
-        where: { id: currentConfig.id },
-        data: {
-          ...configData,
-          updatedBy: adminId,
-        },
-      });
-
-      // Audit Log
-      await prisma.auditLog.create({
-        data: {
-          adminId,
-          action: 'UPDATE_PLATFORM_CONFIG',
-          target: currentConfig.id,
-          before: JSON.stringify(currentConfig),
-          after: JSON.stringify(updatedConfig),
-        },
-      });
-
-      return reply.send({ success: true, config: updatedConfig });
+      const updated = await updatePlatformConfig(prepared, adminId, request.ip);
+      return reply.send({ success: true, config: updated });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Validation Error', details: error.errors });
@@ -536,7 +1209,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       const inviteLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/admin?inviteToken=${token}`;
 
       await AuditService.log({
-        userId: callerId,
+        adminId: callerId,
         action: 'ADMIN_INVITE_CREATED',
         target: email,
         ipAddress: request.ip,
@@ -625,7 +1298,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
       await prisma.session.deleteMany({ where: { userId: id } });
 
       await AuditService.log({
-        userId: callerId,
+        adminId: callerId,
+        userId: id,
         action: 'ADMIN_REVOKED',
         target: id,
         after: { reason },
@@ -677,7 +1351,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
       });
 
       await AuditService.log({
-        userId: callerId,
+        adminId: callerId,
+        userId: id,
         action: 'ADMIN_REACTIVATED',
         target: id,
         ipAddress: request.ip,
@@ -739,6 +1414,113 @@ export async function adminRoutes(fastify: FastifyInstance) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Validation Error', details: error.errors });
       }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // ─── CONTENT REVIEW QUEUE ENDPOINTS ───────────────────────────────────────
+
+  // GET /admin/content-submissions — List all content submissions with creator data
+  fastify.get('/content-submissions', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const submissions = await prisma.content.findMany({
+        include: {
+          creator: {
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+              avatarUrl: true,
+              trustScore: true,
+              riskScore: true,
+              content: {
+                select: {
+                  id: true,
+                  status: true,
+                  avgRating: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return reply.send({ success: true, submissions });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // POST /admin/content-submissions/:id/approve — Approve pending content
+  fastify.post('/content-submissions/:id/approve', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { note } = (request.body || {}) as { note?: string };
+
+      const content = await prisma.content.findUnique({ where: { id } });
+      if (!content) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Content submission not found.' });
+      }
+
+      const updated = await prisma.content.update({
+        where: { id },
+        data: {
+          status: 'LIVE',
+          publishedAt: new Date(),
+          adminNote: note || 'Approved by admin',
+        },
+      });
+
+      await AuditService.log({
+        userId: (request.user as any).userId,
+        action: 'CONTENT_APPROVED',
+        target: id,
+        after: { title: content.title, creatorId: content.creatorId },
+      });
+
+      return reply.send({
+        success: true,
+        message: `Content "${content.title}" has been APPROVED and is now LIVE.`,
+        content: updated,
+      });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // POST /admin/content-submissions/:id/reject — Reject content submission
+  fastify.post('/content-submissions/:id/reject', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { reason } = (request.body || {}) as { reason?: string };
+
+      const content = await prisma.content.findUnique({ where: { id } });
+      if (!content) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Content submission not found.' });
+      }
+
+      const updated = await prisma.content.update({
+        where: { id },
+        data: {
+          status: 'REJECTED',
+          adminNote: reason || 'Rejected during admin review',
+        },
+      });
+
+      await AuditService.log({
+        userId: (request.user as any).userId,
+        action: 'CONTENT_REJECTED',
+        target: id,
+        after: { title: content.title, creatorId: content.creatorId, reason },
+      });
+
+      return reply.send({
+        success: true,
+        message: `Content "${content.title}" has been REJECTED.`,
+        content: updated,
+      });
+    } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
   });
@@ -822,3 +1604,4 @@ export async function publicInviteRoutes(fastify: FastifyInstance) {
     }
   });
 }
+

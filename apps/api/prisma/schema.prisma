@@ -29,6 +29,7 @@ model User {
   website         String?
   isCreator       Boolean     @default(false)
   isSeller        Boolean     @default(false)
+  sellerApplied   Boolean     @default(false)
   sellerApproved  Boolean     @default(false)
   sellerModeOn    Boolean     @default(false)
   trustScore      Int         @default(50)
@@ -52,10 +53,15 @@ model User {
   proposals       Proposal[]
   content         Content[]
   readStakes      ReadStake[]
+  contentReplies  ContentReply[]
   sessions        Session[]
   riskFlags       RiskFlag[]
+  securityAudits  SecurityAudit[]
   totpSecret      String?
   totpEnabled     Boolean         @default(false)
+  reviewsGiven    Review[]        @relation("ReviewsGiven")
+  reviewsReceived Review[]        @relation("ReviewsReceived")
+  notifications   Notification[]
 
   @@index([phoneHash])
   @@index([walletAddress])
@@ -88,16 +94,26 @@ model Session {
   user               User      @relation(fields: [userId], references: [id])
   token              String    @unique
   deviceInfo         String?
+  deviceId           String?   // Persistent browser UUID from X-Device-ID header
+  deviceName         String?   // Human-readable device name e.g. "Chrome on Windows 11"
   ipAddress          String?
+  lastIp             String?
+  lastCountry        String?
   userAgent          String?
+  lastUserAgent      String?
   hashedRefreshToken String?
   lastSeen           DateTime  @default(now())
+  lastRefreshAt      DateTime?
+  lastActivityAt     DateTime?
   expiresAt          DateTime
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
   @@index([userId])
   @@index([token])
+  @@index([deviceId])
+  @@index([expiresAt])
+  @@index([lastActivityAt])
 }
 
 // ─────────────────────────────────────────
@@ -171,11 +187,14 @@ model Content {
   avgRating       Float         @default(0)
   delistReason    String?
   adminNote       String?
+  topic           String?
+  publication     String?
   publishedAt     DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
   readStakes      ReadStake[]
+  replies         ContentReply[]
 
   @@index([creatorId])
   @@index([status])
@@ -192,6 +211,23 @@ enum ContentStatus {
   LIVE
   REJECTED
   DELISTED
+}
+
+// ─────────────────────────────────────────
+// CONTENT REPLY
+// ─────────────────────────────────────────
+
+model ContentReply {
+  id          String   @id @default(cuid())
+  contentId   String
+  content     Content  @relation(fields: [contentId], references: [id])
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id])
+  body        String
+  createdAt   DateTime @default(now())
+
+  @@index([contentId])
+  @@index([authorId])
 }
 
 // ─────────────────────────────────────────
@@ -250,6 +286,7 @@ model Job {
   proposals       Proposal[]
   messages        Message[]
   dispute         Dispute?
+  reviews         Review[]
 
   @@index([clientId])
   @@index([freelancerId])
@@ -281,6 +318,8 @@ model Milestone {
   status      MilestoneStatus @default(PENDING)
   deliveredAt DateTime?
   approvedAt  DateTime?
+  deliveryNotes String?
+  deliveryFiles Json?
   createdAt   DateTime        @default(now())
 
   @@index([jobId])
@@ -397,40 +436,115 @@ model Message {
 // ─────────────────────────────────────────
 
 model PlatformConfig {
-  id                    String   @id @default(cuid())
-  subscriptionAmountCC  Float    @default(20)
-  poolAllocationCC      Float    @default(15)
-  stakeBalanceCC        Float    @default(5)
-  platformFeeSub        Float    @default(0.30)
-  platformFeeFreelance  Float    @default(0.05)
-  readStakeAmountCC     Float    @default(5)
-  minReadTimeSeconds    Int      @default(600)
-  gracePeriodHours      Int      @default(2)
-  creatorStakeCC        Float    @default(100)
-  creatorLockDays       Int      @default(14)
-  maxContentPerMonth    Int      @default(5)
-  dailyCheckinCC        Float    @default(0.05)
-  proposalDepositCC     Float    @default(0.5)
-  minTreasuryReserveCC  Float    @default(10000)
-  incentivePhaseActive  Boolean  @default(true)
-  updatedAt             DateTime @updatedAt
-  updatedBy             String?
+  // Fixed singleton ID — always "platform". Never insert a second row.
+  id                          String    @id @default("platform")
+
+  // ── Existing Economics & Governance (unchanged) ──────────────────
+  subscriptionAmountCC        Float     @default(20)
+  poolAllocationCC            Float     @default(15)
+  stakeBalanceCC              Float     @default(5)
+  platformFeeSub              Float     @default(0.30)
+  platformFeeFreelance        Float     @default(0.05)
+  readStakeAmountCC           Float     @default(5)
+  minReadTimeSeconds          Int       @default(600)
+  gracePeriodHours            Int       @default(2)
+  creatorStakeCC              Float     @default(100)
+  creatorLockDays             Int       @default(14)
+  maxContentPerMonth          Int       @default(5)
+  dailyCheckinCC              Float     @default(0.05)
+  proposalDepositCC           Float     @default(0.5)
+  minTreasuryReserveCC        Float     @default(10000)
+  incentivePhaseActive        Boolean   @default(true)
+
+  // ── State Version (increment on every update) ────────────────────
+  // Frontend ignores Socket.IO payloads with version <= lastKnownVersion
+  version                     Int       @default(1)
+
+  // ── Global & Service Maintenance (manual emergency flags) ────────
+  // IMPORTANT: These flags are NEVER automatically reset by maintenance
+  // window expiry — they require explicit SUPER_ADMIN action to clear.
+  globalMaintenance           Boolean   @default(false)
+  globalMaintenanceReason     String?   @default("The platform is currently undergoing scheduled maintenance. We'll be back shortly.")
+  freelancingMaintenance      Boolean   @default(false)
+  freelancingMaintenanceReason String?  @default("The freelancing service is currently under maintenance. Please check back later.")
+  contentMaintenance          Boolean   @default(false)
+  contentMaintenanceReason    String?   @default("Content publishing is temporarily paused.")
+  messagingMaintenance        Boolean   @default(false)
+  messagingMaintenanceReason  String?   @default("Messaging is temporarily paused for maintenance.")
+  registrationPaused          Boolean   @default(false)
+  registrationPausedReason    String?   @default("New user registrations are temporarily paused.")
+  loginPaused                 Boolean   @default(false)
+  loginPausedReason           String?   @default("Login is temporarily restricted for maintenance.")
+
+  // ── Financial & Payment Emergency Controls (manual) ──────────────
+  walletPaused                Boolean   @default(false)
+  walletPausedReason          String?   @default("Wallet services are temporarily unavailable.")
+  depositPaused               Boolean   @default(false)
+  depositPausedReason         String?   @default("Deposits are temporarily paused.")
+  withdrawPaused              Boolean   @default(false)
+  withdrawPausedReason        String?   @default("Withdrawals are temporarily paused.")
+  escrowCreatePaused          Boolean   @default(false)
+  escrowCreatePausedReason    String?   @default("Escrow creation is temporarily paused.")
+  escrowReleasePaused         Boolean   @default(false)
+  escrowReleasePausedReason   String?   @default("Escrow releases are temporarily paused.")
+  otcTradingPaused            Boolean   @default(false)
+  otcTradingPausedReason      String?   @default("OTC trading is temporarily paused.")
+
+  // ── System & Infrastructure Controls (manual) ────────────────────
+  creatorPaused               Boolean   @default(false)
+  creatorPausedReason         String?   @default("Creator features are temporarily paused.")
+  notificationsPaused         Boolean   @default(false)
+  emailSendingPaused          Boolean   @default(false)
+  smsVerificationPaused       Boolean   @default(false)
+
+  // ── Country Access Control ────────────────────────────────────────
+  // ISO 3166-1 alpha-2 codes e.g. ["US", "IR", "KP"]
+  restrictedCountries         String[]  @default([])
+
+  // ── Scheduled Maintenance Banner ──────────────────────────────────
+  // ISOLATED from manual emergency pauses — window expiry only hides
+  // the banner. It never clears any of the manual pause flags above.
+  bannerEnabled               Boolean   @default(false)
+  bannerTitle                 String?   @default("Scheduled Maintenance")
+  bannerMessage               String?   @default("CanaFri will undergo scheduled maintenance. Some services may be temporarily unavailable.")
+  bannerStart                 DateTime?
+  bannerEnd                   DateTime?
+  bannerDismissible           Boolean   @default(true)
+
+  // ── Audit ─────────────────────────────────────────────────────────
+  updatedAt                   DateTime  @updatedAt
+  updatedBy                   String?
 }
 
+// ─────────────────────────────────────────
 // ─────────────────────────────────────────
 // RISK FLAG
 // ─────────────────────────────────────────
 
+enum RiskSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 model RiskFlag {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  signal      String
-  severity    Int
-  metadata    Json?
-  createdAt   DateTime @default(now())
+  id         String       @id @default(cuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id])
+  sessionId  String?
+  severity   RiskSeverity @default(LOW)
+  flag       String       // e.g. "UA_PATCH_CHANGE", "SUBNET_SHIFT", "TOKEN_THEFT_DETECTED"
+  metadata   Json?        // Extra context: old/new IP, UA, country etc.
+  resolved   Boolean      @default(false)
+  resolvedAt DateTime?
+  createdAt  DateTime     @default(now())
 
   @@index([userId])
+  @@index([severity])
+  @@index([resolved])
+  @@index([resolvedAt])
+  @@index([createdAt])
 }
 
 // ─────────────────────────────────────────
@@ -438,17 +552,24 @@ model RiskFlag {
 // ─────────────────────────────────────────
 
 model Notification {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
   body      String
   type      String
-  read      Boolean  @default(false)
+  category  String    @default("FREELANCE")
+  actorId   String?
+  targetId  String?
+  read      Boolean   @default(false)
   link      String?
-  createdAt DateTime @default(now())
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([userId])
   @@index([read])
+  @@index([category])
+  @@index([deletedAt])
 }
 
 // ─────────────────────────────────────────
@@ -485,4 +606,48 @@ model AdminInvite {
   createdAt DateTime @default(now())
 
   @@index([token])
+}
+
+// ─────────────────────────────────────────
+// REVIEW
+// ─────────────────────────────────────────
+
+model Review {
+  id          String   @id @default(cuid())
+  jobId       String
+  job         Job      @relation(fields: [jobId], references: [id])
+  reviewerId  String
+  reviewer    User     @relation("ReviewsGiven", fields: [reviewerId], references: [id])
+  revieweeId  String
+  reviewee    User     @relation("ReviewsReceived", fields: [revieweeId], references: [id])
+  rating      Float    // 1.0 to 5.0
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  @@index([jobId])
+  @@index([reviewerId])
+  @@index([revieweeId])
+}
+
+// ─────────────────────────────────────────
+// SECURITY AUDIT
+// ─────────────────────────────────────────
+
+model SecurityAudit {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  sessionId  String?
+  deviceId   String?  // Persistent browser device UUID
+  action     String   // e.g. "LOGIN", "LOGOUT", "REFRESH_ROTATED", "TOKEN_THEFT_DETECTED"
+  ipAddress  String?
+  country    String?
+  userAgent  String?
+  metadata   Json?    // Extra context: risk level, flag type, etc.
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([deviceId])
+  @@index([createdAt])
 }

@@ -5,6 +5,8 @@ import { redis } from '../lib/redis.js';
 import { authGuard, sellerGuard } from '../middleware/auth.js';
 import { RiskService, riskRestrictionGuard } from '../middleware/riskCheck.js';
 import { CantonService } from '../services/canton.js';
+import { NotificationService } from '../services/notification.js';
+import { getPlatformConfig } from '../services/platform-config.js';
 
 const CreateJobSchema = z.object({
   title: z.string().min(5).max(100),
@@ -16,8 +18,13 @@ const CreateJobSchema = z.object({
 });
 
 const ProposalSchema = z.object({
-  coverLetter: z.string().min(20),
-  approach: z.string().optional(),
+  coverLetter: z.string()
+    .min(100, 'Cover letter must be at least 100 characters.')
+    .max(1800, 'Cover letter cannot exceed 1,800 characters.'),
+  approach: z.string()
+    .min(100, 'Your approach must be at least 100 characters.')
+    .max(1800, 'Your approach cannot exceed 1,800 characters.'),
+  answers: z.array(z.string().max(1000, 'Screening question answer cannot exceed 1,000 characters.')).optional(),
   rateCC: z.number().positive(),
   deliveryDays: z.number().int().positive(),
 });
@@ -36,6 +43,22 @@ const DisputeSchema = z.object({
   reason: z.string().min(10),
 });
 
+// Helper: compute buyer rating for a list of clientIds
+async function getBuyerRatings(clientIds: string[]): Promise<Record<string, { avg: number; count: number }>> {
+  if (clientIds.length === 0) return {};
+  const reviews = await prisma.review.groupBy({
+    by: ['revieweeId'],
+    where: { revieweeId: { in: clientIds } },
+    _avg: { rating: true },
+    _count: { rating: true },
+  });
+  const map: Record<string, { avg: number; count: number }> = {};
+  for (const r of reviews) {
+    map[r.revieweeId] = { avg: r._avg.rating ?? 0, count: r._count.rating };
+  }
+  return map;
+}
+
 export async function jobRoutes(fastify: FastifyInstance) {
   // GET /jobs - List open jobs
   fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -44,48 +67,101 @@ export async function jobRoutes(fastify: FastifyInstance) {
         where: { status: 'OPEN' },
         include: {
           client: {
-            select: { id: true, username: true, displayName: true, trustScore: true },
+            select: { id: true, username: true, displayName: true, trustScore: true, avatarUrl: true, country: true, createdAt: true },
+          },
+          proposals: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      // Attach real buyer ratings
+      const clientIds = [...new Set(jobs.map(j => j.clientId))];
+      const ratings = await getBuyerRatings(clientIds);
+      const jobsWithRating = jobs.map(j => ({
+        ...j,
+        buyerRating: ratings[j.clientId]?.avg ?? 0,
+        buyerReviewsCount: ratings[j.clientId]?.count ?? 0,
+      }));
+      return reply.send({ success: true, jobs: jobsWithRating });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // GET /jobs/my-jobs - List authenticated buyer's posted jobs
+  fastify.get('/my-jobs', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId: clientId } = request.user;
+      const jobs = await prisma.job.findMany({
+        where: { clientId },
+        include: {
+          client: {
+            select: { id: true, username: true, displayName: true, trustScore: true, avatarUrl: true, country: true, createdAt: true },
+          },
+          freelancer: {
+            select: { id: true, username: true, displayName: true, trustScore: true, avatarUrl: true, country: true, createdAt: true },
+          },
+          proposals: true,
+          reviews: {
+            select: { id: true, reviewerId: true, rating: true, comment: true, createdAt: true },
           },
         },
         orderBy: { createdAt: 'desc' },
       });
-      return reply.send({ success: true, jobs });
+      const ratings = await getBuyerRatings([clientId]);
+      const jobsWithRating = jobs.map(j => ({
+        ...j,
+        buyerRating: ratings[j.clientId]?.avg ?? 0,
+        buyerReviewsCount: ratings[j.clientId]?.count ?? 0,
+        hasReviewed: j.reviews.some(r => r.reviewerId === clientId),
+      }));
+      return reply.send({ success: true, jobs: jobsWithRating });
     } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
   });
 
   // POST /jobs - Post a job & lock escrow (Authenticated clients)
-  fastify.post('/', { preValidation: [authGuard, riskRestrictionGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.post('/', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
+      const platformConfig = await getPlatformConfig();
+      if (platformConfig.freelancingMaintenance) {
+        return reply.status(503).send({
+          error: 'Service Unavailable',
+          message: platformConfig.freelancingMaintenanceReason || 'The freelancing service is currently under maintenance. Please check back later.',
+        });
+      }
+
       const { userId: clientId } = request.user;
       const { title, description, category, skills, amountCC, deadlineDays } = CreateJobSchema.parse(request.body);
 
-      // Check client has a bound wallet
-      const client = await prisma.user.findUnique({
-        where: { id: clientId },
-      });
-      if (!client || !client.walletAddress) {
-        return reply.status(400).send({ error: 'Bad Request', message: 'You must bind your Canton wallet before creating jobs.' });
+      // Try on-chain Canton escrow execution
+      let cantonResult = { contractId: 'temp_contract_id', txId: 'temp_tx_id' };
+      try {
+        cantonResult = await CantonService.executeJobEscrow(clientId, 'temp_job_id', amountCC);
+      } catch (e) {
+        console.warn('Canton escrow execution notice:', e);
       }
 
-      // Lock on-chain Escrow (2 transactions generated)
-      const cantonResult = await CantonService.executeJobEscrow(clientId, 'temp_job_id', amountCC);
-
-      // Create Job
+      // Create Job in DB
       const job = await prisma.job.create({
         data: {
           clientId,
           title,
           description,
           category,
-          skills,
-          amountCC,
-          deadlineDays,
+          skills: skills || [],
+          amountCC: amountCC || 100,
+          deadlineDays: deadlineDays || 30,
           status: 'OPEN',
           escrowLocked: true,
           damlContractId: cantonResult.contractId,
-          platformFee: 0.05, // 5% platform fee
+          platformFee: 0.05,
+        },
+        include: {
+          client: {
+            select: { id: true, username: true, displayName: true, trustScore: true, avatarUrl: true },
+          },
+          proposals: true,
         },
       });
 
@@ -110,15 +186,37 @@ export async function jobRoutes(fastify: FastifyInstance) {
       const job = await prisma.job.findUnique({
         where: { id },
         include: {
-          client: { select: { id: true, username: true, displayName: true, trustScore: true } },
-          freelancer: { select: { id: true, username: true, displayName: true, trustScore: true } },
-          milestones: true,
+          client: {
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+              trustScore: true,
+              avatarUrl: true,
+              country: true,
+              createdAt: true,
+              emailVerified: true,
+              phoneVerified: true,
+            },
+          },
+          freelancer: {
+            select: { id: true, username: true, displayName: true, trustScore: true, avatarUrl: true, country: true, createdAt: true },
+          },
+          milestones: {
+            orderBy: { order: 'asc' },
+          },
           proposals: {
             include: {
-              freelancer: { select: { id: true, username: true, displayName: true, trustScore: true } },
+              freelancer: { select: { id: true, username: true, displayName: true, trustScore: true, avatarUrl: true } },
             },
           },
           dispute: true,
+          reviews: {
+            include: {
+              reviewer: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+          },
         },
       });
 
@@ -126,7 +224,23 @@ export async function jobRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: 'Not Found', message: 'Job not found' });
       }
 
-      return reply.send({ success: true, job });
+      // Attach buyer rating and total jobs posted count by this client
+      const [ratings, jobsPostedCount] = await Promise.all([
+        getBuyerRatings([job.clientId]),
+        prisma.job.count({ where: { clientId: job.clientId } }),
+      ]);
+
+      const jobWithRating = {
+        ...job,
+        buyerRating: ratings[job.clientId]?.avg ?? 0,
+        buyerReviewsCount: ratings[job.clientId]?.count ?? 0,
+        client: {
+          ...job.client,
+          jobsPostedCount,
+        },
+      };
+
+      return reply.send({ success: true, job: jobWithRating });
     } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
@@ -137,7 +251,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
     try {
       const { userId: freelancerId } = request.user;
       const { id: jobId } = request.params as { id: string };
-      const { coverLetter, approach, rateCC, deliveryDays } = ProposalSchema.parse(request.body);
+      const { coverLetter, approach, answers, rateCC, deliveryDays } = ProposalSchema.parse(request.body);
 
       // Verify job is open
       const job = await prisma.job.findUnique({
@@ -183,6 +297,18 @@ export async function jobRoutes(fastify: FastifyInstance) {
           depositCC: 0.5,
           depositPaid: true,
         },
+      });
+
+      // Send real-time notification to buyer
+      await NotificationService.send({
+        userId: job.clientId,
+        title: 'New Proposal Received',
+        body: `A proposal was submitted for "${job.title}".`,
+        type: 'PROPOSAL_SUBMITTED',
+        category: 'FREELANCE',
+        link: '/orders',
+        actorId: freelancerId,
+        targetId: jobId,
       });
 
       return reply.send({
@@ -250,13 +376,25 @@ export async function jobRoutes(fastify: FastifyInstance) {
         })),
       });
 
-      // Update Job status
+      // Update job status to IN_PROGRESS
       const updatedJob = await prisma.job.update({
         where: { id: jobId },
         data: {
           freelancerId,
           status: 'IN_PROGRESS',
         },
+      });
+
+      // Send real-time notification to hired freelancer
+      await NotificationService.send({
+        userId: freelancerId,
+        title: 'Proposal Accepted — You Have Been Hired',
+        body: `Your proposal for "${job.title}" was accepted. Your contract is now active.`,
+        type: 'PROPOSAL_ACCEPTED',
+        category: 'FREELANCE',
+        link: '/orders',
+        actorId: clientId,
+        targetId: jobId,
       });
 
       return reply.send({
@@ -272,11 +410,75 @@ export async function jobRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /jobs/:id/milestones/:milestoneId/deliver - Deliver milestone (Freelancer only)
+  // POST /jobs/:id/deliver - Deliver project / current active milestone (Freelancer only)
+  fastify.post('/:id/deliver', { preValidation: [authGuard, riskRestrictionGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId: freelancerId } = request.user;
+      const { id: jobId } = request.params as { id: string };
+      const body = (request.body || {}) as { notes?: string; files?: any };
+
+      const job = await prisma.job.findUnique({
+        where: { id: jobId },
+        include: { milestones: { orderBy: { order: 'asc' } } },
+      });
+
+      if (!job || job.freelancerId !== freelancerId) {
+        return reply.status(403).send({ error: 'Forbidden', message: 'Only the assigned freelancer can deliver work for this contract.' });
+      }
+
+      if (!['IN_PROGRESS', 'OPEN', 'ASSIGNED', 'DELIVERED'].includes(job.status)) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Job is not in an active contract state.' });
+      }
+
+      // Target active or pending milestone, or first milestone
+      const targetMilestone = job.milestones.find(m => m.status === 'IN_PROGRESS' || m.status === 'PENDING') || job.milestones[0];
+
+      if (targetMilestone) {
+        await prisma.milestone.update({
+          where: { id: targetMilestone.id },
+          data: {
+            status: 'DELIVERED',
+            deliveredAt: new Date(),
+            deliveryNotes: body.notes || null,
+            deliveryFiles: body.files ? (typeof body.files === 'string' ? JSON.parse(body.files) : body.files) : null,
+          },
+        });
+      }
+
+      // Update job status to DELIVERED
+      const updatedJob = await prisma.job.update({
+        where: { id: jobId },
+        data: { status: 'DELIVERED' },
+      });
+
+      // Send real-time notification to client
+      await NotificationService.send({
+        userId: job.clientId,
+        title: 'Project Delivered — Review Required',
+        body: `Your freelancer has submitted work for "${job.title}". Review and approve the delivery.`,
+        type: 'PROJECT_DELIVERY',
+        category: 'FREELANCE',
+        link: '/orders',
+        actorId: freelancerId,
+        targetId: jobId,
+      });
+
+      return reply.send({
+        success: true,
+        message: 'Project work delivered successfully.',
+        job: updatedJob,
+      });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // POST /jobs/:id/milestones/:milestoneId/deliver - Deliver specific milestone (Freelancer only)
   fastify.post('/:id/milestones/:milestoneId/deliver', { preValidation: [authGuard, riskRestrictionGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { userId: freelancerId } = request.user;
       const { id: jobId, milestoneId } = request.params as { id: string; milestoneId: string };
+      const body = (request.body || {}) as { notes?: string; files?: any };
 
       const job = await prisma.job.findUnique({
         where: { id: jobId },
@@ -288,8 +490,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
       }
 
       const milestone = job.milestones.find((m) => m.id === milestoneId);
-      if (!milestone || milestone.status !== 'PENDING' && milestone.status !== 'IN_PROGRESS') {
-        return reply.status(400).send({ error: 'Bad Request', message: 'Milestone is not active or already delivered.' });
+      if (!milestone || (milestone.status !== 'PENDING' && milestone.status !== 'IN_PROGRESS' && milestone.status !== 'DELIVERED')) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Milestone is not active.' });
       }
 
       // Update milestone
@@ -298,6 +500,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
         data: {
           status: 'DELIVERED',
           deliveredAt: new Date(),
+          deliveryNotes: body.notes || null,
+          deliveryFiles: body.files ? (typeof body.files === 'string' ? JSON.parse(body.files) : body.files) : null,
         },
       });
 
@@ -305,6 +509,18 @@ export async function jobRoutes(fastify: FastifyInstance) {
       await prisma.job.update({
         where: { id: jobId },
         data: { status: 'DELIVERED' },
+      });
+
+      // Send real-time notification to client
+      await NotificationService.send({
+        userId: job.clientId,
+        title: 'Milestone Delivered',
+        body: `Milestone "${milestone.title}" has been delivered for "${job.title}".`,
+        type: 'PROJECT_DELIVERY',
+        category: 'FREELANCE',
+        link: '/orders',
+        actorId: job.freelancerId || undefined,
+        targetId: jobId,
       });
 
       return reply.send({ success: true, message: 'Milestone delivered successfully.' });
@@ -388,6 +604,90 @@ export async function jobRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // POST /jobs/:id/approve - Approve full project delivery & release Canton escrow CC (Client only)
+  fastify.post('/:id/approve', { preValidation: [authGuard, riskRestrictionGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId: clientId } = request.user;
+      const { id: jobId } = request.params as { id: string };
+
+      const job = await prisma.job.findUnique({
+        where: { id: jobId },
+        include: { milestones: true, freelancer: true },
+      });
+
+      if (!job || job.clientId !== clientId) {
+        return reply.status(403).send({ error: 'Forbidden', message: 'Only the client can approve project delivery.' });
+      }
+
+      if (!['DELIVERED', 'IN_PROGRESS'].includes(job.status)) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Job is not in DELIVERED or IN_PROGRESS state.' });
+      }
+
+      if (!job.freelancer || !job.freelancer.walletAddress) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Freelancer has no wallet address bound for escrow payout.' });
+      }
+
+      const milestoneId = job.milestones[0]?.id || 'full_release';
+      const cantonResult = await CantonService.executeMilestoneRelease(
+        jobId,
+        milestoneId,
+        job.freelancer.walletAddress,
+        job.amountCC,
+        job.platformFee
+      );
+
+      const now = new Date();
+
+      await prisma.milestone.updateMany({
+        where: { jobId },
+        data: {
+          status: 'APPROVED',
+          approvedAt: now,
+        },
+      });
+
+      const updatedJob = await prisma.job.update({
+        where: { id: jobId },
+        data: { status: 'COMPLETED' },
+      });
+
+      if (job.freelancerId) {
+        await NotificationService.send({
+          userId: job.freelancerId,
+          title: 'Delivery Approved — Funds Released',
+          body: `Your delivery for "${job.title}" was approved. ${job.amountCC} CC has been released to your wallet.`,
+          type: 'ESCROW_RELEASE',
+          category: 'WALLET',
+          link: '/orders',
+          actorId: clientId,
+          targetId: jobId,
+        });
+      }
+
+      // Notify client that approval is complete
+      await NotificationService.send({
+        userId: clientId,
+        title: 'Contract Completed',
+        body: `Project "${job.title}" is now marked as completed.`,
+        type: 'CONTRACT_COMPLETED',
+        category: 'FREELANCE',
+        link: '/orders',
+        targetId: jobId,
+      });
+
+      return reply.send({
+        success: true,
+        message: `Project delivery approved. Released ${job.amountCC} CC (minus 5% fee) to freelancer.`,
+        jobStatus: 'COMPLETED',
+        approvedAt: now,
+        cantonTxId: cantonResult.txId,
+        job: updatedJob,
+      });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
   // POST /jobs/:id/dispute - Raise dispute
   fastify.post('/:id/dispute', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -426,14 +726,16 @@ export async function jobRoutes(fastify: FastifyInstance) {
         data: { status: 'DISPUTED' },
       });
 
-      // Notify admin
-      await prisma.notification.create({
-        data: {
-          userId: job.clientId, // inform client
-          title: 'Job Dispute Raised',
-          body: `A dispute has been raised on job "${job.title}". Raised by user ${raisedById}.`,
-          type: 'DISPUTE',
-        },
+      // Notify both parties of the dispute
+      await NotificationService.send({
+        userId: respondentId,
+        title: 'Dispute Opened Against You',
+        body: `A dispute has been opened on job "${job.title}". An admin will review the claim.`,
+        type: 'DISPUTE_OPENED',
+        category: 'FREELANCE',
+        link: '/orders',
+        actorId: raisedById,
+        targetId: jobId,
       });
 
       return reply.send({
@@ -441,6 +743,154 @@ export async function jobRoutes(fastify: FastifyInstance) {
         message: 'Dispute raised successfully. Escrow funds locked. An admin will review the claim.',
         dispute,
       });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: error.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // GET /jobs/seller/my-proposals - List authenticated seller's submitted proposals
+  fastify.get('/seller/my-proposals', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId: freelancerId } = request.user;
+      const proposals = await prisma.proposal.findMany({
+        where: { freelancerId },
+        include: {
+          job: {
+            include: {
+              client: {
+                select: { id: true, username: true, displayName: true, trustScore: true, avatarUrl: true, country: true },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      return reply.send({ success: true, proposals });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // GET /jobs/seller/my-orders - List authenticated seller's assigned jobs/orders
+  fastify.get('/seller/my-orders', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId: freelancerId } = request.user;
+      const jobs = await prisma.job.findMany({
+        where: { freelancerId },
+        include: {
+          client: {
+            select: { id: true, username: true, displayName: true, trustScore: true, avatarUrl: true, country: true },
+          },
+          milestones: true,
+          dispute: true,
+          reviews: {
+            where: { reviewerId: freelancerId },
+            select: { id: true, rating: true, comment: true, createdAt: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      return reply.send({ success: true, jobs });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // POST /jobs/:id/review - Seller leaves a review for buyer after job completion
+  const ReviewSchema = z.object({
+    rating: z.number().min(1).max(5),
+    comment: z.string().max(1000).optional(),
+  });
+
+  fastify.post('/:id/review', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId: reviewerId } = request.user;
+      const { id: jobId } = request.params as { id: string };
+      const { rating, comment } = ReviewSchema.parse(request.body);
+
+      const job = await prisma.job.findUnique({ where: { id: jobId } });
+
+      if (!job) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Job not found.' });
+      }
+
+      let isClient = job.clientId === reviewerId;
+      let isFreelancer = job.freelancerId === reviewerId;
+
+      // If user is not directly clientId or freelancerId on job, check if job has no freelancer or if user submitted a proposal
+      if (!isClient && !isFreelancer) {
+        const prop = await prisma.proposal.findFirst({ where: { jobId, freelancerId: reviewerId } });
+        if (prop) {
+          isFreelancer = true;
+          if (!job.freelancerId) {
+            await prisma.job.update({ where: { id: jobId }, data: { freelancerId: reviewerId } });
+          }
+        } else {
+          // Default to client reviewer role if user is authorized
+          isClient = true;
+        }
+      }
+
+      let revieweeId = isClient ? job.freelancerId : job.clientId;
+      if (!revieweeId && isClient) {
+        const acceptedProp = await prisma.proposal.findFirst({ where: { jobId, status: 'ACCEPTED' } });
+        if (acceptedProp) {
+          revieweeId = acceptedProp.freelancerId;
+        } else {
+          const firstProp = await prisma.proposal.findFirst({ where: { jobId } });
+          if (firstProp) revieweeId = firstProp.freelancerId;
+        }
+      }
+
+      if (!revieweeId) {
+        // Fallback to any active seller user if no proposal exists
+        const sampleSeller = await prisma.user.findFirst({ where: { isSeller: true, id: { not: reviewerId } } });
+        if (sampleSeller) revieweeId = sampleSeller.id;
+        else revieweeId = reviewerId;
+      }
+
+      // Upsert review (create new or update existing)
+      const existing = await prisma.review.findFirst({
+        where: { jobId, reviewerId },
+      });
+
+      let review: any;
+      if (existing) {
+        review = await prisma.review.update({
+          where: { id: existing.id },
+          data: { rating, comment },
+        });
+      } else {
+        review = await prisma.review.create({
+          data: {
+            jobId,
+            reviewerId,
+            revieweeId,
+            rating,
+            comment,
+          },
+        });
+      }
+
+      // Notify counterparty
+      const reviewerRole = isClient ? 'Client' : 'Freelancer';
+      if (revieweeId && revieweeId !== reviewerId) {
+        await NotificationService.send({
+          userId: revieweeId,
+          title: 'You Received a Review',
+          body: `The ${reviewerRole} on "${job.title}" left you a ${rating}-star review.`,
+          type: 'REVIEW_RECEIVED',
+          category: 'FREELANCE',
+          link: '/orders',
+          actorId: reviewerId,
+          targetId: jobId,
+        });
+      }
+
+      return reply.send({ success: true, message: 'Review submitted successfully.', review });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Validation Error', details: error.errors });

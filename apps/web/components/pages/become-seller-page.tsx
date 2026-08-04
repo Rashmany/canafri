@@ -1963,13 +1963,21 @@ export default function BecomeSellerPage({ onBack, onNavigateToSettings }: Becom
                     setOtpDigits(['', '', '', '', '', '']);
                     setOtpError('');
                     try {
-                      const cleanPhone = phone.replace(/[\s-()]/g, '');
-                      await apiFetch('/api/auth/phone/send-otp', {
+                      const cleanPhone = phone.replace(/[\s\-()]/g, '');
+                      const res = await apiFetch('/api/auth/phone/send-otp', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone: cleanPhone, prefix: selectedPhonePrefix.prefix }),
                       });
-                    } catch {}
+                      const data = await res.json();
+                      if (data.success) {
+                        toast('New verification code sent!', 'success');
+                      } else {
+                        setOtpError(data.message || 'Failed to resend verification code.');
+                      }
+                    } catch {
+                      setOtpError('Failed to resend verification code. Please check connection.');
+                    }
                   }}
                   className="text-[11px] font-semibold text-primary hover:underline cursor-pointer bg-transparent border-none"
                 >
@@ -2010,6 +2018,7 @@ export default function BecomeSellerPage({ onBack, onNavigateToSettings }: Becom
                     setShowPhoneOtpModal(false);
                     setOtpDigits(['', '', '', '', '', '']);
                     setOtpError('');
+                    setIsPhoneVerified(true);
                     submitSellerApplication();
                   } catch {
                     setOtpError('Network error. Please check your connection and try again.');
