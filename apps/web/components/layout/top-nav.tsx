@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Search, Bell, X, Check, Trash2, Inbox,
+  Search, Bell, X, Check, Trash2, Inbox, Menu,
   // Freelancing
   Briefcase, FileText, CheckCircle2, XCircle, UserCheck, UploadCloud, ShieldCheck, RefreshCw, ShieldAlert, Star,
   // Messaging
@@ -424,25 +424,16 @@ export default function TopNav({
       {/* ── Mobile layout (<md) — avatar+search | logo/page title | bell ── */}
       <div className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-3 md:hidden">
 
-        {/* Left: avatar — tapping opens the mobile sidebar drawer */}
-        <div className="flex items-center gap-2">
-          <AvatarOnline
-            src={resolvedAvatar}
-            alt={user.name}
-            online
+        {/* Left: hamburger menu — tapping opens the mobile sidebar drawer */}
+        <div className="flex items-center">
+          <button
+            type="button"
             onClick={onMenuOpen}
-          />
-          {/* Search icon: only on Dashboard */}
-          {activePage === 'Dashboard' && (
-            <button
-              type="button"
-              onClick={() => onSearchNavigate?.('')}
-              aria-label="Search"
-              className="flex items-center justify-center w-8 h-8 rounded-full text-foreground/60 hover:text-foreground hover:bg-foreground/5 transition-colors cursor-pointer"
-            >
-              <Search size={19} strokeWidth={1.75} />
-            </button>
-          )}
+            aria-label="Open Navigation Menu"
+            className="flex items-center justify-center w-9 h-9 rounded-xl bg-foreground/5 hover:bg-foreground/10 active:scale-95 transition-all text-foreground border border-border/50 cursor-pointer"
+          >
+            <Menu size={20} strokeWidth={2} />
+          </button>
         </div>
 
         {/* Centre: logo on Dashboard, page name elsewhere */}
