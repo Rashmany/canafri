@@ -9,6 +9,7 @@ import { AuditService } from '../services/audit.js';
 import { OTPService } from '../services/otp.js';
 import { RiskService } from '../middleware/riskCheck.js';
 import { authGuard } from '../middleware/auth.js';
+import { canAccessAdminPortal } from '../lib/roles.js';
 import {
   sanitizeInput,
   isValidEmailSyntax,
@@ -653,6 +654,18 @@ export async function authRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // ── Portal Access Enforcement ────────────────────────────────────────────
+      // Admin accounts must authenticate through the Admin Portal only.
+      // This is a portal access check — not a feature permission check.
+      // Feature permissions remain enforced by roleGuard() on individual API routes.
+      if (canAccessAdminPortal(user.role)) {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: 'This account cannot sign in through the user portal. Please use the Admin Login.',
+          code: 'ADMIN_PORTAL_REQUIRED',
+        });
+      }
+
       // Clear any previous failure counter
       await clearLoginFailures(identifier);
 
@@ -1170,10 +1183,15 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid admin credentials.' });
       }
 
-      // Check role — allow all admin roles
-      const isAdminRole = ['ADMIN', 'SUPER_ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN'].includes(user.role);
-      if (!isAdminRole) {
-        return reply.status(403).send({ error: 'Forbidden', message: 'Access denied.' });
+      // ── Portal Access Enforcement ────────────────────────────────────────────
+      // Only admin roles may sign into the Admin Portal.
+      // Feature permissions for individual admin endpoints remain enforced by roleGuard().
+      if (!canAccessAdminPortal(user.role)) {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: 'You are not authorized to access the Admin Portal.',
+          code: 'USER_PORTAL_REQUIRED',
+        });
       }
 
       // Check user status

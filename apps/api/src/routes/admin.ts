@@ -9,6 +9,7 @@ import { CantonService } from '../services/canton.js';
 import { RiskService } from '../middleware/riskCheck.js';
 import { NotificationService } from '../services/notification.js';
 import { getPlatformConfig, getFullPlatformConfig, updatePlatformConfig } from '../services/platform-config.js';
+import { ADMIN_PORTAL_ROLES } from '../lib/roles.js';
 
 const SuspendUserSchema = z.object({
   status: z.enum(['ACTIVE', 'SUSPENDED', 'BANNED']),
@@ -1151,7 +1152,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     try {
       const [activeAdmins, pendingInvites] = await Promise.all([
         prisma.user.findMany({
-          where: { role: { in: ['ADMIN', 'SUPER_ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN'] } },
+          where: { role: { in: [...ADMIN_PORTAL_ROLES] } },
           select: {
             id: true,
             displayName: true,
