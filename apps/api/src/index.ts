@@ -18,6 +18,10 @@ import { messageRoutes } from './routes/messages.js';
 import { walletRoutes } from './routes/wallet.js';
 import { adminRoutes } from './routes/admin.js';
 import { publicInviteRoutes } from './routes/admin.js';
+import { notificationRoutes } from './routes/notifications.js';
+import { platformConfigRoutes } from './routes/platform.js';
+
+import { initSocketServer } from './services/socket.js';
 
 dotenv.config();
 
@@ -67,6 +71,8 @@ const startServer = async () => {
     await server.register(walletRoutes, { prefix: '/wallet' });
     await server.register(adminRoutes, { prefix: '/admin' });
     await server.register(publicInviteRoutes, { prefix: '/auth' });
+    await server.register(notificationRoutes, { prefix: '/notifications' });
+    await server.register(platformConfigRoutes, { prefix: '/platform' });
 
     // Global Health check endpoint
     server.get('/health', async () => {
@@ -83,6 +89,10 @@ const startServer = async () => {
     const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
 
     await server.listen({ port, host });
+
+    // Initialize Socket.IO AFTER server is listening
+    initSocketServer(server);
+
     console.log(`CanaFri Fastify server listening on http://${host}:${port}`);
   } catch (err) {
     server.log.error(err);

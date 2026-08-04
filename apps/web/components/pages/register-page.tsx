@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Eye, EyeOff, User, Lock, Mail, Check, X, ArrowLeft, ShieldAlert } from 'lucide-react';
+import validator from 'validator';
 import { usePlatformConfig } from '@/lib/platform-config-context';
 
 interface RegisterPageProps {
@@ -75,10 +76,75 @@ function sanitizeInput(val: string): string {
   return val.trim().replace(/[<>]/g, '');
 }
 
-function validateEmail(val: string): boolean {
-  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  return emailRegex.test(val);
+
+// ─── Step 1: Syntax Validation ───────────────────────────────────────────────
+
+/**
+ * Determines whether an email address is syntactically valid.
+ *
+ * Delegates entirely to validator.isEmail().
+ * No custom regex, no custom TLD database, no hardcoded length rules.
+ *
+ * The only addition is a minimal provider sanity check:
+ * if the domain prefix matches a known provider but is not the exact
+ * canonical domain (e.g. gmail.coml, gmail.comm, gmail.xyz),
+ * the address is rejected here — NOT in the Gmail business rule below.
+ */
+function isValidEmailSyntax(val: string): boolean {
+  if (!val || typeof val !== 'string') return false;
+  const trimmed = val.trim();
+  if (!trimmed) return false;
+
+  // Primary: delegate to validator.js
+  if (!validator.isEmail(trimmed, { allow_utf8_local_part: false, require_tld: true })) {
+    return false;
+  }
+
+  const domain = trimmed.split('@')[1].toLowerCase();
+
+  // Minimal provider sanity check.
+  // These are structural checks, not business rules.
+  if (domain.startsWith('gmail.') && domain !== 'gmail.com') return false;
+  if (domain.startsWith('yahoo.') && domain !== 'yahoo.com' && domain !== 'yahoo.co.uk') return false;
+  if (domain.startsWith('outlook.') && domain !== 'outlook.com') return false;
+  if (domain.startsWith('hotmail.') && domain !== 'hotmail.com' && domain !== 'hotmail.co.uk') return false;
+  if (domain.startsWith('googlemail.') && domain !== 'googlemail.com') return false;
+
+  return true;
 }
+
+// ─── Step 2: CanaFri Gmail Business Policy ───────────────────────────────────
+
+/**
+ * CanaFri Gmail Business Policy.
+ *
+ * This is NOT email syntax validation.
+ * This is a CanaFri business rule that applies only to @gmail.com addresses.
+ *
+ * We intentionally require users to enter their Gmail address in its
+ * standard format: no dots (.) in the local part and no + aliases.
+ *
+ * This rule applies ONLY to gmail.com. All other providers are unaffected.
+ * (john.doe@company.com, john.doe@yahoo.com, john.doe@icloud.com remain valid.)
+ */
+function checkGmailStandardFormat(val: string): string | null {
+  if (!val || !val.includes('@')) return null;
+  const parts = val.trim().split('@');
+  if (parts.length !== 2) return null;
+
+  const localPart = parts[0];
+  const domain = parts[1].toLowerCase();
+
+  // Gmail-specific business policy — only applies to gmail.com
+  if (domain === 'gmail.com') {
+    if (localPart.includes('.') || localPart.includes('+')) {
+      return 'Please enter your Gmail in its standard format.';
+    }
+  }
+
+  return null;
+}
+
 
 function validateUsername(val: string): boolean {
   const clean = val.startsWith('@') ? val.slice(1) : val;
@@ -114,10 +180,17 @@ export default function RegisterPage({
   // Mock taken usernames database
   const takenUsernames = ['taken', 'admin', 'canafri', 'johndoe', 'joshtrek'];
 
-  // Error States
+  // Error States & Real-Time Validation States
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Live availability states
+  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
+  const [usernameMessage, setUsernameMessage] = useState<string>('');
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
+  const [emailMessage, setEmailMessage] = useState<string>('');
+  const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
 
   // Real-time password requirement flags
   const hasMinLength = password.length >= 8;
@@ -125,14 +198,109 @@ export default function RegisterPage({
   const hasNumber = /[0-9]/.test(password);
   const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
 
-  const cleanUsername = username;
-  const isUsernameTaken = takenUsernames.includes(cleanUsername.toLowerCase());
+  const handlePasswordFocus = () => setIsPasswordFocused(true);
+  const handlePasswordBlur = () => setIsPasswordFocused(false);
 
-  const isFormValid =
+
+  // Live API Availability Check (/api/auth/check-availability)
+  const checkAvailability = async (checkType?: 'username' | 'email' | 'all') => {
+    try {
+      const payload: { username?: string; email?: string } = {};
+      if ((checkType === 'username' || checkType === 'all') && username.length >= 3) {
+        payload.username = username;
+        setUsernameStatus('checking');
+      }
+      if (checkType === 'email' || checkType === 'all') {
+        if (!email) return;
+
+        // Step 1: Syntax check FIRST
+        if (!isValidEmailSyntax(email)) {
+          setEmailStatus('invalid');
+          const msg = 'Please enter a valid email address.';
+          setEmailMessage(msg);
+          setErrors((prev) => ({ ...prev, email: msg }));
+          return;
+        }
+
+        // Step 2: Gmail standardization check (only runs AFTER valid syntax passes)
+        const gmailErr = checkGmailStandardFormat(email);
+        if (gmailErr) {
+          setEmailStatus('invalid');
+          setEmailMessage(gmailErr);
+          setErrors((prev) => ({ ...prev, email: gmailErr }));
+          return;
+        }
+
+        payload.email = email;
+        setEmailStatus('checking');
+      }
+
+      if (!payload.username && !payload.email) return;
+
+      const res = await fetch('/api/auth/check-availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) return;
+
+      // Update Username status
+      if (payload.username && data.username) {
+        if (data.username.available) {
+          setUsernameStatus('available');
+          setUsernameMessage('Username is available');
+          setErrors((prev) => { const n = { ...prev }; delete n.username; return n; });
+        } else {
+          setUsernameStatus('taken');
+          const msg = data.username.message || 'Username already taken.';
+          setUsernameMessage(msg);
+          setErrors((prev) => ({ ...prev, username: msg }));
+        }
+      }
+
+      // Update Email status
+      if (payload.email && data.email) {
+        if (data.email.suggestion) {
+          setEmailSuggestion(data.email.suggestion);
+        } else {
+          setEmailSuggestion(null);
+        }
+
+        if (!data.email.available) {
+          setEmailStatus('taken');
+          const msg = data.email.message || 'Email address already registered.';
+          setEmailMessage(msg);
+          setErrors((prev) => ({ ...prev, email: msg }));
+        } else if (data.email.isDisposable) {
+          setEmailStatus('invalid');
+          const msg = data.email.message || 'Disposable email addresses are not allowed.';
+          setEmailMessage(msg);
+          setErrors((prev) => ({ ...prev, email: msg }));
+        } else {
+          setEmailStatus('available');
+          setEmailMessage('');
+          setErrors((prev) => { const n = { ...prev }; delete n.email; return n; });
+        }
+      }
+    } catch {
+      // Ignore network availability errors silently
+    }
+  };
+
+  // Validate step 1 fields before advancing
+  const isStep1Valid =
     validateFullName(fullName) &&
     validateUsername(username) &&
-    !isUsernameTaken &&
-    validateEmail(email) &&
+    usernameStatus !== 'taken' &&
+    isValidEmailSyntax(email) &&
+    !checkGmailStandardFormat(email) &&
+    emailStatus !== 'taken' &&
+    emailStatus !== 'invalid';
+
+  const isFormValid =
+    isStep1Valid &&
     hasMinLength &&
     hasUppercase &&
     hasNumber &&
@@ -141,26 +309,33 @@ export default function RegisterPage({
     agreedToTerms &&
     !isSubmitting;
 
-  const handlePasswordFocus = () => setIsPasswordFocused(true);
-  const handlePasswordBlur = () => setIsPasswordFocused(false);
-
-  // Validate step 1 fields before advancing
-  const isStep1Valid =
-    validateFullName(fullName) &&
-    validateUsername(username) &&
-    !isUsernameTaken &&
-    validateEmail(email);
-
-  const handleNextStep = () => {
+  const handleNextStep = async () => {
     const fieldErrors: Record<string, string> = {};
     if (!validateFullName(fullName)) fieldErrors.fullName = 'Enter a valid full name (letters only, 2–50 chars).';
-    if (!validateUsername(username)) fieldErrors.username = 'Username must be 3–20 characters (letters, numbers, _ or -).';
-    else if (isUsernameTaken) fieldErrors.username = 'Username already taken.';
-    if (!validateEmail(email)) fieldErrors.email = 'Enter a valid email address.';
+    if (!validateUsername(username)) {
+      fieldErrors.username = 'Username must be 3–20 characters (letters, numbers, _ or -).';
+    }
+
+    if (!isValidEmailSyntax(email)) {
+      fieldErrors.email = 'Please enter a valid email address.';
+    } else {
+      const gmailErr = checkGmailStandardFormat(email);
+      if (gmailErr) {
+        fieldErrors.email = gmailErr;
+      }
+    }
+
     if (Object.keys(fieldErrors).length > 0) {
       setErrors((prev) => ({ ...prev, ...fieldErrors }));
       return;
     }
+
+    // Final live check before proceeding
+    await checkAvailability('all');
+    
+    if (usernameStatus === 'taken') return;
+    if (emailStatus === 'taken' || emailStatus === 'invalid') return;
+
     setStep(2);
   };
 
@@ -319,29 +494,69 @@ export default function RegisterPage({
                       prefixText="@"
                       placeholder="johndoe123"
                       value={username}
-                      onChange={(val) => handleFieldChange('username', val)}
+                      onChange={(val) => {
+                        handleFieldChange('username', val);
+                        setUsernameStatus('idle');
+                      }}
+                      onBlur={() => checkAvailability('username')}
                       error={errors.username}
                     />
-                    {username.length > 0 && !errors.username && (
+                    {username.length >= 3 && !errors.username && (
                       <div className="px-1 mt-1">
-                        {isUsernameTaken ? (
-                          <span className="text-[10px] text-red-500 font-medium">Username already taken</span>
-                        ) : (
-                          <span className="text-[10px] text-emerald-400 font-medium">Username available</span>
+                        {usernameStatus === 'checking' && (
+                          <span className="text-[10px] text-white/50 font-medium">Checking availability...</span>
+                        )}
+                        {usernameStatus === 'available' && (
+                          <span className="text-[10px] text-emerald-400 font-medium">Username is available</span>
+                        )}
+                        {usernameStatus === 'taken' && (
+                          <span className="text-[10px] text-red-500 font-medium">{usernameMessage || 'Username is already taken'}</span>
                         )}
                       </div>
                     )}
                   </div>
 
-                  <InputField
-                    label="Email Address"
-                    icon={<Mail size={16} strokeWidth={1.5} />}
-                    placeholder="e.g., johndoe@gmail.com"
-                    value={email}
-                    onChange={(val) => handleFieldChange('email', val)}
-                    error={errors.email}
-                    autoComplete="email"
-                  />
+                  <div>
+                    <InputField
+                      label="Email Address"
+                      icon={<Mail size={16} strokeWidth={1.5} />}
+                      placeholder="e.g., johndoe@gmail.com"
+                      value={email}
+                      onChange={(val) => {
+                        handleFieldChange('email', val);
+                        setEmailStatus('idle');
+                        if (val.trim()) {
+                          if (!isValidEmailSyntax(val)) {
+                            setErrors((prev) => ({ ...prev, email: 'Please enter a valid email address.' }));
+                          } else {
+                            const gmailErr = checkGmailStandardFormat(val);
+                            if (gmailErr) {
+                              setErrors((prev) => ({ ...prev, email: gmailErr }));
+                            }
+                          }
+                        }
+                      }}
+                      onBlur={() => checkAvailability('email')}
+                      error={errors.email}
+                      autoComplete="email"
+                    />
+                    {emailSuggestion && (
+                      <div className="px-1 mt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEmail(emailSuggestion);
+                            setEmailSuggestion(null);
+                            setErrors((prev) => { const n = { ...prev }; delete n.email; return n; });
+                            checkAvailability('email');
+                          }}
+                          className="text-[10px] text-primary hover:underline cursor-pointer flex items-center gap-1"
+                        >
+                          Did you mean <span className="font-semibold text-white">{emailSuggestion}</span>?
+                        </button>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Next button */}
                   <button

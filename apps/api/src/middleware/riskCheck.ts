@@ -11,12 +11,12 @@ export class RiskService {
     scoreAdded: number,
     metadata?: any
   ): Promise<number> {
-    // 1. Create RiskFlag record
+    const severity = scoreAdded >= 50 ? 'HIGH' : scoreAdded >= 20 ? 'MEDIUM' : 'LOW';
     await prisma.riskFlag.create({
       data: {
         userId,
-        signal,
-        severity: scoreAdded,
+        flag: signal,
+        severity,
         metadata: metadata ? JSON.stringify(metadata) : undefined,
       },
     });
@@ -76,7 +76,10 @@ export async function riskRestrictionGuard(request: FastifyRequest, reply: Fasti
   }
 
   // Tier 3: Restricted (61 to 80) -> Suspends earnings/payouts
-  if (user.riskScore >= 61 && request.url.includes('/unstake') || request.url.includes('/milestones') && request.method === 'POST') {
+  if (
+    user.riskScore >= 61 &&
+    (request.url.includes('/unstake') || (request.url.includes('/milestones') && request.method === 'POST'))
+  ) {
     return reply.status(403).send({
       error: 'Restricted',
       message: 'Access denied. Account is in Restricted tier (earnings and withdrawals suspended).',

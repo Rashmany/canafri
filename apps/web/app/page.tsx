@@ -357,10 +357,9 @@ export default function Home() {
         devOtp={pendingDevOtp}
         onBack={() => handleNavigate('Register')}
         onVerificationSuccess={() => {
-          // Email is verified — user must now log in to get a real session token
           setPendingDevOtp(undefined);
-          handleNavigate('Login');
-          toast('Email verified! Please sign in to continue.', 'success');
+          handleNavigate('Dashboard');
+          toast('Email verified! Welcome to CanaFri.', 'success');
         }}
       />
     );

@@ -10,6 +10,14 @@ import { OTPService } from '../services/otp.js';
 import { RiskService } from '../middleware/riskCheck.js';
 import { authGuard } from '../middleware/auth.js';
 import {
+  sanitizeInput,
+  isValidEmailSyntax,
+  isDisposableEmail,
+  detectDomainTypo,
+  validateGmailStandardFormat,
+  validateEmailAddress,
+} from '../lib/emailValidator.js';
+import {
   loginRateLimit,
   registerRateLimit,
   forgotPasswordRateLimit,
@@ -198,58 +206,200 @@ const ADMIN_COOKIE_OPTIONS = {
 export async function authRoutes(fastify: FastifyInstance) {
 
   // ────────────────────────────────────────────────────────────────────────────
-  // POST /auth/register  (Email + Password)
+  // POST /auth/check-availability  (Live debounced check)
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.post('/check-availability', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const body = (request.body as any) || {};
+      const rawUsername = sanitizeInput(body.username || '');
+      const rawEmail = sanitizeInput(body.email || '').toLowerCase();
+
+      let usernameResult = { available: true, message: undefined as string | undefined };
+      let emailResult = {
+        available: true,
+        message: undefined as string | undefined,
+        suggestion: undefined as string | undefined,
+        isDisposable: false,
+      };
+      let isValid = true;
+
+      // Validate Username
+      if (rawUsername) {
+        if (!/^[a-zA-Z0-9_-]{3,20}$/.test(rawUsername)) {
+          usernameResult = { available: false, message: 'Username must be 3–20 characters (letters, numbers, _ or -).' };
+          isValid = false;
+        } else {
+          const [dbUser, lock] = await Promise.all([
+            prisma.user.findUnique({ where: { username: rawUsername } }),
+            redis.get(`auth:lock:username:${rawUsername}`),
+          ]);
+          if (dbUser || lock) {
+            usernameResult = { available: false, message: 'Username already taken.' };
+            isValid = false;
+          }
+        }
+      }
+
+      // Validate Email
+      if (rawEmail) {
+        if (!isValidEmailSyntax(rawEmail)) {
+          emailResult.available = false;
+          emailResult.message = 'Please enter a valid email address.';
+          isValid = false;
+        } else {
+          // 1. Gmail Standardization check (only runs AFTER valid syntax passes)
+          const gmailValidation = validateGmailStandardFormat(rawEmail);
+          if (!gmailValidation.valid) {
+            emailResult.available = false;
+            emailResult.message = gmailValidation.message;
+            isValid = false;
+          }
+
+          // 2. Disposable Email check
+          if (isDisposableEmail(rawEmail)) {
+            emailResult.available = false;
+            emailResult.isDisposable = true;
+            emailResult.message = 'Disposable email addresses are not allowed.';
+            isValid = false;
+          }
+
+          // 3. Domain Typo check
+          const typoSuggestion = detectDomainTypo(rawEmail);
+          if (typoSuggestion) {
+            emailResult.suggestion = typoSuggestion;
+          }
+
+          // 4. DB + Redis lock check (if syntax valid)
+          if (isValid || (!emailResult.isDisposable && emailResult.available)) {
+            const [dbUser, lock] = await Promise.all([
+              prisma.user.findUnique({ where: { email: rawEmail } }),
+              redis.get(`auth:lock:email:${rawEmail}`),
+            ]);
+            if (dbUser || lock) {
+              emailResult.available = false;
+              emailResult.message = 'Email address already registered.';
+              isValid = false;
+            }
+          }
+        }
+      }
+
+      return reply.send({
+        valid: isValid,
+        username: usernameResult,
+        email: emailResult,
+      });
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Availability check failed.' });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // POST /auth/register  (Email + Password) - Atomic Redis Pending Registration
   // ────────────────────────────────────────────────────────────────────────────
   fastify.post('/register', { preValidation: [registerRateLimit] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    let acquiredUsernameLock: string | null = null;
+    let acquiredEmailLock: string | null = null;
+
     try {
       const { fullName, username, email, password } = RegisterSchema.parse(request.body);
 
-      // Generic response — never reveal which field conflicts (anti-enumeration)
+      const sanitizedFullName = sanitizeInput(fullName);
+      const sanitizedUsername = sanitizeInput(username);
+      const sanitizedEmail = sanitizeInput(email).toLowerCase();
+
+      // 1. Syntax Validation FIRST (rejects malformed emails before any Gmail policy runs)
+      if (!isValidEmailSyntax(sanitizedEmail)) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Please enter a valid email address.' });
+      }
+
+      // 2. Gmail Standard Format Check (only after valid syntax passes)
+      const gmailCheck = validateGmailStandardFormat(sanitizedEmail);
+      if (!gmailCheck.valid) {
+        return reply.status(400).send({ error: 'Bad Request', message: gmailCheck.message });
+      }
+
+      // 3. Disposable Email Check
+      if (isDisposableEmail(sanitizedEmail)) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Disposable email addresses are not allowed.' });
+      }
+
+      // 3. Domain Typo Check
+      const typoSuggestion = detectDomainTypo(sanitizedEmail);
+      if (typoSuggestion) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: `Did you mean ${typoSuggestion}? Please check your email address domain.`,
+          suggestion: typoSuggestion,
+        });
+      }
+
+      // 4. Acquire Username Lock (15 mins)
+      const usernameLockKey = `auth:lock:username:${sanitizedUsername}`;
+      const usernameLockAcquired = await redis.set(usernameLockKey, 'locked', { NX: true, EX: 900 });
+      if (!usernameLockAcquired) {
+        return reply.status(409).send({ error: 'Conflict', message: 'Username is currently being registered or already taken.' });
+      }
+      acquiredUsernameLock = usernameLockKey;
+
+      // 5. Acquire Email Lock (15 mins)
+      const emailLockKey = `auth:lock:email:${sanitizedEmail}`;
+      const emailLockAcquired = await redis.set(emailLockKey, 'locked', { NX: true, EX: 900 });
+      if (!emailLockAcquired) {
+        await redis.del(usernameLockKey);
+        acquiredUsernameLock = null;
+        return reply.status(409).send({ error: 'Conflict', message: 'Email address is currently being registered or already registered.' });
+      }
+      acquiredEmailLock = emailLockKey;
+
+      // 6. Check PostgreSQL Uniqueness
       const [existingEmail, existingUsername] = await Promise.all([
-        prisma.user.findUnique({ where: { email } }),
-        prisma.user.findUnique({ where: { username } }),
+        prisma.user.findUnique({ where: { email: sanitizedEmail } }),
+        prisma.user.findUnique({ where: { username: sanitizedUsername } }),
       ]);
       if (existingEmail || existingUsername) {
+        await Promise.all([
+          redis.del(usernameLockKey),
+          redis.del(emailLockKey),
+        ]);
+        acquiredUsernameLock = null;
+        acquiredEmailLock = null;
         return reply.status(409).send({ error: 'Conflict', message: 'An account with those credentials already exists.' });
       }
 
+      // 7. Hash Password AFTER locks are secured
       const passwordHash = await HashService.hashPassword(password);
 
-      const user = await prisma.user.create({
-        data: {
-          displayName: fullName,
-          username,
-          email,
-          passwordHash,
-          emailVerified: false,
-          trustScore: 50,
-          riskScore: 0,
-          status: 'ACTIVE',
-          role: 'MEMBER',
-        },
-      });
-
-      // Generate and cache email verification OTP (10 minutes)
+      // 8. Generate 6-digit OTP & Hash OTP
       const otp = HashService.generateOTP(6);
-      const otpKey = `email_otp:${email}`;
-      await redis.set(otpKey, HashService.hashToken(otp), { EX: 600 });
+      const otpHash = HashService.hashToken(otp);
 
-      // TODO: Send OTP via email provider (e.g. Resend, SendGrid)
-      console.log(`[MOCK EMAIL] Verification OTP for ${email}: ${otp}`);
+      // 9. Store Pending Registration in Redis (15m TTL) - ZERO PostgreSQL record created yet!
+      const pendingKey = `auth:pending:${sanitizedEmail}`;
+      const pendingPayload = {
+        fullName: sanitizedFullName,
+        username: sanitizedUsername,
+        email: sanitizedEmail,
+        passwordHash,
+        otpHash,
+        createdAt: Date.now(),
+      };
 
-      await AuditService.log({
-        userId: user.id,
-        action: 'REGISTER',
-        ipAddress: request.ip,
-        device: request.headers['user-agent'] ?? undefined,
-      });
+      await redis.set(pendingKey, JSON.stringify(pendingPayload), { EX: 900 });
+
+      // Mock or send email OTP
+      console.log(`[MOCK EMAIL] Verification OTP for ${sanitizedEmail}: ${otp}`);
 
       return reply.status(201).send({
         success: true,
-        message: 'Registration successful. Please verify your email address.',
-        userId: user.id,
+        message: 'Registration initiated. Please verify your email address.',
+        email: sanitizedEmail,
+        devOtp: process.env.NODE_ENV !== 'production' ? otp : undefined,
       });
     } catch (err: any) {
+      if (acquiredUsernameLock) await redis.del(acquiredUsernameLock);
+      if (acquiredEmailLock) await redis.del(acquiredEmailLock);
+
       if (err instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Validation Error', details: err.errors });
       }
@@ -258,55 +408,133 @@ export async function authRoutes(fastify: FastifyInstance) {
   });
 
   // ────────────────────────────────────────────────────────────────────────────
-  // POST /auth/verify-email
+  // POST /auth/verify-email  (Atomic Verification & Auto-Login)
   // ────────────────────────────────────────────────────────────────────────────
   fastify.post('/verify-email', { preValidation: [emailVerifyRateLimit] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { email, otp } = VerifyEmailOtpSchema.parse(request.body);
+      const sanitizedEmail = sanitizeInput(email).toLowerCase();
 
-      const otpKey = `email_otp:${email}`;
-      const failKey = `email_otp_fails:${email}`;
-      const storedHash = await redis.get(otpKey);
+      const pendingKey = `auth:pending:${sanitizedEmail}`;
+      const failKey = `auth:otp_fails:${sanitizedEmail}`;
+      const emailLockKey = `auth:lock:email:${sanitizedEmail}`;
 
-      if (!storedHash) {
-        return reply.status(400).send({ error: 'Bad Request', message: 'OTP has expired or is invalid.' });
+      // 1. Retrieve pending registration from Redis
+      const pendingRaw = await redis.get(pendingKey);
+      if (!pendingRaw) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: 'Registration session has expired or is invalid. Please register again.',
+        });
       }
 
-      const failCount = parseInt(await redis.get(failKey) ?? '0', 10);
-      if (failCount >= 5) {
-        return reply.status(429).send({ error: 'Too Many Requests', message: 'Too many incorrect OTP attempts.' });
+      const pendingData = JSON.parse(pendingRaw);
+      const usernameLockKey = `auth:lock:username:${pendingData.username}`;
+
+      // 2. Check failed OTP attempts
+      const failCount = parseInt((await redis.get(failKey)) ?? '0', 10);
+      if (failCount >= 3) {
+        await AuditService.log({
+          action: 'OTP_ATTEMPTS_EXCEEDED',
+          target: sanitizedEmail,
+          ipAddress: request.ip,
+          device: request.headers['user-agent'] ?? undefined,
+        });
+
+        await Promise.all([
+          redis.del(pendingKey),
+          redis.del(failKey),
+          redis.del(usernameLockKey),
+          redis.del(emailLockKey),
+        ]);
+
+        return reply.status(429).send({
+          error: 'Too Many Requests',
+          message: 'Maximum OTP verification attempts reached. Registration cancelled. Please register again.',
+        });
       }
 
-      const otpHash = HashService.hashToken(otp);
-      if (!HashService.safeCompareTokens(otpHash, storedHash)) {
+      // 3. Verify OTP hash
+      const incomingHash = HashService.hashToken(otp);
+      if (!HashService.safeCompareTokens(incomingHash, pendingData.otpHash)) {
         await redis.incr(failKey);
-        await redis.expire(failKey, 600);
-        return reply.status(400).send({ error: 'Bad Request', message: 'Invalid OTP.' });
+        await redis.expire(failKey, 900);
+        return reply.status(400).send({ error: 'Bad Request', message: 'Invalid verification code.' });
       }
 
-      await redis.del(otpKey);
-      await redis.del(failKey);
-
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) {
-        return reply.status(404).send({ error: 'Not Found', message: 'Account not found.' });
-      }
-
-      await prisma.user.update({ where: { id: user.id }, data: { emailVerified: true } });
+      // 4. OTP is correct -> Execute atomic Prisma transaction ONLY for DB operations
+      const [user] = await prisma.$transaction([
+        prisma.user.create({
+          data: {
+            displayName: pendingData.fullName,
+            username: pendingData.username,
+            email: pendingData.email,
+            passwordHash: pendingData.passwordHash,
+            emailVerified: true,
+            trustScore: 50,
+            riskScore: 0,
+            status: 'ACTIVE',
+            role: 'MEMBER',
+          },
+        }),
+      ]);
 
       await AuditService.log({
         userId: user.id,
-        action: 'EMAIL_VERIFIED',
+        action: 'REGISTER_VERIFIED',
         ipAddress: request.ip,
         device: request.headers['user-agent'] ?? undefined,
       });
 
-      return reply.send({ success: true, message: 'Email address verified successfully.' });
+      // 5. Delete Redis pending registration & locks
+      await Promise.all([
+        redis.del(pendingKey),
+        redis.del(failKey),
+        redis.del(usernameLockKey),
+        redis.del(emailLockKey),
+      ]);
+
+      // 6. Create Session AFTER transaction commits successfully
+      const sessionExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const sessionToken = HashService.generateToken();
+      const session = await prisma.session.create({
+        data: {
+          userId: user.id,
+          token: sessionToken,
+          deviceInfo: request.headers['user-agent'] ?? 'unknown',
+          userAgent: request.headers['user-agent'] ?? null,
+          ipAddress: request.ip,
+          expiresAt: sessionExpiry,
+        },
+      });
+
+      await redis.set(`session:${session.id}`, JSON.stringify({ userId: user.id, role: user.role }), {
+        EX: 30 * 24 * 60 * 60,
+      });
+
+      // 7. Issue Refresh Token (HttpOnly cookie) + Access Token
+      const { accessToken, refreshToken } = await issueTokens(fastify, user, session.id);
+      await storeHashedRefreshToken(session.id, refreshToken);
+      reply.setCookie('refresh_token', refreshToken, COOKIE_OPTIONS);
+
+      // 8. Return Auto-Login payload
+      return reply.send({
+        success: true,
+        message: 'Registration complete and email verified.',
+        accessToken,
+        user: {
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          role: user.role,
+          emailVerified: user.emailVerified,
+        },
+      });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Validation Error', details: err.errors });
       }
-      return reply.status(500).send({ error: 'Internal Server Error', message: 'Verification failed.' });
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Email verification failed.' });
     }
   });
 
@@ -316,35 +544,58 @@ export async function authRoutes(fastify: FastifyInstance) {
   fastify.post('/resend-otp', { preValidation: [resendOtpRateLimit] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { email } = ResendOtpSchema.parse(request.body);
+      const sanitizedEmail = sanitizeInput(email).toLowerCase();
 
-      // Verify the user exists and is not verified yet
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) {
-        // Return success even if not found to prevent user enumeration
-        return reply.send({ success: true, message: 'If the email is registered and unverified, a new OTP has been sent.' });
+      const pendingKey = `auth:pending:${sanitizedEmail}`;
+      const cooldownKey = `auth:resend:${sanitizedEmail}`;
+
+      // 1. Check 60-second cooldown
+      const inCooldown = await redis.get(cooldownKey);
+      if (inCooldown) {
+        return reply.status(429).send({
+          error: 'Too Many Requests',
+          message: 'Please wait 60 seconds before requesting a new verification code.',
+        });
       }
 
-      if (user.emailVerified) {
-        return reply.status(400).send({ error: 'Bad Request', message: 'Email address is already verified.' });
+      // 2. Retrieve pending registration from Redis
+      const pendingRaw = await redis.get(pendingKey);
+      if (!pendingRaw) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: 'Registration session expired or invalid. Please register again.',
+        });
       }
 
-      // Generate new OTP
-      const otp = HashService.generateOTP(6);
-      const otpKey = `email_otp:${email}`;
-      const failKey = `email_otp_fails:${email}`;
+      const pendingData = JSON.parse(pendingRaw);
 
-      await redis.set(otpKey, HashService.hashToken(otp), { EX: 600 });
-      await redis.del(failKey); // Reset failures on resend
+      // 3. Generate new 6-digit OTP & Hash
+      const newOtp = HashService.generateOTP(6);
+      const newOtpHash = HashService.hashToken(newOtp);
 
-      // Mock email sending
-      console.log(`[MOCK EMAIL] Resent Verification OTP for ${email}: ${otp}`);
+      // 4. Update pending registration (refresh 15m TTL & update otpHash)
+      pendingData.otpHash = newOtpHash;
+      await redis.set(pendingKey, JSON.stringify(pendingData), { EX: 900 });
 
-      return reply.send({ success: true, message: 'A new verification code has been sent to your email.' });
+      // Reset failure counter
+      await redis.del(`auth:otp_fails:${sanitizedEmail}`);
+
+      // 5. Set 60-second cooldown
+      await redis.set(cooldownKey, '1', { EX: 60 });
+
+      // Mock/Log email OTP
+      console.log(`[MOCK EMAIL] Resent Verification OTP for ${sanitizedEmail}: ${newOtp}`);
+
+      return reply.send({
+        success: true,
+        message: 'A new verification code has been sent to your email.',
+        devOtp: process.env.NODE_ENV !== 'production' ? newOtp : undefined,
+      });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Validation Error', details: err.errors });
       }
-      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to resend OTP.' });
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to resend verification code.' });
     }
   });
 
@@ -1251,6 +1502,103 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'Validation Error', details: err.errors });
       }
       return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to create admin.' });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // POST /auth/phone/send-otp  — Send phone verification OTP
+  //
+  // STATUS: Development stub.
+  // When SMS API (e.g. Twilio, Termii) is connected, replace the console.log
+  // block below with the real SMS send call. The route contract stays the same.
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.post('/phone/send-otp', { preHandler: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { phone, prefix } = request.body as { phone?: string; prefix?: string };
+
+      if (!phone || !prefix) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Phone number and country prefix are required.' });
+      }
+
+      const cleanPhone = phone.replace(/[\s\-()]/g, '');
+      if (cleanPhone.length < 7 || cleanPhone.length > 15) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Please enter a valid phone number.' });
+      }
+
+      // Generate a 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const fullPhone = `${prefix}${cleanPhone}`;
+      const otpKey = `phone:otp:${fullPhone}`;
+
+      // Store OTP in Redis with 10-minute TTL
+      await redis.set(otpKey, otp, { EX: 600 });
+
+      // ── DEV FALLBACK ──────────────────────────────────────────────────────
+      // SMS API not connected yet. OTP is printed to the terminal for testing.
+      // To go live: replace this block with your SMS provider call (Twilio, Termii, etc.)
+      // and remove the console.log line below.
+      // ─────────────────────────────────────────────────────────────────────
+      console.log(`\n📱 [DEV] Phone OTP for ${fullPhone}: ${otp}\n`);
+      // ─────────────────────────────────────────────────────────────────────
+
+      return reply.send({
+        success: true,
+        message: 'Verification code sent to your phone.',
+      });
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to send verification code. Please try again.' });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // POST /auth/phone/verify-otp  — Verify phone OTP
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.post('/phone/verify-otp', { preHandler: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const body = request.body as { phone?: string; prefix?: string; otp?: string; code?: string };
+      const phone = body.phone;
+      const prefix = body.prefix;
+      const otp = (body.otp || body.code)?.trim();
+
+      if (!phone || !prefix || !otp) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Phone number, prefix, and verification code are required.' });
+      }
+
+      const cleanPhone = phone.replace(/[\s\-()]/g, '');
+      const fullPhone = `${prefix}${cleanPhone}`;
+      const otpKey = `phone:otp:${fullPhone}`;
+
+      const storedOtp = await redis.get(otpKey);
+
+      if (!storedOtp) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Verification code has expired. Please request a new one.' });
+      }
+
+      if (storedOtp !== otp) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Invalid verification code. Please check and try again.' });
+      }
+
+      // OTP is correct — delete it immediately (single-use)
+      await redis.del(otpKey);
+
+      // Update user record to mark phone as verified
+      const userId = (request.user as any)?.userId || (request.user as any)?.sub || (request.user as any)?.id;
+      if (userId) {
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            phoneVerified: true,
+            phonePrefix: prefix,
+          },
+        });
+      }
+
+      return reply.send({
+        success: true,
+        message: 'Phone number verified successfully.',
+      });
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Verification failed. Please try again.' });
     }
   });
 }

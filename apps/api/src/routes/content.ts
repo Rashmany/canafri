@@ -5,20 +5,42 @@ import { redis } from '../lib/redis.js';
 import { authGuard, creatorGuard } from '../middleware/auth.js';
 import { RiskService, riskRestrictionGuard } from '../middleware/riskCheck.js';
 import { CantonService } from '../services/canton.js';
+import { NotificationService } from '../services/notification.js';
 
 const CreateContentSchema = z.object({
   title: z.string().min(3).max(100),
   bodyIpfsHash: z.string().min(5),
   type: z.enum(['FREE', 'PREMIUM']),
   priceCC: z.number().nonnegative().default(0),
+  topic: z.string().optional(),
+  publication: z.string().optional(),
 });
 
 export async function contentRoutes(fastify: FastifyInstance) {
-  // GET /content - List public/live content
+  // GET /content - List public/live content + authenticated user's own posts (any status)
   fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
+      // Try to resolve current user from token (optional auth)
+      let myUserId: string | null = null;
+      try {
+        const authHeader = (request.headers as any).authorization as string | undefined;
+        if (authHeader?.startsWith('Bearer ')) {
+          const token = authHeader.slice(7);
+          const decoded = (fastify.jwt as any).decode(token) as any;
+          // Handle both token formats: new tokens use `sub`, legacy use `userId`
+          if (decoded?.sub) myUserId = decoded.sub;
+          else if (decoded?.userId) myUserId = decoded.userId;
+        }
+      } catch (_) { /* unauthenticated — fine */ }
+
       const content = await prisma.content.findMany({
-        where: { status: 'LIVE' },
+        where: {
+          OR: [
+            { status: 'LIVE' },
+            // Show the authenticated creator's own posts in any status
+            ...(myUserId ? [{ creatorId: myUserId }] : []),
+          ],
+        },
         include: {
           creator: {
             select: {
@@ -29,7 +51,7 @@ export async function contentRoutes(fastify: FastifyInstance) {
             },
           },
         },
-        orderBy: { publishedAt: 'desc' },
+        orderBy: { createdAt: 'desc' },
       });
       return reply.send({ success: true, content });
     } catch (error: any) {
@@ -41,59 +63,44 @@ export async function contentRoutes(fastify: FastifyInstance) {
   fastify.post('/', { preValidation: [authGuard, creatorGuard, riskRestrictionGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { userId } = request.user;
-      const { title, bodyIpfsHash, type, priceCC } = CreateContentSchema.parse(request.body);
+      const { title, bodyIpfsHash, type, priceCC, topic, publication } = CreateContentSchema.parse(request.body);
 
-      // 1. Verify Creator Stake is active and locked
-      const creatorStake = await prisma.creatorStake.findUnique({
+      // 1. Ensure Creator Stake exists or auto-create active stake for publishing
+      let creatorStake = await prisma.creatorStake.findUnique({
         where: { userId },
       });
 
-      if (!creatorStake || creatorStake.status !== 'LOCKED') {
-        // If unlocked or slashed, creator cannot publish. Auto delist any live content or reject publishing
-        return reply.status(403).send({
-          error: 'Forbidden',
-          message: 'Creator stake must be active and LOCKED to publish content. Current status: ' + (creatorStake?.status || 'NONE'),
-        });
-      }
-
-      // 2. Perform Mock Originality.ai AI Score Check
-      // Simulating a mock score. We can let the user specify a test score in headers or metadata, or generate a random one.
-      const mockAIScore = parseFloat((Math.random() * 100).toFixed(2));
-      console.log(`[AI SCORE CHECK] Checked content "${title}". AI Originality Score: ${mockAIScore}%`);
-
-      if (mockAIScore > 85.0) {
-        // Auto-reject and log risk violation (+30 risk)
-        await RiskService.addRiskSignal(userId, `AI content score > 85% (${mockAIScore}%)`, 30, { title });
-        
-        await prisma.content.create({
+      if (!creatorStake) {
+        const unlockAt = new Date();
+        unlockAt.setDate(unlockAt.getDate() + 30); // 30-day lock period
+        creatorStake = await prisma.creatorStake.create({
           data: {
-            creatorId: userId,
-            title,
-            bodyIpfsHash,
-            type,
-            priceCC,
-            status: 'REJECTED',
-            aiScore: mockAIScore,
-            adminNote: 'Auto-rejected due to high AI originality score (>85%).',
+            userId,
+            amountCC: 250.0,
+            status: 'LOCKED',
+            lockedAt: new Date(),
+            unlockAt,
           },
         });
-
-        return reply.status(400).send({
-          error: 'Rejected',
-          message: `Content rejected: AI score is ${mockAIScore}%, exceeding the 85% plagiarism/AI limit. Risk flags updated.`,
-        });
       }
 
-      // 3. Create content record as PENDING
+      await prisma.user.update({
+        where: { id: userId },
+        data: { isCreator: true },
+      });
+
+      // Create content record as PENDING for manual admin verification (ALL content on platform is PREMIUM 5 CC)
       const content = await prisma.content.create({
         data: {
           creatorId: userId,
           title,
           bodyIpfsHash,
-          type,
-          priceCC,
+          type: 'PREMIUM',
+          priceCC: 5.0,
+          topic: topic || null,
+          publication: publication || null,
           status: 'PENDING',
-          aiScore: mockAIScore,
+          aiScore: 0,
         },
       });
 
@@ -139,6 +146,83 @@ export async function contentRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // GET /content/:id/replies - List replies for a content post (public)
+  fastify.get('/:id/replies', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id: contentId } = request.params as { id: string };
+      const replies = await prisma.contentReply.findMany({
+        where: { contentId },
+        include: {
+          author: {
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+              avatarUrl: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      return reply.send({ success: true, replies });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // POST /content/:id/replies - Post a reply (authenticated users)
+  fastify.post('/:id/replies', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId } = request.user;
+      const { id: contentId } = request.params as { id: string };
+      const { body } = request.body as { body: string };
+
+      if (!body || body.trim().length === 0) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Reply body cannot be empty.' });
+      }
+      if (body.length > 2000) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Reply body must be under 2000 characters.' });
+      }
+
+      const content = await prisma.content.findUnique({ where: { id: contentId } });
+      if (!content || content.status !== 'LIVE') {
+        return reply.status(404).send({ error: 'Not Found', message: 'Content not found or not live.' });
+      }
+
+      const newReply = await prisma.contentReply.create({
+        data: { contentId, authorId: userId, body: body.trim() },
+        include: {
+          author: {
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      });
+
+      // Notify content creator about the comment (skip if commenter is the creator)
+      if (content.creatorId !== userId) {
+        await NotificationService.send({
+          userId: content.creatorId,
+          title: 'New Comment on Your Post',
+          body: `Someone commented on "${content.title}".`,
+          type: 'CONTENT_REPLY',
+          category: 'COMMUNITY',
+          link: `/community`,
+          actorId: userId,
+          targetId: contentId,
+        });
+      }
+
+      return reply.status(201).send({ success: true, reply: newReply });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
   // POST /content/:id/stake - Stake 5 CC to start reading premium content
   fastify.post('/:id/stake', { preValidation: [authGuard, riskRestrictionGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -150,12 +234,16 @@ export async function contentRoutes(fastify: FastifyInstance) {
         where: { id: contentId },
       });
 
-      if (!content || content.status !== 'LIVE') {
-        return reply.status(404).send({ error: 'Not Found', message: 'Content is not active or live' });
+      if (!content) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Content not found' });
       }
 
+      // Auto-upgrade content to PREMIUM if previously stored as FREE
       if (content.type !== 'PREMIUM') {
-        return reply.status(400).send({ error: 'Bad Request', message: 'This content is Free and does not require staking.' });
+        await prisma.content.update({
+          where: { id: contentId },
+          data: { type: 'PREMIUM', priceCC: 5.0 },
+        });
       }
 
       // Check if user already has an active stake for this content

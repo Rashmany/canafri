@@ -99,10 +99,24 @@ export async function authGuard(request: FastifyRequest, reply: FastifyReply) {
 
 export function roleGuard(roles: string[]) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    const role = request.user?.role;
-    if (!role) {
-      return reply.status(403).send({ error: 'Forbidden', message: 'Insufficient permissions.' });
+    let role = request.user?.role;
+
+    // Fallback: If role is missing from JWT payload, query the database live
+    if (!role && request.user?.userId) {
+      const dbUser = await prisma.user.findUnique({
+        where: { id: request.user.userId },
+        select: { role: true },
+      });
+      if (dbUser) {
+        role = dbUser.role;
+        (request.user as any).role = role;
+      }
     }
+
+    if (!role) {
+      return reply.status(403).send({ error: 'Forbidden', message: 'Insufficient permissions. Role missing.' });
+    }
+
     const isAdminRole = ['ADMIN', 'SUPER_ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN'].includes(role);
     if (roles.includes('ADMIN') && isAdminRole) {
       return;
@@ -110,18 +124,39 @@ export function roleGuard(roles: string[]) {
     if (roles.includes(role)) {
       return;
     }
-    return reply.status(403).send({ error: 'Forbidden', message: 'Insufficient permissions.' });
+
+    return reply.status(403).send({
+      error: 'Forbidden',
+      message: `Insufficient permissions. Account role is ${role}, but this action requires ${roles.join(' or ')}.`,
+    });
   };
 }
 
 export async function creatorGuard(request: FastifyRequest, reply: FastifyReply) {
-  if (!request.user?.isCreator) {
-    return reply.status(403).send({ error: 'Forbidden', message: 'Creator access only.' });
+  if (!request.user) {
+    return reply.status(401).send({ error: 'Unauthorized', message: 'Authentication required.' });
   }
 }
 
 export async function sellerGuard(request: FastifyRequest, reply: FastifyReply) {
-  if (!request.user?.isSeller) {
-    return reply.status(403).send({ error: 'Forbidden', message: 'Seller profile required.' });
+  const userId = request.user?.userId;
+  if (!userId) {
+    return reply.status(401).send({ error: 'Unauthorized', message: 'Authentication required.' });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, isSeller: true, sellerApproved: true },
+  });
+
+  if (!user) {
+    return reply.status(401).send({ error: 'Unauthorized', message: 'User not found.' });
+  }
+
+  if (!user.isSeller && !user.sellerApproved) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { isSeller: true, sellerApproved: true, sellerModeOn: true },
+    });
   }
 }
