@@ -120,6 +120,15 @@ body::-webkit-scrollbar {
   /* Chrome, Safari, Opera */
 }
 
+/* Scrollbar hide utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Typography scale (rem) */
 /* micro:       0.625rem / lh 1rem     Inter Regular */
 /* small:       0.8125rem / lh 1.125rem Inter Regular */

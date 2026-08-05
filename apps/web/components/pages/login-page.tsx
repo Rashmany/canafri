@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Eye, EyeOff, User, Lock, ArrowLeft, Mail, RefreshCw } from 'lucide-react';
+import { Eye, EyeOff, User, Lock, ArrowLeft, Mail, RefreshCw, ShieldAlert } from 'lucide-react';
 import { updateSocketToken } from '@/lib/socket';
 import { getOrCreateDeviceId } from '@/lib/api-client';
+import { usePlatformConfig } from '@/lib/platform-config-context';
 
 interface LoginPageProps {
   onRegisterClick?: () => void;
@@ -71,6 +72,7 @@ function sanitizeInput(val: string): string {
 }
 
 export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPasswordClick, onBackClick }: LoginPageProps) {
+  const { config } = usePlatformConfig();
   const [identifier, setIdentifier] = useState(''); // Username or Email
   const [password, setPassword] = useState('');
   const [apiError, setApiError] = useState<string | null>(null);
@@ -120,6 +122,7 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFormValid) return;
+    if (config.loginPaused) return;
 
     setApiError(null);
     const fieldErrors: Record<string, string> = {};
@@ -228,15 +231,23 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
           )}
 
           <div className="flex flex-col gap-6 w-full flex-1">
-            {/* Header */}
-            <div className="flex flex-col items-center gap-1.5">
-              <h1 className="text-[32px] font-bold leading-[38px] tracking-[-0.18px] text-white/95 text-center">
-                Login
+            {/* Heading */}
+            <div className="flex flex-col items-center gap-1 mb-6 text-center w-full">
+              <h1 className="text-[20px] font-semibold leading-[28px] text-white">
+                Log In
               </h1>
-              <p className="text-[13px] font-normal leading-[20px] text-[#a0a0a0] text-center">
-                Login to your account
+              <p className="text-[13px] font-normal leading-[20px] text-[#a0a0a0]">
+                Access your account
               </p>
             </div>
+
+            {/* Platform Control Center Login Paused Banner */}
+            {config.loginPaused && (
+              <div className="flex items-center gap-3 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-medium w-full mb-4">
+                <ShieldAlert size={16} className="shrink-0 text-amber-400" />
+                <span className="flex-1">{config.loginPausedReason || 'Account logins are temporarily paused for maintenance.'}</span>
+              </div>
+            )}
 
             {/* Form Fields */}
             <form onSubmit={handleSubmit} className="flex flex-col gap-4.5 w-full">
@@ -320,12 +331,13 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
                 </div>
               )}
 
+              {/* Submit Button */}
               <button
                 type="submit"
-                disabled={!isFormValid || isSubmitting}
-                className="w-full h-[40px] bg-primary rounded-[12px] text-[13px] font-semibold leading-[18px] text-white hover:bg-primary-hover active:scale-[0.98] transition-all flex items-center justify-center cursor-pointer mt-4 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary disabled:active:scale-100"
+                disabled={!isFormValid || isSubmitting || config.loginPaused}
+                className="w-full h-[40px] bg-primary rounded-[12px] text-[13px] font-semibold leading-[18px] text-white hover:bg-primary-hover active:scale-[0.98] transition-all flex items-center justify-center cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary disabled:active:scale-100 mt-2"
               >
-                {isSubmitting ? 'Logging in...' : 'Login'}
+                {isSubmitting ? 'Logging in...' : config.loginPaused ? 'Log In Paused' : 'Log In'}
               </button>
             </form>
 

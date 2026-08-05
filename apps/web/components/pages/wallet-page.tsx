@@ -7,6 +7,8 @@ import StakeModal from '@/components/ui/stake-modal';
 import SubscribeModal from '@/components/ui/subscribe-modal';
 import { useToast } from '@/components/ui/toast';
 import Footer from '@/components/layout/footer';
+import { usePlatformConfig } from '@/lib/platform-config-context';
+import { FeatureGate } from '@/components/ui/feature-gate';
 
 // ─── Assets ──────────────────────────────────────────────────────────────────
 
@@ -1197,12 +1199,24 @@ interface WalletPageProps {
 }
 
 export default function WalletPage({ onBack }: WalletPageProps) {
+  const { config } = usePlatformConfig();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
+  const [balanceHidden, setBalanceHidden] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [mobileView, setMobileView] = useState<"wallet" | "detail">("wallet");
 
   // Skeleton loading: clears after mount; swap setTimeout for API finally() when real data arrives
   useEffect(() => { const t = setTimeout(() => setLoading(false), 800); return () => clearTimeout(t); }, []);
+  
+  if (config.walletPaused) {
+    return (
+      <FeatureGate active={true} featureName="Wallet Services" reason={config.walletPausedReason}>
+        <div />
+      </FeatureGate>
+    );
+  }
+
   if (loading) return <WalletPageSkeleton />;
 
   const handleSelectTx = (tx: Transaction) => {

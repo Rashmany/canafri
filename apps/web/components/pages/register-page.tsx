@@ -374,6 +374,7 @@ export default function RegisterPage({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFormValid) return;
+    if (config.registrationPaused) return; // Enforce platform-level pause
     setIsSubmitting(true);
     setApiError(null);
 
@@ -683,10 +684,10 @@ export default function RegisterPage({
                     </button>
                     <button
                       type="submit"
-                      disabled={!isFormValid || isSubmitting}
+                      disabled={!isFormValid || isSubmitting || config.registrationPaused}
                       className="flex-1 h-[40px] bg-primary rounded-[12px] text-[13px] font-semibold leading-[18px] text-white hover:bg-primary-hover active:scale-[0.98] transition-all flex items-center justify-center cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary disabled:active:scale-100"
                     >
-                      {isSubmitting ? 'Registering...' : 'Register'}
+                      {isSubmitting ? 'Registering...' : config.registrationPaused ? 'Registration Paused' : 'Register'}
                     </button>
                   </div>
                 </div>

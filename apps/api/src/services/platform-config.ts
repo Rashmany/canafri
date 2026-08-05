@@ -18,8 +18,9 @@ export const PLATFORM_ID = 'platform';
 export const PLATFORM_CACHE_KEY = 'cache:platform_config:platform';
 export const PLATFORM_CACHE_TTL = 300; // 5 minutes
 
-/** Fields safe to expose publicly — no internal metadata */
+/** Fields safe to expose publicly — version & operational flags included so clients react to changes */
 export const SANITIZED_FIELDS = {
+  version: true,
   subscriptionAmountCC: true,
   poolAllocationCC: true,
   stakeBalanceCC: true,
@@ -35,6 +36,53 @@ export const SANITIZED_FIELDS = {
   proposalDepositCC: true,
   minTreasuryReserveCC: true,
   incentivePhaseActive: true,
+
+  // Global & Service Maintenance
+  globalMaintenance: true,
+  globalMaintenanceReason: true,
+  freelancingMaintenance: true,
+  freelancingMaintenanceReason: true,
+  contentMaintenance: true,
+  contentMaintenanceReason: true,
+  messagingMaintenance: true,
+  messagingMaintenanceReason: true,
+  registrationPaused: true,
+  registrationPausedReason: true,
+  loginPaused: true,
+  loginPausedReason: true,
+
+  // Financial & Payment Emergency Controls
+  walletPaused: true,
+  walletPausedReason: true,
+  depositPaused: true,
+  depositPausedReason: true,
+  withdrawPaused: true,
+  withdrawPausedReason: true,
+  escrowCreatePaused: true,
+  escrowCreatePausedReason: true,
+  escrowReleasePaused: true,
+  escrowReleasePausedReason: true,
+  otcTradingPaused: true,
+  otcTradingPausedReason: true,
+
+  // System & Infrastructure Controls
+  creatorPaused: true,
+  creatorPausedReason: true,
+  notificationsPaused: true,
+  emailSendingPaused: true,
+  smsVerificationPaused: true,
+
+  // Country Access Control
+  restrictedCountries: true,
+
+  // Scheduled Maintenance Banner
+  bannerEnabled: true,
+  bannerTitle: true,
+  bannerMessage: true,
+  bannerStart: true,
+  bannerEnd: true,
+  bannerDismissible: true,
+
   updatedAt: true,
 } as const;
 
@@ -149,6 +197,7 @@ export async function updatePlatformConfig(
     where: { id: PLATFORM_ID },
     data: {
       ...data,
+      version: { increment: 1 },
       updatedBy: adminId,
     },
     select: { ...SANITIZED_FIELDS, updatedAt: true },
@@ -162,7 +211,7 @@ export async function updatePlatformConfig(
   // Broadcast to all connected clients
   try {
     const io = getIO();
-    io.emit('platform_config_updated', { config: sanitized });
+    io.emit('platform_config_updated', { version: updated.version, config: sanitized });
   } catch {
     // Socket.IO unavailable — clients will resync on next page load
   }

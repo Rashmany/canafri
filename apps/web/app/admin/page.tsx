@@ -22,11 +22,13 @@ import AdminCantonActivityPage from '@/components/pages/admin/admin-canton-activ
 import AdminTeamPage from '@/components/pages/admin/admin-team-page';
 import AdminSecurityPage from '@/components/pages/admin/admin-security-page';
 import AdminAcceptInvitePage from '@/components/pages/admin/admin-accept-invite-page';
+import AdminSupportPage from '@/components/pages/admin/admin-support-page';
 
 // ─── Admin pages map ──────────────────────────────────────────────────────────
 
 const PAGE_LABELS = [
   'Dashboard',
+  'Support Tickets',
   'All Users',
   'Suspended',
   'Risk Scores',
@@ -51,6 +53,7 @@ type AdminPage = typeof PAGE_LABELS[number];
 
 function renderAdminPage(page: AdminPage, onNavigate: (page: AdminPage) => void) {
   if (page === 'Dashboard')       return <AdminDashboardPage onNavigate={onNavigate} />;
+  if (page === 'Support Tickets') return <AdminSupportPage />;
   if (page === 'Analytics')       return <AdminAnalyticsPage />;
   if (page === 'Active Jobs')     return <AdminActiveJobsPage />;
   if (page === 'Seller Apps')     return <AdminSellerAppsPage />;

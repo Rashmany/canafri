@@ -6,6 +6,8 @@ import jwt from '@fastify/jwt';
 import cookie from '@fastify/cookie';
 import dotenv from 'dotenv';
 
+import multipart from '@fastify/multipart';
+
 import { connectRedis } from './lib/redis.js';
 import { prisma } from './lib/prisma.js';
 
@@ -20,9 +22,11 @@ import { adminRoutes } from './routes/admin.js';
 import { publicInviteRoutes } from './routes/admin.js';
 import { notificationRoutes } from './routes/notifications.js';
 import { platformConfigRoutes } from './routes/platform.js';
+import { supportRoutes } from './routes/support.js';
 
 import { initSocketServer } from './services/socket.js';
 
+// Trigger hot reload
 dotenv.config();
 
 const server = fastify({
@@ -52,8 +56,13 @@ const startServer = async () => {
       }),
     });
 
-    // 4. Register cookies & JWT auth parsing plugins
+    // 4. Register cookies, multipart & JWT auth parsing plugins
     await server.register(cookie);
+    await server.register(multipart, {
+      limits: {
+        fileSize: 5 * 1024 * 1024, // 5 MB
+      },
+    });
     await server.register(jwt, {
       secret: process.env.JWT_SECRET || 'canafri_jwt_access_secret_key_minimum_32_characters_long_val',
       cookie: {
@@ -73,6 +82,7 @@ const startServer = async () => {
     await server.register(publicInviteRoutes, { prefix: '/auth' });
     await server.register(notificationRoutes, { prefix: '/notifications' });
     await server.register(platformConfigRoutes, { prefix: '/platform' });
+    await server.register(supportRoutes, { prefix: '/support' });
 
     // Global Health check endpoint
     server.get('/health', async () => {
