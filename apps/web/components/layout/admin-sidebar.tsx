@@ -22,6 +22,7 @@ import {
   Wrench,
   ShieldHalf,
   Lock,
+  LifeBuoy,
   Palette,
   Moon,
   Sun,
@@ -164,6 +165,7 @@ function RolePermissionTooltip({ role }: { role: string }) {
 
 const ADMIN_NAV: AdminNavItemConfig[] = [
   { label: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard' },
+  { label: 'Support Tickets', icon: LifeBuoy, page: 'Support Tickets' },
   { label: 'All Users', icon: Users, page: 'All Users' },
   { label: 'Risk Scores', icon: AlertTriangle, page: 'Risk Scores' },
   { label: 'Review Queue', icon: ClipboardCheck, page: 'Review Queue' },
@@ -696,10 +698,10 @@ export default function AdminSidebar({
   mobileOpen = false,
   onMobileClose,
 }: AdminSidebarProps) {
-  const [activePage, setActivePage] = useState(activeItem);
-
+  // Fully controlled — no internal state. The parent owns activePage so that
+  // cross-page navigation (e.g. dashboard cards linking to sub-pages) always
+  // keeps the sidebar highlight in sync without a prop→state sync hack.
   const handleSetActivePage = (page: string) => {
-    setActivePage(page);
     onActiveChange?.(page);
   };
 
@@ -711,7 +713,7 @@ export default function AdminSidebar({
   };
 
   const sharedProps: SharedAdminSidebarProps = {
-    activePage,
+    activePage: activeItem,
     setActivePage: handleSetActivePage,
     user: resolvedUser,
     onLogout,

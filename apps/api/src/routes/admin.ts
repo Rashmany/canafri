@@ -10,6 +10,7 @@ import { RiskService } from '../middleware/riskCheck.js';
 import { NotificationService } from '../services/notification.js';
 import { getPlatformConfig, getFullPlatformConfig, updatePlatformConfig } from '../services/platform-config.js';
 import { ADMIN_PORTAL_ROLES } from '../lib/roles.js';
+import { sendAdminReplyEmail } from '../services/email.js';
 
 const SuspendUserSchema = z.object({
   status: z.enum(['ACTIVE', 'SUSPENDED', 'BANNED']),
@@ -73,20 +74,20 @@ const WithdrawalRequestSchema = z.object({
 
 /** Economics / Governance fields (any ADMIN level) */
 const UpdateEconomicsSchema = z.object({
-  subscriptionAmountCC: z.number().positive().optional(),
-  poolAllocationCC: z.number().positive().optional(),
-  stakeBalanceCC: z.number().positive().optional(),
+  subscriptionAmountCC: z.number().min(0).optional(),
+  poolAllocationCC: z.number().min(0).optional(),
+  stakeBalanceCC: z.number().min(0).optional(),
   platformFeeSub: z.number().min(0).max(1).optional(),
   platformFeeFreelance: z.number().min(0).max(1).optional(),
-  readStakeAmountCC: z.number().positive().optional(),
-  minReadTimeSeconds: z.number().int().positive().optional(),
-  gracePeriodHours: z.number().int().positive().optional(),
-  creatorStakeCC: z.number().positive().optional(),
-  creatorLockDays: z.number().int().positive().optional(),
-  maxContentPerMonth: z.number().int().positive().optional(),
-  dailyCheckinCC: z.number().positive().optional(),
-  proposalDepositCC: z.number().positive().optional(),
-  minTreasuryReserveCC: z.number().positive().optional(),
+  readStakeAmountCC: z.number().min(0).optional(),
+  minReadTimeSeconds: z.number().int().min(0).optional(),
+  gracePeriodHours: z.number().int().min(0).optional(),
+  creatorStakeCC: z.number().min(0).optional(),
+  creatorLockDays: z.number().int().min(0).optional(),
+  maxContentPerMonth: z.number().int().min(0).optional(),
+  dailyCheckinCC: z.number().min(0).optional(),
+  proposalDepositCC: z.number().min(0).optional(),
+  minTreasuryReserveCC: z.number().min(0).optional(),
   incentivePhaseActive: z.boolean().optional(),
 });
 
@@ -125,13 +126,13 @@ const UpdateConfigSchema = UpdateEconomicsSchema.extend({
   emailSendingPaused: z.boolean().optional(),
   smsVerificationPaused: z.boolean().optional(),
   // Country access control (array of ISO 3166-1 alpha-2 codes)
-  restrictedCountries: z.array(z.string().length(2).toUpperCase()).optional(),
+  restrictedCountries: z.array(z.string()).optional(),
   // Scheduled maintenance banner
   bannerEnabled: z.boolean().optional(),
   bannerTitle: z.string().max(100).optional(),
   bannerMessage: z.string().max(1000).optional(),
-  bannerStart: z.string().datetime().optional().nullable(),
-  bannerEnd: z.string().datetime().optional().nullable(),
+  bannerStart: z.string().optional().nullable(),
+  bannerEnd: z.string().optional().nullable(),
   bannerDismissible: z.boolean().optional(),
 });
 
@@ -1525,6 +1526,123 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
   });
+
+  // ── Support Tickets Administration ─────────────────────────────────────────
+
+  // GET /admin/support/tickets — List all support tickets with status filter & search
+  fastify.get('/support/tickets', { preValidation: [authGuard, roleGuard(['SUPER_ADMIN', 'ADMIN', 'SUPPORT_ADMIN'])] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const query = request.query as { status?: string; search?: string; page?: string; limit?: string };
+      const page = Math.max(1, parseInt(query.page || '1', 10));
+      const limit = Math.min(50, Math.max(1, parseInt(query.limit || '20', 10)));
+      const skip = (page - 1) * limit;
+
+      const where: any = {};
+
+      if (query.status && query.status !== 'ALL') {
+        where.status = query.status;
+      }
+
+      if (query.search && query.search.trim()) {
+        const term = query.search.trim();
+        where.OR = [
+          { ticketNumber: { contains: term, mode: 'insensitive' } },
+          { email: { contains: term, mode: 'insensitive' } },
+          { subject: { contains: term, mode: 'insensitive' } },
+        ];
+      }
+
+      const [tickets, total] = await Promise.all([
+        prisma.supportTicket.findMany({
+          where,
+          orderBy: { updatedAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        prisma.supportTicket.count({ where }),
+      ]);
+
+      return reply.send({ success: true, tickets, total, page, limit });
+    } catch (err: any) {
+      request.log.error(err, '[AdminRoutes] Failed to fetch support tickets');
+      return reply.status(500).send({ error: 'Internal Server Error', message: err.message });
+    }
+  });
+
+  // GET /admin/support/tickets/:id — Get full support ticket detail
+  fastify.get('/support/tickets/:id', { preValidation: [authGuard, roleGuard(['SUPER_ADMIN', 'ADMIN', 'SUPPORT_ADMIN'])] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const ticket = await prisma.supportTicket.findUnique({
+        where: { id },
+        include: {
+          user: {
+            select: { id: true, displayName: true, username: true, email: true, avatarUrl: true },
+          },
+        },
+      });
+
+      if (!ticket) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Support ticket not found.' });
+      }
+
+      return reply.send({ success: true, ticket });
+    } catch (err: any) {
+      request.log.error(err, '[AdminRoutes] Failed to fetch ticket detail');
+      return reply.status(500).send({ error: 'Internal Server Error', message: err.message });
+    }
+  });
+
+  // PATCH /admin/support/tickets/:id/reply — Save admin reply & update status
+  fastify.patch('/support/tickets/:id/reply', { preValidation: [authGuard, roleGuard(['SUPER_ADMIN', 'ADMIN', 'SUPPORT_ADMIN'])] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const body = request.body as { reply: string; status: 'OPEN' | 'IN_PROGRESS' | 'WAITING_FOR_USER' | 'RESOLVED' | 'CLOSED' };
+
+      if (!body.reply || !body.reply.trim()) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Reply text is required.' });
+      }
+
+      if (!body.status) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Status is required.' });
+      }
+
+      const existing = await prisma.supportTicket.findUnique({ where: { id } });
+      if (!existing) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Support ticket not found.' });
+      }
+
+      const updatedTicket = await prisma.supportTicket.update({
+        where: { id },
+        data: {
+          adminReply: body.reply.trim(),
+          adminRepliedAt: new Date(),
+          adminRepliedById: request.user.userId,
+          status: body.status,
+        },
+      });
+
+      // Fire-and-forget email notification to ticket submitter
+      sendAdminReplyEmail(
+        existing.email,
+        existing.ticketNumber,
+        body.status,
+        body.reply.trim(),
+        existing.subject
+      ).catch((err) => {
+        console.error('[AdminRoutes] Background reply email error:', err);
+      });
+
+      return reply.send({
+        success: true,
+        message: 'Admin reply saved and notification dispatched.',
+        ticket: updatedTicket,
+      });
+    } catch (err: any) {
+      request.log.error(err, '[AdminRoutes] Failed to reply to support ticket');
+      return reply.status(500).send({ error: 'Internal Server Error', message: err.message });
+    }
+  });
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1591,8 +1709,6 @@ export async function publicInviteRoutes(fastify: FastifyInstance) {
       });
 
       // Consume the invite
-      await prisma.adminInvite.delete({ where: { token } });
-
       return reply.status(201).send({
         success: true,
         message: 'Account created. You can now sign in and complete your MFA setup.',
@@ -1605,4 +1721,5 @@ export async function publicInviteRoutes(fastify: FastifyInstance) {
     }
   });
 }
+
 

@@ -5,6 +5,8 @@ import { LogOut, X } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { initSocket, getSocket, disconnectSocket } from '@/lib/socket';
 import { apiFetch, verifyStartupSession, performLogout } from '@/lib/api-client';
+import { usePlatformConfig } from '@/lib/platform-config-context';
+import { FeatureGate } from '@/components/ui/feature-gate';
 import Sidebar from '@/components/layout/sidebar';
 import TopNav from '@/components/layout/top-nav';
 import BottomNav from '@/components/layout/bottom-nav';
@@ -38,6 +40,8 @@ import ResetPasswordPage from '@/components/pages/reset-password-page';
 import PasswordUpdatedPage from '@/components/pages/password-updated-page';
 import SearchPage from '@/components/pages/search-page';
 import AlreadySellerPage from '@/components/pages/already-seller-page';
+import SupportPage from '@/components/pages/support-page';
+import MyTicketsPage from '@/components/pages/my-tickets-page';
 
 /**
  * Root Client SPA Controller.
@@ -45,6 +49,7 @@ import AlreadySellerPage from '@/components/pages/already-seller-page';
  * layout updates across sidebar, top nav, and bottom nav.
  */
 export default function Home() {
+  const { config } = usePlatformConfig();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activePage, setActivePage] = useState<string>('Login');
   const [isInitialized, setIsInitialized] = useState(false);
@@ -462,37 +467,49 @@ export default function Home() {
           ) : activePage === 'Wallet' ? (
             <WalletPage onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Messages' ? (
-            <div className="h-full min-h-0 overflow-hidden -mb-16 md:mb-0 flex flex-col">
-              <MessagesPage
-                onBack={() => handleNavigate('Dashboard')}
-                onMobileViewChange={(view) => setHideBottomNav(view === 'chat')}
-                initialTargetUser={messageTargetUser}
-                onUnreadCountChange={setUnreadMessageCount}
-              />
-            </div>
+            <FeatureGate active={config.messagingMaintenance} featureName="Messaging" reason={config.messagingMaintenanceReason}>
+              <div className="h-full min-h-0 overflow-hidden -mb-16 md:mb-0 flex flex-col">
+                <MessagesPage
+                  onBack={() => handleNavigate('Dashboard')}
+                  onMobileViewChange={(view) => setHideBottomNav(view === 'chat')}
+                  initialTargetUser={messageTargetUser}
+                  onUnreadCountChange={setUnreadMessageCount}
+                />
+              </div>
+            </FeatureGate>
           ) : activePage === 'Find Job' ? (
-            <div className="h-full overflow-y-auto no-scrollbar -mb-16 md:mb-0 flex flex-col">
-              <FindJobPage
-                onBack={() => handleNavigate('Dashboard')}
-                onMobileViewChange={(view) => setHideBottomNav(view === 'detail')}
-                savedJobIds={savedJobIds}
-                onToggleSaveJob={handleToggleSaveJob}
-              />
-            </div>
+            <FeatureGate active={config.freelancingMaintenance} featureName="Freelancing" reason={config.freelancingMaintenanceReason}>
+              <div className="h-full overflow-y-auto no-scrollbar -mb-16 md:mb-0 flex flex-col">
+                <FindJobPage
+                  onBack={() => handleNavigate('Dashboard')}
+                  onMobileViewChange={(view) => setHideBottomNav(view === 'detail')}
+                  savedJobIds={savedJobIds}
+                  onToggleSaveJob={handleToggleSaveJob}
+                />
+              </div>
+            </FeatureGate>
           ) : activePage === 'Find Sellers' ? (
-            <div className="h-full overflow-y-auto no-scrollbar -mb-16 md:mb-0 flex flex-col">
-              <FindSellerPage
-                onBack={() => handleNavigate('Dashboard')}
-                onMobileViewChange={(view) => setHideBottomNav(view === 'detail')}
-                onOpenChat={handleOpenChatWithUser}
-              />
-            </div>
+            <FeatureGate active={config.freelancingMaintenance} featureName="Freelancing" reason={config.freelancingMaintenanceReason}>
+              <div className="h-full overflow-y-auto no-scrollbar -mb-16 md:mb-0 flex flex-col">
+                <FindSellerPage
+                  onBack={() => handleNavigate('Dashboard')}
+                  onMobileViewChange={(view) => setHideBottomNav(view === 'detail')}
+                  onOpenChat={handleOpenChatWithUser}
+                />
+              </div>
+            </FeatureGate>
           ) : activePage === 'Proposals' ? (
-            <ProposalsPage onBack={() => handleNavigate('Dashboard')} />
+            <FeatureGate active={config.freelancingMaintenance} featureName="Freelancing" reason={config.freelancingMaintenanceReason}>
+              <ProposalsPage onBack={() => handleNavigate('Dashboard')} />
+            </FeatureGate>
           ) : activePage === 'Gigs' ? (
-            <GigsPage onBack={() => handleNavigate('Dashboard')} />
+            <FeatureGate active={config.freelancingMaintenance} featureName="Freelancing" reason={config.freelancingMaintenanceReason}>
+              <GigsPage onBack={() => handleNavigate('Dashboard')} />
+            </FeatureGate>
           ) : activePage === 'Buyer Request' ? (
-            <BuyerRequestsPage onBack={() => handleNavigate('Dashboard')} />
+            <FeatureGate active={config.freelancingMaintenance} featureName="Freelancing" reason={config.freelancingMaintenanceReason}>
+              <BuyerRequestsPage onBack={() => handleNavigate('Dashboard')} />
+            </FeatureGate>
           ) : activePage === 'OrderDetail' ? (
             <OrderDetailPage
               jobId={selectedJobId || undefined}
@@ -542,16 +559,24 @@ export default function Home() {
               onToggleSaveJob={handleToggleSaveJob}
             />
           ) : activePage === 'Post a Job' ? (
-            <PostJobPage onBack={() => handleNavigate('Dashboard')} onJobPosted={() => handleNavigate('Dashboard')} />
+            <FeatureGate active={config.freelancingMaintenance} featureName="Freelancing" reason={config.freelancingMaintenanceReason}>
+              <PostJobPage onBack={() => handleNavigate('Dashboard')} onJobPosted={() => handleNavigate('Dashboard')} />
+            </FeatureGate>
           ) : activePage === 'Become a seller' ? (
-            userProfile.isSeller ? (
-              // Already approved seller accidentally navigated here — redirect inline
-              <AlreadySellerPage onEnableSellerMode={() => { handleSellerModeChange(true); }} onBack={() => handleNavigate('Dashboard')} />
-            ) : (
-              <BecomeSellerPage onBack={() => handleNavigate('Dashboard')} onNavigateToSettings={() => handleNavigate('Settings')} />
-            )
+            <FeatureGate active={config.creatorPaused} featureName="Seller Applications" reason={config.creatorPausedReason}>
+              {userProfile.isSeller ? (
+                // Already approved seller accidentally navigated here — redirect inline
+                <AlreadySellerPage onEnableSellerMode={() => { handleSellerModeChange(true); }} onBack={() => handleNavigate('Dashboard')} />
+              ) : (
+                <BecomeSellerPage onBack={() => handleNavigate('Dashboard')} onNavigateToSettings={() => handleNavigate('Settings')} />
+              )}
+            </FeatureGate>
           ) : activePage === 'Already a Seller' ? (
             <AlreadySellerPage onEnableSellerMode={() => { handleSellerModeChange(true); }} onBack={() => handleNavigate('Dashboard')} />
+          ) : activePage === 'Support' ? (
+            <SupportPage onBack={() => handleNavigate('Dashboard')} />
+          ) : activePage === 'My Tickets' ? (
+            <MyTicketsPage onBack={() => handleNavigate('Dashboard')} onNavigateToCreate={() => handleNavigate('Support')} />
           ) : (
             sellerMode ? (
               // Seller Dashboard = Orders page
