@@ -4,6 +4,8 @@ import { prisma } from '../lib/prisma.js';
 import { redis } from '../lib/redis.js';
 import { authGuard, sellerGuard } from '../middleware/auth.js';
 import { RiskService, riskRestrictionGuard } from '../middleware/riskCheck.js';
+import { RiskEngine } from '../services/risk-engine.js';
+import { TrustEngine } from '../services/trust-engine.js';
 import { CantonService } from '../services/canton.js';
 import { NotificationService } from '../services/notification.js';
 import { getPlatformConfig } from '../services/platform-config.js';
@@ -277,9 +279,21 @@ export async function jobRoutes(fastify: FastifyInstance) {
       if (applicationsCount === 1) {
         await redis.expire(countKey, 3600); // 1 hour TTL
       }
-      if (applicationsCount > 10) {
-        // Enforce anti-sybil flag: Rapid job application velocity (+20 risk score)
-        await RiskService.addRiskSignal(freelancerId, 'Rapid job application velocity', 20, { applicationsCount });
+      // Rate-limiter is the first line of defence (not risk score)
+      if (applicationsCount > 10 && applicationsCount <= 20) {
+        // Temporary block — no risk change yet
+        return reply.status(429).send({
+          error: 'Too Many Requests',
+          message: `Application velocity limit reached. You may submit a maximum of 10 proposals per hour. Please wait before trying again.`,
+        });
+      }
+      if (applicationsCount > 20) {
+        // Persistent abuse — now apply security risk
+        await RiskEngine.addSecuritySignal(freelancerId, 'Persistent rapid job application abuse (>20/hr)', 15, { applicationsCount });
+        return reply.status(429).send({
+          error: 'Too Many Requests',
+          message: `Application velocity limit reached. A risk flag has been applied to your account due to repeated excessive applications.`,
+        });
       }
 
       // Canton txn: proposal deposit deduct (1 txn) - 0.5 CC
@@ -662,7 +676,12 @@ export async function jobRoutes(fastify: FastifyInstance) {
           actorId: clientId,
           targetId: jobId,
         });
+        // Trust events for job & escrow completion
+        TrustEngine.onJobComplete(job.freelancerId).catch(() => {});
+        TrustEngine.onEscrowComplete(job.freelancerId).catch(() => {});
       }
+      // Trust event for client who completed a contract
+      TrustEngine.onJobComplete(clientId).catch(() => {});
 
       // Notify client that approval is complete
       await NotificationService.send({

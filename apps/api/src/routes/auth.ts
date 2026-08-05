@@ -8,6 +8,7 @@ import { HashService } from '../lib/hash.js';
 import { AuditService } from '../services/audit.js';
 import { OTPService } from '../services/otp.js';
 import { RiskService } from '../middleware/riskCheck.js';
+import { RiskEngine } from '../services/risk-engine.js';
 import { authGuard } from '../middleware/auth.js';
 import { canAccessAdminPortal } from '../lib/roles.js';
 import {
@@ -703,6 +704,11 @@ export async function authRoutes(fastify: FastifyInstance) {
         ipAddress: request.ip,
         device: request.headers['user-agent'] ?? undefined,
       });
+
+      // Passively decay risk for 30-day clean period (non-blocking)
+      if (user.riskScore > 0) {
+        RiskEngine.decayRisk(user.id).catch(() => {});
+      }
 
       return reply.send({
         success: true,

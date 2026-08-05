@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { ChevronDown, Eye, Trash2, ArrowLeftRight, Check, X, ShieldAlert, BookOpen, Briefcase } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { ChevronDown, Eye, Trash2, ArrowLeftRight, Check, X, ShieldAlert, BookOpen, Briefcase, RefreshCw } from 'lucide-react';
+import { apiFetch } from '@/lib/api-client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type DelistedReason = 'Creator unstaked' | 'Reported' | 'Admin Removed';
 
 interface DelistedItem {
-  id: number;
+  id: string | number;
   type: 'content' | 'job';
   title: string;
   subInfo: string; // e.g. "Premium · 0.3 CC · 189 reads before delisting"
@@ -22,65 +23,7 @@ interface DelistedItem {
 type FilterTab = 'All' | 'Unstake' | 'Reported' | 'Admin Removed';
 type SortOption = 'newest' | 'oldest' | 'reads-high' | 'reads-low';
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
 
-const INITIAL_DELISTED_ITEMS: DelistedItem[] = [
-  {
-    id: 1,
-    type: 'content',
-    title: 'CC Yield Farming Strategies',
-    subInfo: 'Premium · 0.3 CC · 189 reads before delisting',
-    authorName: 'John Trek',
-    authorHandle: '@johntrek',
-    reason: 'Creator unstaked',
-    dateText: '2 days ago',
-    details: 'A comprehensive guide explaining leverage yield farming on the Canton Network. Features advanced pool staking metrics, risks analysis, and reward distribution formulas. Delisted automatically because the creator unstaked their platform registration deposit.'
-  },
-  {
-    id: 2,
-    type: 'content',
-    title: 'Arbitrage Bot Setup Guide',
-    subInfo: 'Premium · 1.5 CC · 42 reads before delisting',
-    authorName: 'John Trek',
-    authorHandle: '@johntrek',
-    reason: 'Creator unstaked',
-    dateText: '2 days ago',
-    details: 'Step by step setup instructions for running local arbitrage bots. Unstaked event triggered automatically.'
-  },
-  {
-    id: 3,
-    type: 'content',
-    title: 'CC Yield Farming Strategies',
-    subInfo: 'Premium · 0.3 CC · 189 reads before delisting',
-    authorName: 'John Trek',
-    authorHandle: '@johntrek',
-    reason: 'Creator unstaked',
-    dateText: '2 days ago',
-    details: 'Duplicate publication on yield farming strategies. Auto-delisted due to deposit withdraw.'
-  },
-  {
-    id: 4,
-    type: 'job',
-    title: 'React developer for Canton wallet',
-    subInfo: 'Job Post · Budget: 500 CC · 3 applications',
-    authorName: 'John Trek',
-    authorHandle: '@johntrek',
-    reason: 'Admin Removed',
-    dateText: '3 days ago',
-    details: 'Job listing soliciting off-platform transactions. Flagged by system and manually delisted by administrative action for policy violations.'
-  },
-  {
-    id: 5,
-    type: 'content',
-    title: 'Unreleased Canton Protocol Specs',
-    subInfo: 'Premium · 5.0 CC · 890 reads before delisting',
-    authorName: 'CantonDev',
-    authorHandle: '@canton_dev',
-    reason: 'Reported',
-    dateText: '4 days ago',
-    details: 'Leaked architectural blueprints of the upcoming network mainnet version. Reported for intellectual property violation and suspended.'
-  }
-];
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
@@ -110,7 +53,7 @@ function ItemPreviewModal({
 }: {
   item: DelistedItem;
   onClose: () => void;
-  onRestore: (id: number) => void;
+  onRestore: (id: string | number) => void;
 }) {
   const isJob = item.type === 'job';
   return (
@@ -152,7 +95,7 @@ function ItemPreviewModal({
           </div>
           <div>
             <p className="font-sans text-[0.6875rem] text-[#A0A0A0] uppercase tracking-wider font-semibold">Listing Metadata &amp; Log</p>
-            <p className="font-sans text-[0.8125rem] text-foreground/70 leading-[1.6] mt-2 bg-[#080808] p-3 rounded-lg border border-border/40">
+            <p className="font-sans text-[0.8125rem] text-foreground/70 leading-[1.6] mt-2 bg-[#080808] p-3 rounded-lg border border-border/40 font-mono">
               {item.details}
             </p>
           </div>
@@ -204,7 +147,7 @@ function DeleteConfirmModal({
         </div>
         <h3 className="font-sans text-[1rem] font-bold text-white">Permanently Delete Listing?</h3>
         <p className="font-sans text-[0.8125rem] text-[#A0A0A0] leading-relaxed mt-2">
-          This will permanently purge this listing and all related assets. This action is irreversible.
+          This will permanently purge this listing and all related assets from the database. This action is irreversible.
         </p>
         <div className="flex gap-3 mt-5 w-full">
           <button
@@ -278,15 +221,38 @@ function SortSelect({ value, onChange }: { value: SortOption; onChange: (v: Sort
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AdminDelistedPage() {
-  const [items, setItems]               = useState<DelistedItem[]>(INITIAL_DELISTED_ITEMS);
+  const [items, setItems]               = useState<DelistedItem[]>([]);
+  const [loading, setLoading]           = useState(true);
   const [activeTab, setActiveTab]       = useState<FilterTab>('All');
   const [sortKey, setSortKey]           = useState<SortOption>('newest');
   
-  // Modals state
+  // Modals & Action State
   const [previewItem, setPreviewItem]   = useState<DelistedItem | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | number | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [lastAction, setLastAction]     = useState<{ type: 'delete' | 'restore'; item: DelistedItem } | null>(null);
+
+  // Load production delisted data from Fastify API
+  const fetchDelistedData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch('/api/admin/content/delisted');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.items)) {
+          setItems(data.items);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load delisted items from backend:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDelistedData();
+  }, [fetchDelistedData]);
 
   // Statistics counters
   const totalDelisted = items.length;
@@ -333,29 +299,49 @@ export default function AdminDelistedPage() {
     }
   }, [items, activeTab, sortKey]);
 
-  // Actions handlers
-  const handleDelete = (id: number) => {
+  // Actions handlers connected to real API
+  const handleDelete = async (id: string | number) => {
     const targetItem = items.find(i => i.id === id);
     if (!targetItem) return;
+
+    // Optimistically update UI
     setItems(prev => prev.filter(i => i.id !== id));
     setLastAction({ type: 'delete', item: targetItem });
-    setSuccessBanner(`Listing "${targetItem.title}" deleted permanently.`);
+    setSuccessBanner(`Listing "${targetItem.title}" permanently deleted.`);
     setConfirmDeleteId(null);
+
+    try {
+      await apiFetch(`/api/admin/content/${id}/permanent`, { method: 'DELETE' });
+    } catch (e) {
+      console.error('Failed to permanently delete item:', e);
+    }
   };
 
-  const handleRestore = (id: number) => {
+  const handleRestore = async (id: string | number) => {
     const targetItem = items.find(i => i.id === id);
     if (!targetItem) return;
+
+    // Optimistically update UI
     setItems(prev => prev.filter(i => i.id !== id));
     setLastAction({ type: 'restore', item: targetItem });
-    setSuccessBanner(`Listing "${targetItem.title}" has been restored to production.`);
+    setSuccessBanner(`Listing "${targetItem.title}" restored to production.`);
+
+    try {
+      await apiFetch(`/api/admin/content/${id}/restore`, { method: 'POST' });
+    } catch (e) {
+      console.error('Failed to restore item:', e);
+    }
   };
 
-  const handleUndo = () => {
+  const handleUndo = async () => {
     if (!lastAction) return;
-    setItems(prev => [...prev, lastAction.item]);
+    const itemToUndo = lastAction.item;
+    setItems(prev => [itemToUndo, ...prev]);
     setLastAction(null);
     setSuccessBanner(null);
+
+    // Re-sync with server
+    fetchDelistedData();
   };
 
   return (
@@ -378,9 +364,20 @@ export default function AdminDelistedPage() {
         )}
 
         {/* Heading */}
-        <h1 className="font-sans text-[1.875rem] font-bold leading-[34px] tracking-tight text-white/80">
-          Delisted
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="font-sans text-[1.875rem] font-bold leading-[34px] tracking-tight text-white/80">
+            Delisted Content &amp; Listings
+          </h1>
+          <button
+            type="button"
+            onClick={fetchDelistedData}
+            disabled={loading}
+            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2 font-sans text-[0.75rem] font-semibold text-white/80 hover:text-white transition-all hover:border-[#8C5CFF]/30 active:scale-[0.98] disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin text-[#8C5CFF]' : ''} />
+            Sync Real Data
+          </button>
+        </div>
 
         {/* Stat KPI cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -447,7 +444,12 @@ export default function AdminDelistedPage() {
           </div>
 
           {/* Rows */}
-          {filteredItems.length === 0 ? (
+          {loading && items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+              <RefreshCw size={20} className="animate-spin text-[#8C5CFF]" />
+              <p className="font-sans text-[0.8125rem] text-[#A0A0A0]">Fetching real delisted items from database...</p>
+            </div>
+          ) : filteredItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
               <p className="font-sans text-[0.8125rem] text-[#A0A0A0]">No delisted listings found</p>
             </div>
