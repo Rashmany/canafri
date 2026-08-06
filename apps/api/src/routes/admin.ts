@@ -7,6 +7,8 @@ import { HashService } from '../lib/hash.js';
 import { AuditService } from '../services/audit.js';
 import { CantonService } from '../services/canton.js';
 import { RiskService } from '../middleware/riskCheck.js';
+import { RiskEngine } from '../services/risk-engine.js';
+import { TrustEngine } from '../services/trust-engine.js';
 import { NotificationService } from '../services/notification.js';
 import { getPlatformConfig, getFullPlatformConfig, updatePlatformConfig } from '../services/platform-config.js';
 import { ADMIN_PORTAL_ROLES } from '../lib/roles.js';
@@ -35,6 +37,7 @@ const UpdateUserScoresSchema = z.object({
 
 const WarnUserSchema = z.object({
   warning: z.string().min(2).max(500).trim(),
+  category: z.enum(['SPAM', 'HARASSMENT', 'FAKE_LISTING', 'COPYRIGHT_ABUSE', 'FAKE_IDENTITY', 'PLATFORM_ABUSE']).optional().default('PLATFORM_ABUSE'),
 });
 
 const InviteCreateSchema = z.object({
@@ -141,7 +144,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
   fastify.addHook('preValidation', authGuard);
   fastify.addHook('preHandler', roleGuard(['ADMIN', 'SUPER_ADMIN']));
 
-  // GET /admin/me — lightweight heartbeat endpoint used by the frontend to
+  // GET /admin/me â€” lightweight heartbeat endpoint used by the frontend to
   // detect revoked sessions and force-logout the browser tab.
   fastify.get('/me', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -157,7 +160,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /admin/dashboard-stats — Real live platform KPI metrics & system overview
+  // GET /admin/dashboard-stats â€” Real live platform KPI metrics & system overview
   fastify.get('/dashboard-stats', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const now = new Date();
@@ -297,7 +300,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         creators: counts.creators,
       }));
 
-      // ── Build Weekly buckets (last 4 weeks) ──────────────────────────────
+      // â”€â”€ Build Weekly buckets (last 4 weeks) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const fourWeeksAgo = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
       const weekLabels = ['Wk 1', 'Wk 2', 'Wk 3', 'Wk 4'];
       const weeklyMap: Record<string, Record<string, number>> = {};
@@ -349,7 +352,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         if (wl) weeklyMap[wl]['CC Deposited'] += (s.amountCC || 0);
       }
 
-      // ── Build Monthly buckets (last 12 months) ───────────────────────────
+      // â”€â”€ Build Monthly buckets (last 12 months) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
       const monthLabels: string[] = [];
       const monthlyMap: Record<string, Record<string, number>> = {};
@@ -402,7 +405,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         if (ml) monthlyMap[ml]['CC Deposited'] += (s.amountCC || 0);
       }
 
-      // ── Assemble realActivityMetrics with all 3 periods ──────────────────
+      // â”€â”€ Assemble realActivityMetrics with all 3 periods â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const METRIC_KEYS = ['Jobs Posted', 'Jobs Completed', 'Content Published', 'CC Spent', 'CC Deposited', 'CC Withdrawn', 'Platform CC Earned'] as const;
       type MetricKey = typeof METRIC_KEYS[number];
 
@@ -465,7 +468,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /admin/sellers — List all sellers and calculate sellers overview statistics
+  // GET /admin/sellers â€” List all sellers and calculate sellers overview statistics
   fastify.get('/sellers', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const sellers = await prisma.user.findMany({
@@ -507,7 +510,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // PATCH /admin/sellers/:id/status — Suspend, verify, or update seller status
+  // PATCH /admin/sellers/:id/status â€” Suspend, verify, or update seller status
   fastify.patch('/sellers/:id/status', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
@@ -546,7 +549,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /admin/seller-applications — List only users who submitted the seller application form
+  // GET /admin/seller-applications â€” List only users who submitted the seller application form
   fastify.get('/seller-applications', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const applicants = await prisma.user.findMany({
@@ -599,7 +602,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /admin/seller-applications/:id/approve — Approve or reject seller application
+  // POST /admin/seller-applications/:id/approve â€” Approve or reject seller application
   fastify.post('/seller-applications/:id/approve', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
@@ -647,7 +650,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
   });
-  // GET /admin/users — List all registered members with buyer/seller signals
+  // GET /admin/users â€” List all registered members with buyer/seller signals
   fastify.get('/users', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const users = await prisma.user.findMany({
@@ -669,7 +672,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // PATCH /admin/users/:id/suspend — Update user status (ACTIVE, SUSPENDED, BANNED)
+  // PATCH /admin/users/:id/suspend â€” Update user status (ACTIVE, SUSPENDED, BANNED)
   fastify.patch('/users/:id/suspend', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
@@ -718,7 +721,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // PATCH /admin/users/:id/flags — Update Creator / Seller role flags
+  // PATCH /admin/users/:id/flags â€” Update Creator / Seller role flags
   fastify.patch('/users/:id/flags', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
@@ -754,7 +757,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // PATCH /admin/users/:id/scores — Update Trust / Risk scores
+  // PATCH /admin/users/:id/scores â€” Update Trust / Risk scores
   fastify.patch('/users/:id/scores', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
@@ -790,48 +793,314 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /admin/users/:id/warn — Send formal warning to user
+  // POST /admin/users/:id/warn â€” Send formal warning / policy violation to user
   fastify.post('/users/:id/warn', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
-      const { warning } = WarnUserSchema.parse(request.body);
+      const { warning, category } = WarnUserSchema.parse(request.body);
 
       const user = await prisma.user.findUnique({ where: { id } });
       if (!user) {
         return reply.status(404).send({ error: 'Not Found', message: 'User not found' });
       }
 
-      // Record a risk flag for the warning & increment risk score by 10
-      const newRiskScore = Math.min(100, user.riskScore + 10);
-      const [updatedUser] = await Promise.all([
-        prisma.user.update({
-          where: { id },
-          data: { riskScore: newRiskScore },
-        }),
-        prisma.riskFlag.create({
-          data: {
-            userId: id,
-            flag: `ADMIN WARNING: ${warning}`,
-            severity: 'MEDIUM',
-            metadata: { warning, issuedBy: (request.user as any).userId },
-          },
-        }),
-        AuditService.log({
-          adminId: (request.user as any).userId ?? (request.user as any).sub,
-          userId: id,
-          action: 'WARN_USER',
-          target: id,
-          after: { warning, newRiskScore },
-          ipAddress: request.ip,
-          device: request.headers['user-agent'] ?? undefined,
-        }),
-      ]);
+      const adminId = (request.user as any).userId ?? (request.user as any).sub ?? 'admin';
 
-      return reply.send({ success: true, user: updatedUser, message: 'Warning issued successfully.' });
+      // 1. Record PolicyViolation with standardized category + security risk impact if applicable
+      const { violationId, securityRiskAdded } = await RiskEngine.addPolicyViolation(
+        id,
+        category,
+        adminId,
+        warning,
+      );
+
+      // 2. Apply reputation impact to TrustScore
+      await TrustEngine.onPolicyViolation(id, category);
+
+      // 3. Create legacy RiskFlag for backward compatibility
+      await prisma.riskFlag.create({
+        data: {
+          userId: id,
+          flag: `POLICY VIOLATION (${category}): ${warning}`,
+          severity: 'MEDIUM',
+          metadata: { warning, category, issuedBy: adminId, violationId },
+        },
+      });
+
+      const updatedUser = await prisma.user.findUnique({ where: { id } });
+
+      await AuditService.log({
+        adminId,
+        userId: id,
+        action: 'WARN_USER',
+        target: id,
+        after: { warning, category, securityRiskAdded, newRiskScore: updatedUser?.riskScore, newTrustScore: updatedUser?.trustScore },
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, user: updatedUser, message: `Warning issued successfully (${category}).` });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Validation Error', details: error.errors });
       }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // â”€â”€ RISK SCORE MANAGEMENT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GET /admin/risk-scores â€” Real database risk metrics, patterns, & high-risk users list
+  fastify.get('/risk-scores', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const [cleanCount, watchCount, restrictedCount, blockedCount, riskFlagsGroup, totalFlagsCount, riskUsersDb] = await Promise.all([
+        prisma.user.count({ where: { role: 'MEMBER', riskScore: { lte: 30 }, status: 'ACTIVE' } }),
+        prisma.user.count({ where: { role: 'MEMBER', riskScore: { gt: 30, lte: 60 }, status: 'ACTIVE' } }),
+        prisma.user.count({ where: { role: 'MEMBER', riskScore: { gt: 60, lte: 80 }, status: 'ACTIVE' } }),
+        prisma.user.count({ where: { role: 'MEMBER', OR: [{ riskScore: { gt: 80 } }, { status: { in: ['SUSPENDED', 'BANNED'] } }] } }),
+        prisma.riskFlag.groupBy({
+          by: ['flag'],
+          _count: { flag: true },
+          orderBy: { _count: { flag: 'desc' } },
+          take: 10,
+        }),
+        prisma.riskFlag.count(),
+        prisma.user.findMany({
+          where: {
+            role: 'MEMBER',
+            OR: [
+              { riskScore: { gt: 0 } },
+              { riskFlags: { some: {} } },
+              { status: { in: ['SUSPENDED', 'BANNED'] } },
+            ],
+          },
+          include: {
+            riskFlags: {
+              orderBy: { createdAt: 'desc' },
+              take: 5,
+            },
+            sessions: {
+              orderBy: { lastSeen: 'desc' },
+              take: 2,
+            },
+          },
+          orderBy: [{ riskScore: 'desc' }, { createdAt: 'desc' }],
+          take: 100,
+        }),
+      ]);
+
+      const totalF = Math.max(1, totalFlagsCount);
+      const patterns = riskFlagsGroup.map((g, i) => ({
+        id: `pattern-${i}`,
+        name: g.flag,
+        count: g._count.flag,
+        percent: Math.min(100, Math.round((g._count.flag / totalF) * 100)),
+        icon: 'activity',
+      }));
+
+      const riskUsers = riskUsersDb.map(u => {
+        const latestFlag = u.riskFlags[0];
+        let meta: any = {};
+        if (latestFlag?.metadata) {
+          try {
+            meta = typeof latestFlag.metadata === 'string' ? JSON.parse(latestFlag.metadata as string) : latestFlag.metadata;
+          } catch {}
+        }
+
+        const name = u.displayName || u.username || 'User';
+        const nameParts = name.trim().split(/\s+/);
+        const avatarInitials = nameParts.length >= 2
+          ? `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase()
+          : name.slice(0, 2).toUpperCase();
+
+        const isRecentTrendUp = latestFlag && new Date(latestFlag.createdAt).getTime() >= sevenDaysAgo.getTime();
+
+        return {
+          id: u.id,
+          name,
+          handle: `@${u.username}`,
+          email: u.email || 'N/A',
+          avatarInitials,
+          score: u.riskScore,
+          status: u.status,
+          primarySignal: latestFlag?.flag || (u.riskScore > 80 ? 'Account Suspended for Security Violations' : u.riskScore > 60 ? 'High Risk Activity Flagged' : 'Watchlist Flag'),
+          trend: isRecentTrendUp ? 'up' : 'down',
+          evidence: {
+            ipMatches: meta.ip ? [meta.ip] : (u.sessions[0]?.lastIp ? [u.sessions[0].lastIp] : undefined),
+            phoneMatched: u.phoneHash ? 'Phone hash recorded' : undefined,
+            speedApps: meta.applicationsCount || undefined,
+            timerDiff: meta.elapsedSec ? `${meta.elapsedSec}s` : (meta.secondsRead ? `${meta.secondsRead}s` : undefined),
+            subscriptionPattern: meta.pattern || undefined,
+          },
+          explanation: u.revokeReason || (meta.explanation ? String(meta.explanation) : undefined) || undefined,
+        };
+      });
+
+      return reply.send({
+        success: true,
+        stats: {
+          clean: cleanCount,
+          watch: watchCount,
+          restricted: restrictedCount,
+          blocked: blockedCount,
+        },
+        patterns,
+        riskUsers,
+      });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // POST /admin/users/:id/resolve-risk â€” Apply admin resolution decision to user risk tier
+  fastify.post('/users/:id/resolve-risk', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { decision } = z.object({
+        decision: z.enum(['Clean', 'Watch', 'Restricted', 'Blocked']),
+      }).parse(request.body);
+
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user) {
+        return reply.status(404).send({ error: 'Not Found', message: 'User not found' });
+      }
+
+      let riskScore = user.riskScore;
+      let trustScore = user.trustScore;
+      let status = user.status;
+
+      if (decision === 'Clean') {
+        riskScore = 0;
+        trustScore = 100;
+        status = 'ACTIVE';
+        await prisma.riskFlag.updateMany({
+          where: { userId: id, resolved: false },
+          data: { resolved: true, resolvedAt: new Date() },
+        });
+      } else if (decision === 'Watch') {
+        riskScore = 45;
+        trustScore = 75;
+        status = 'ACTIVE';
+      } else if (decision === 'Restricted') {
+        riskScore = 70;
+        trustScore = 50;
+        status = 'ACTIVE';
+      } else if (decision === 'Blocked') {
+        riskScore = 85;
+        trustScore = 10;
+        status = 'SUSPENDED';
+        const sessions = await prisma.session.findMany({ where: { userId: id } });
+        for (const s of sessions) {
+          await redis.del(`session:${s.id}`);
+        }
+        await prisma.session.deleteMany({ where: { userId: id } });
+      }
+
+      const adminId = (request.user as any)?.userId ?? (request.user as any)?.sub ?? 'admin';
+      const riskDelta = riskScore - user.riskScore;
+      const trustDelta = trustScore - user.trustScore;
+
+      // Audit events in RiskEvent and TrustEvent
+      if (riskDelta !== 0) {
+        await prisma.riskEvent.create({
+          data: {
+            userId: id,
+            delta: riskDelta,
+            reason: `Admin resolution decision: ${decision}`,
+            category: 'MANUAL',
+            adminId,
+          },
+        });
+      }
+      if (trustDelta !== 0) {
+        await prisma.trustEvent.create({
+          data: {
+            userId: id,
+            delta: trustDelta,
+            reason: `Admin resolution decision: ${decision}`,
+            category: 'ADMIN_ADJUSTMENT',
+            adminId,
+          },
+        });
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id },
+        data: { riskScore, trustScore, status, needsReview: false },
+      });
+
+      await AuditService.log({
+        adminId,
+        userId: id,
+        action: 'RESOLVE_USER_RISK',
+        target: `user:${id}`,
+        before: { riskScore: user.riskScore, trustScore: user.trustScore, status: user.status },
+        after: { decision, riskScore: updatedUser.riskScore, trustScore: updatedUser.trustScore, status: updatedUser.status },
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, user: updatedUser, decision });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: error.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // GET /admin/users/:id/risk-history â€” Audit trail of risk events, policy violations, and trust events
+  fastify.get('/users/:id/risk-history', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id: userId } = request.params as { id: string };
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          riskScore: true,
+          trustScore: true,
+          status: true,
+          needsReview: true,
+          timerViolationCount: true,
+          lastViolationAt: true,
+        },
+      });
+
+      if (!user) {
+        return reply.status(404).send({ error: 'Not Found', message: 'User not found' });
+      }
+
+      const [riskEvents, policyViolations, trustEvents] = await Promise.all([
+        prisma.riskEvent.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        }),
+        prisma.policyViolation.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        }),
+        prisma.trustEvent.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        }),
+      ]);
+
+      return reply.send({
+        success: true,
+        user,
+        riskEvents,
+        policyViolations,
+        trustEvents,
+      });
+    } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
   });
@@ -904,21 +1173,362 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /admin/disputes - View all disputes
+  // GET /admin/content/delisted - Get all delisted content & cancelled jobs
+  fastify.get('/content/delisted', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const [delistedContent, cancelledJobs] = await Promise.all([
+        prisma.content.findMany({
+          where: { status: { in: ['DELISTED', 'REJECTED'] } },
+          include: {
+            creator: {
+              select: { id: true, displayName: true, username: true, avatarUrl: true },
+            },
+          },
+          orderBy: { updatedAt: 'desc' },
+        }),
+        prisma.job.findMany({
+          where: { status: 'CANCELLED' },
+          include: {
+            client: {
+              select: { id: true, displayName: true, username: true },
+            },
+          },
+          orderBy: { updatedAt: 'desc' },
+        }),
+      ]);
+
+      const formattedContent = delistedContent.map((item) => {
+        let reason: 'Creator unstaked' | 'Reported' | 'Admin Removed' = 'Admin Removed';
+        const r = (item.delistReason || '').toLowerCase();
+        if (r.includes('unstak') || r.includes('deposit') || r.includes('withdraw')) {
+          reason = 'Creator unstaked';
+        } else if (r.includes('report') || r.includes('copyright') || r.includes('policy')) {
+          reason = 'Reported';
+        }
+
+        const elapsedDays = Math.max(0, Math.floor((Date.now() - new Date(item.updatedAt).getTime()) / (1000 * 60 * 60 * 24)));
+        const dateText = elapsedDays === 0 ? 'Today' : elapsedDays === 1 ? '1 day ago' : `${elapsedDays} days ago`;
+
+        return {
+          id: item.id,
+          type: 'content' as const,
+          title: item.title,
+          subInfo: `${item.type === 'PREMIUM' ? 'Premium' : 'Free'} Â· ${item.priceCC} CC Â· ${item.readCount} reads before delisting`,
+          authorName: item.creator?.displayName || item.creator?.username || 'Unknown',
+          authorHandle: item.creator?.username ? `@${item.creator.username}` : '@unknown',
+          reason,
+          dateText,
+          details: item.adminNote || item.delistReason || `Content record delisted. Topic: ${item.topic || 'General'}. Status: ${item.status}`,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+        };
+      });
+
+      const formattedJobs = cancelledJobs.map((job) => {
+        const elapsedDays = Math.max(0, Math.floor((Date.now() - new Date(job.updatedAt).getTime()) / (1000 * 60 * 60 * 24)));
+        const dateText = elapsedDays === 0 ? 'Today' : elapsedDays === 1 ? '1 day ago' : `${elapsedDays} days ago`;
+
+        return {
+          id: job.id,
+          type: 'job' as const,
+          title: job.title,
+          subInfo: `Job Post Â· Budget: ${job.amountCC} CC Â· Category: ${job.category}`,
+          authorName: job.client?.displayName || job.client?.username || 'Unknown',
+          authorHandle: job.client?.username ? `@${job.client.username}` : '@unknown',
+          reason: 'Admin Removed' as const,
+          dateText,
+          details: `Job posting cancelled or delisted. ${job.description}`,
+          createdAt: job.createdAt,
+          updatedAt: job.updatedAt,
+        };
+      });
+
+      const items = [...formattedContent, ...formattedJobs].sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+
+      const totalDelisted = items.length;
+      const autoDelisted = items.filter((i) => i.reason === 'Creator unstaked').length;
+      const adminRemoved = items.filter((i) => i.reason === 'Admin Removed').length;
+      const reportedCount = items.filter((i) => i.reason === 'Reported').length;
+
+      return reply.send({
+        success: true,
+        stats: {
+          totalDelisted,
+          autoDelisted,
+          adminRemoved,
+          reportedCount,
+        },
+        items,
+      });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // POST /admin/content/:id/restore - Restore delisted content or job to active
+  fastify.post('/content/:id/restore', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+
+      const content = await prisma.content.findUnique({ where: { id } });
+      if (content) {
+        const updated = await prisma.content.update({
+          where: { id },
+          data: {
+            status: 'LIVE',
+            delistReason: null,
+            publishedAt: new Date(),
+          },
+        });
+
+        await AuditService.log({
+          adminId: (request.user as any).userId ?? (request.user as any).sub,
+          action: 'RESTORE_CONTENT',
+          target: id,
+          before: { status: content.status },
+          after: { status: updated.status },
+          ipAddress: request.ip,
+          device: request.headers['user-agent'] ?? undefined,
+        });
+
+        return reply.send({ success: true, message: `Content "${content.title}" restored to LIVE state.`, item: updated });
+      }
+
+      const job = await prisma.job.findUnique({ where: { id } });
+      if (job) {
+        const updated = await prisma.job.update({
+          where: { id },
+          data: { status: 'OPEN' },
+        });
+
+        await AuditService.log({
+          adminId: (request.user as any).userId ?? (request.user as any).sub,
+          action: 'RESTORE_JOB',
+          target: id,
+          before: { status: job.status },
+          after: { status: updated.status },
+          ipAddress: request.ip,
+          device: request.headers['user-agent'] ?? undefined,
+        });
+
+        return reply.send({ success: true, message: `Job "${job.title}" restored to OPEN state.`, item: updated });
+      }
+
+      return reply.status(404).send({ error: 'Not Found', message: 'Delisted item not found' });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // DELETE /admin/content/:id/permanent - Permanently delete content or job
+  fastify.delete('/content/:id/permanent', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+
+      const content = await prisma.content.findUnique({ where: { id } });
+      if (content) {
+        await prisma.readStake.deleteMany({ where: { contentId: id } });
+        await prisma.contentReply.deleteMany({ where: { contentId: id } });
+        await prisma.content.delete({ where: { id } });
+
+        await AuditService.log({
+          adminId: (request.user as any).userId ?? (request.user as any).sub,
+          action: 'PERMANENT_DELETE_CONTENT',
+          target: id,
+          before: { title: content.title },
+          ipAddress: request.ip,
+          device: request.headers['user-agent'] ?? undefined,
+        });
+
+        return reply.send({ success: true, message: `Content "${content.title}" permanently deleted.` });
+      }
+
+      const job = await prisma.job.findUnique({ where: { id } });
+      if (job) {
+        await prisma.job.delete({ where: { id } });
+
+        await AuditService.log({
+          adminId: (request.user as any).userId ?? (request.user as any).sub,
+          action: 'PERMANENT_DELETE_JOB',
+          target: id,
+          before: { title: job.title },
+          ipAddress: request.ip,
+          device: request.headers['user-agent'] ?? undefined,
+        });
+
+        return reply.send({ success: true, message: `Job "${job.title}" permanently deleted.` });
+      }
+
+      return reply.status(404).send({ error: 'Not Found', message: 'Item not found' });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // GET /admin/jobs/active - Fetch active jobs and escrow metrics for admin monitor
+  fastify.get('/jobs/active', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const activeJobs = await prisma.job.findMany({
+        where: {
+          status: { in: ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'DELIVERED', 'DISPUTED'] },
+        },
+        include: {
+          client: { select: { id: true, displayName: true, username: true } },
+          freelancer: { select: { id: true, displayName: true, username: true } },
+          milestones: { orderBy: { order: 'asc' } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const now = Date.now();
+
+      const jobs = activeJobs.map((job) => {
+        const totalMilestones = job.milestones.length;
+        const approvedCount = job.milestones.filter((m) => m.status === 'APPROVED').length;
+        const hasDelivered = job.status === 'DELIVERED' || job.milestones.some((m) => m.status === 'DELIVERED');
+
+        // Calculate deadline & overdue state
+        const deadlineMs = new Date(job.createdAt).getTime() + (job.deadlineDays || 7) * 24 * 60 * 60 * 1000;
+        const isOverdue = now > deadlineMs && job.status !== 'COMPLETED';
+
+        let status: 'In Progress' | 'Awaiting Review' | 'Overdue' = 'In Progress';
+        if (isOverdue) {
+          status = 'Overdue';
+        } else if (hasDelivered) {
+          status = 'Awaiting Review';
+        }
+
+        const milestoneProgress = totalMilestones > 0
+          ? Math.round((approvedCount / totalMilestones) * 100)
+          : (job.status === 'DELIVERED' ? 90 : job.status === 'IN_PROGRESS' ? 50 : 10);
+
+        const milestoneColor = status === 'Overdue' ? '#F87171' : status === 'Awaiting Review' ? '#DAC95A' : '#8C5CFF';
+
+        const milestoneLabel = totalMilestones > 0
+          ? (approvedCount === totalMilestones - 1 ? 'Final milestone' : `Milestone ${Math.min(approvedCount + 1, totalMilestones)} of ${totalMilestones}`)
+          : (hasDelivered ? 'Final delivery submitted' : 'Project in progress');
+
+        const elapsedDays = Math.max(0, Math.floor((now - new Date(job.createdAt).getTime()) / (1000 * 60 * 60 * 24)));
+        const postedAgo = elapsedDays === 0 ? 'Posted today' : elapsedDays === 1 ? 'Posted 1 day ago' : `Posted ${elapsedDays} days ago`;
+
+        return {
+          id: job.id,
+          title: job.title,
+          postedAgo,
+          client: job.client?.username ? `@${job.client.username}` : (job.client?.displayName || '@client'),
+          freelancer: job.freelancer?.username ? `@${job.freelancer.username}` : (job.freelancer?.displayName || 'Unassigned'),
+          milestoneLabel,
+          milestoneProgress,
+          milestoneColor,
+          escrowCC: `${job.amountCC.toFixed(2)} CC`,
+          rawAmountCC: job.amountCC,
+          status,
+          rawStatus: job.status,
+          createdAt: job.createdAt,
+        };
+      });
+
+      const totalActiveJobs = jobs.length;
+      const totalEscrowCC = jobs.reduce((sum, j) => sum + j.rawAmountCC, 0);
+      const overdueCount = jobs.filter((j) => j.status === 'Overdue').length;
+      const completingCount = jobs.filter((j) => j.status === 'Awaiting Review' || j.milestoneProgress >= 80).length;
+
+      return reply.send({
+        success: true,
+        stats: {
+          activeJobs: totalActiveJobs,
+          totalEscrowCC: `${totalEscrowCC.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CC`,
+          overdueMilestones: overdueCount,
+          completingThisWeek: completingCount,
+        },
+        jobs,
+      });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // GET /admin/disputes - View all disputes with full context for admin dashboard
   fastify.get('/disputes', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const disputes = await prisma.dispute.findMany({
         include: {
           job: {
             include: {
-              client: { select: { id: true, displayName: true, walletAddress: true } },
-              freelancer: { select: { id: true, displayName: true, walletAddress: true } },
+              client:     { select: { id: true, displayName: true, username: true, walletAddress: true, trustScore: true, riskScore: true } },
+              freelancer: { select: { id: true, displayName: true, username: true, walletAddress: true, trustScore: true, riskScore: true } },
+              milestones: { orderBy: { order: 'asc' } },
             },
           },
+          evidence: true,
         },
         orderBy: { createdAt: 'desc' },
       });
-      return reply.send({ success: true, disputes });
+
+      const formatted = disputes.map((d) => {
+        const job = d.job;
+        const currentMilestone = job.milestones.find(
+          (m) => m.status === 'DISPUTED' || m.status === 'DELIVERED' || m.status === 'IN_PROGRESS'
+        ) ?? job.milestones[job.milestones.length - 1];
+        const milestoneIdx = currentMilestone ? job.milestones.indexOf(currentMilestone) + 1 : 1;
+        const totalMilestones = job.milestones.length;
+
+        const raisedMs   = Date.now() - new Date(d.createdAt).getTime();
+        const raisedDays = Math.floor(raisedMs / 86_400_000);
+        const raisedHrs  = Math.floor(raisedMs / 3_600_000);
+        const raisedAgo  = raisedDays > 0
+          ? `Raised ${raisedDays} day${raisedDays !== 1 ? 's' : ''} ago`
+          : `Raised ${raisedHrs} hour${raisedHrs !== 1 ? 's' : ''} ago`;
+
+        const escrowAmount   = currentMilestone?.amountCC ?? job.amountCC;
+        const clientUser     = job.client;
+        const freelancerUser = job.freelancer;
+
+        return {
+          id:           d.id,
+          jobId:        job.id,
+          jobRef:       `#CF-${job.id.slice(-4).toUpperCase()}`,
+          title:        job.title,
+          jobTitle:     job.title,
+          escrowAmount,
+          milestoneText: totalMilestones > 0
+            ? `Milestone ${milestoneIdx} of ${totalMilestones}`
+            : 'Single Milestone',
+          raisedAgo,
+          status: d.status === 'RESOLVED' ? 'Resolved' : 'Open',
+
+          clientId:          clientUser?.id    ?? d.raisedById,
+          clientName:        clientUser?.displayName || clientUser?.username || 'Client',
+          clientHandle:      clientUser?.username ? `@${clientUser.username}` : '@client',
+          clientTrustScore:  clientUser?.trustScore  ?? 50,
+          clientStatement:   d.clientClaim || d.reason || 'No statement provided.',
+
+          freelancerId:          freelancerUser?.id    ?? d.respondentId,
+          freelancerName:        freelancerUser?.displayName || freelancerUser?.username || 'Freelancer',
+          freelancerHandle:      freelancerUser?.username ? `@${freelancerUser.username}` : '@freelancer',
+          freelancerTrustScore:  freelancerUser?.trustScore  ?? 50,
+          freelancerStatement:   d.freelancerClaim || 'No statement provided.',
+
+          evidence: d.evidence.map((ev) => ({
+            id:   ev.id,
+            name: ev.fileUrl,
+            type: ev.fileType === 'pdf' ? 'pdf' : 'link',
+            url:  ev.fileUrl,
+          })),
+
+          resolution:    d.resolution   ?? null,
+          clientPct:     d.clientPct    ?? 50,
+          freelancerPct: d.freelancerPct ?? 50,
+          resolvedAt:    d.resolvedAt,
+        };
+      });
+
+      const openCount     = formatted.filter((d) => d.status === 'Open').length;
+      const resolvedCount = formatted.filter((d) => d.status === 'Resolved').length;
+
+      return reply.send({ success: true, disputes: formatted, stats: { openCount, resolvedCount } });
     } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
@@ -976,14 +1586,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
         data: { status: 'CANCELLED' }, // Standard resolution state
       });
 
-      // Recalculate risk scores for dispute resolution: add severity if participant was mostly at fault
-      if (freelancerPct < 0.3) {
-        // Freelancer at fault -> increase risk score
-        await RiskService.addRiskSignal(job.freelancerId!, 'Dispute resolution client-favored', 15, { disputeId: id });
+      // Recalculate reputation for dispute resolution: losing party gets TrustScore penalty
+      if (freelancerPct < 0.3 && job.freelancerId) {
+        // Freelancer at fault -> trust score penalty (-10)
+        await TrustEngine.onDisputeLoss(job.freelancerId, id);
       }
       if (clientPct < 0.3) {
-        // Client at fault
-        await RiskService.addRiskSignal(job.clientId, 'Dispute resolution freelancer-favored', 15, { disputeId: id });
+        // Client at fault -> trust score penalty (-10)
+        await TrustEngine.onDisputeLoss(job.clientId, id);
       }
 
       // Audit Log
@@ -1010,25 +1620,196 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /admin/treasury - Get treasury status
-  fastify.get('/treasury', async (request: FastifyRequest, reply: FastifyReply) => {
+  // POST /admin/disputes/:id/request-evidence - Notify both parties to submit more evidence
+  fastify.post('/disputes/:id/request-evidence', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      // Calculate current reserve from mock balances in system.
-      // Let's store treasury in redis under `treasury_balance`
-      let treasuryBalanceStr = await redis.get('treasury_balance');
-      if (!treasuryBalanceStr) {
-        await redis.set('treasury_balance', '15000.0'); // Seed dev treasury with 15k CC
-        treasuryBalanceStr = '15000.0';
+      const { id } = request.params as { id: string };
+      const { message } = z.object({ message: z.string().min(5) }).parse(request.body);
+
+      const dispute = await prisma.dispute.findUnique({
+        where: { id },
+        include: { job: { select: { title: true, clientId: true, freelancerId: true } } },
+      });
+      if (!dispute) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Dispute not found' });
       }
 
+      await NotificationService.send({
+        userId:   dispute.job.clientId,
+        title:    'Evidence Requested',
+        body:     `An admin has requested additional evidence for your dispute on "${dispute.job.title}": ${message}`,
+        type:     'SYSTEM_ALERT',
+        category: 'ACCOUNT',
+        link:     `/jobs/${dispute.jobId}`,
+      });
+      if (dispute.job.freelancerId) {
+        await NotificationService.send({
+          userId:   dispute.job.freelancerId,
+          title:    'Evidence Requested',
+          body:     `An admin has requested additional evidence for the dispute on "${dispute.job.title}": ${message}`,
+          type:     'SYSTEM_ALERT',
+          category: 'ACCOUNT',
+          link:     `/jobs/${dispute.jobId}`,
+        });
+      }
+
+      await prisma.dispute.update({
+        where: { id },
+        data: { status: 'UNDER_REVIEW' },
+      });
+
+      await AuditService.log({
+        adminId:   (request.user as any)?.userId ?? (request.user as any)?.sub ?? 'admin',
+        action:    'REQUEST_DISPUTE_EVIDENCE',
+        target:    `dispute:${id}`,
+        before:    { status: dispute.status },
+        after:     { status: 'UNDER_REVIEW', evidenceRequest: message },
+        ipAddress: request.ip,
+        device:    request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, message: 'Evidence request sent to both parties.' });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: error.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // GET /admin/treasury - Get treasury status with real DB stats
+  fastify.get('/treasury', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      // Treasury balance from Redis (set by withdrawal endpoint)
+      let treasuryBalanceStr = await redis.get('treasury_balance');
+      if (!treasuryBalanceStr) {
+        await redis.set('treasury_balance', '15000.0');
+        treasuryBalanceStr = '15000.0';
+      }
       const balanceCC = parseFloat(treasuryBalanceStr);
-      const isUnderReserve = balanceCC < 10000.0; // Minimum reserve of 10,000 CC
+
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+      // Run all real DB queries in parallel
+      const [
+        activeSubscriptions,
+        activeJobs,
+        completedJobsThisMonth,
+        completedJobsLastMonth,
+        totalCompletedJobs,
+        auditWithdrawals,
+        pendingWithdrawalKeys,
+      ] = await Promise.all([
+        // Count active subscriptions (= subscription revenue)
+        prisma.subscription.count({ where: { status: 'ACTIVE' } }),
+
+        // Escrow locked in active jobs
+        prisma.job.findMany({
+          where: { status: { in: ['ASSIGNED', 'IN_PROGRESS', 'DELIVERED', 'DISPUTED'] }, escrowLocked: true },
+          select: { amountCC: true, platformFee: true },
+        }),
+
+        // Jobs completed this month (for platform fee revenue)
+        prisma.job.findMany({
+          where: { status: 'COMPLETED', updatedAt: { gte: startOfMonth } },
+          select: { amountCC: true, platformFee: true },
+        }),
+
+        // Jobs completed last month (for month-over-month comparison)
+        prisma.job.findMany({
+          where: { status: 'COMPLETED', updatedAt: { gte: startOfLastMonth, lt: startOfMonth } },
+          select: { amountCC: true, platformFee: true },
+        }),
+
+        // All-time completed jobs for total fee revenue
+        prisma.job.findMany({
+          where: { status: 'COMPLETED' },
+          select: { amountCC: true, platformFee: true },
+        }),
+
+        // Withdrawal history from AuditLog
+        prisma.auditLog.findMany({
+          where: { action: 'TREASURY_WITHDRAWAL' },
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+        }),
+
+        // Count pending withdrawals in Redis
+        redis.keys('pending_withdrawal:*'),
+      ]);
+
+      // Calculate real revenue figures
+      const subscriptionFeeCC = activeSubscriptions * 20;  // 20 CC/month per sub
+
+      const escrowLockedCC   = activeJobs.reduce((s, j) => s + j.amountCC, 0);
+
+      const feesThisMonth    = completedJobsThisMonth.reduce((s, j) => s + (j.amountCC * j.platformFee), 0);
+      const feesLastMonth    = completedJobsLastMonth.reduce((s, j) => s + (j.amountCC * j.platformFee), 0);
+      const totalFeesAllTime = totalCompletedJobs.reduce((s, j) => s + (j.amountCC * j.platformFee), 0);
+
+      const revenueThisMonth = feesThisMonth + subscriptionFeeCC;
+      const momChangePct     = feesLastMonth > 0
+        ? Math.round(((feesThisMonth - feesLastMonth) / feesLastMonth) * 100)
+        : 0;
+
+      const pendingWithdrawalCount  = (pendingWithdrawalKeys as string[]).length;
+      const isUnderReserve          = balanceCC < 10000.0;
+      const availableCC             = Math.max(0, balanceCC - 10000); // Above locked reserve
+
+      // Format withdrawal history for UI
+      const withdrawalHistory = auditWithdrawals.map((a) => {
+        const after  = (a.after  as any) ?? {};
+        const before = (a.before as any) ?? {};
+        const timeMs = Date.now() - new Date(a.createdAt).getTime();
+        const days   = Math.floor(timeMs / 86_400_000);
+        const hrs    = Math.floor(timeMs / 3_600_000);
+        const timeAgo = days > 0 ? `${days}d ago` : hrs > 0 ? `${hrs}h ago` : 'Just now';
+
+        return {
+          id:          a.id,
+          adminName:   a.adminId ? `Admin (${a.adminId.slice(-4)})` : 'Finance Admin',
+          adminId:     a.adminId,
+          target:      a.target,
+          amountCC:    after.withdrawnAmount ?? (before.balance && after.balance ? (before.balance - after.balance) : 0),
+          beforeCC:    before.balance ?? 0,
+          afterCC:     after.balance ?? 0,
+          signers:     after.signers ?? [],
+          status:      'Executed',
+          timeAgo,
+          createdAt:   a.createdAt,
+        };
+      });
 
       return reply.send({
         success: true,
-        treasuryBalanceCC: balanceCC,
+
+        // Balance
+        treasuryBalanceCC:      balanceCC,
+        availableCC,
+        escrowLockedCC,
         minReserveRequirementCC: 10000.0,
-        reserveStatus: isUnderReserve ? 'WARNING_UNDER_RESERVE' : 'HEALTHY',
+        reserveStatus:           isUnderReserve ? 'WARNING_UNDER_RESERVE' : 'HEALTHY',
+
+        // Revenue
+        revenueThisMonth,
+        feesThisMonth,
+        feesLastMonth,
+        momChangePct,
+        totalFeesAllTime,
+        subscriptionFeeCC,
+        activeSubscriptions,
+
+        // Pending
+        pendingWithdrawalCount,
+
+        // History
+        withdrawalHistory,
+
+        // Canton integration placeholder (ready for when smart contracts go live)
+        cantonStatus: 'PENDING_INTEGRATION',
+        cantonAddress: 'canton://canafri.canton.network/contracts/escrow-vault-reserves#vault_canafri_multisig_01a9b2',
       });
     } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
@@ -1039,7 +1820,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
   fastify.post('/treasury/withdraw', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { amountCC, destinationWallet } = WithdrawalRequestSchema.parse(request.body);
-      const adminId = request.user.userId;
+      const adminId = (request.user as any)?.userId ?? (request.user as any)?.sub ?? 'admin';
 
       // Enforce: Minimum reserve of 10,000 CC must remain in treasury
       let treasuryBalanceStr = await redis.get('treasury_balance') || '15000.0';
@@ -1109,7 +1890,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /admin/config — Full config for SUPER_ADMIN (includes economics + control fields)
+  // GET /admin/config â€” Full config for SUPER_ADMIN (includes economics + control fields)
   // Redis-first with self-healing Postgres fallback
   fastify.get('/config', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -1120,7 +1901,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // PATCH /admin/config — Update platform config (ADMIN + SUPER_ADMIN)
+  // PATCH /admin/config â€” Update platform config (ADMIN + SUPER_ADMIN)
   // Atomically increments version, overwrites Redis cache, broadcasts Socket.IO, writes AuditLog
   fastify.patch('/config', { preHandler: [roleGuard(['ADMIN', 'SUPER_ADMIN'])] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -1146,9 +1927,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // GET /admin/team — List active admins + pending invites (SUPER_ADMIN + ADMIN)
-  // ────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GET /admin/team â€” List active admins + pending invites (SUPER_ADMIN + ADMIN)
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   fastify.get('/team', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const [activeAdmins, pendingInvites] = await Promise.all([
@@ -1176,9 +1957,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // POST /admin/invites — Create invite (SUPER_ADMIN only)
-  // ────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // POST /admin/invites â€” Create invite (SUPER_ADMIN only)
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   fastify.post('/invites', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const callerRole = (request.user as any).role;
@@ -1232,9 +2013,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // DELETE /admin/invites/:id — Revoke pending invite (SUPER_ADMIN only)
-  // ────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // DELETE /admin/invites/:id â€” Revoke pending invite (SUPER_ADMIN only)
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   fastify.delete('/invites/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const callerRole = (request.user as any).role;
@@ -1256,9 +2037,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // DELETE /admin/users/:id — Revoke admin account (SUPER_ADMIN only)
-  // ────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // DELETE /admin/users/:id â€” Revoke admin account (SUPER_ADMIN only)
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   fastify.delete('/users/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const callerRole = (request.user as any).role;
@@ -1318,9 +2099,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // POST /admin/users/:id/reactivate — Reactivate admin account (SUPER_ADMIN only)
-  // ────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // POST /admin/users/:id/reactivate â€” Reactivate admin account (SUPER_ADMIN only)
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   fastify.post('/users/:id/reactivate', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const callerRole = (request.user as any).role;
@@ -1367,9 +2148,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // PATCH /admin/users/:id/role — Change admin role (SUPER_ADMIN only)
-  // ────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // PATCH /admin/users/:id/role â€” Change admin role (SUPER_ADMIN only)
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   fastify.patch('/users/:id/role', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const callerRole = (request.user as any).role;
@@ -1420,9 +2201,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // ─── CONTENT REVIEW QUEUE ENDPOINTS ───────────────────────────────────────
+  // â”€â”€â”€ CONTENT REVIEW QUEUE ENDPOINTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  // GET /admin/content-submissions — List all content submissions with creator data
+  // GET /admin/content-submissions â€” List all content submissions with creator data
   fastify.get('/content-submissions', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const submissions = await prisma.content.findMany({
@@ -1454,7 +2235,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /admin/content-submissions/:id/approve — Approve pending content
+  // POST /admin/content-submissions/:id/approve â€” Approve pending content
   fastify.post('/content-submissions/:id/approve', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
@@ -1491,7 +2272,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /admin/content-submissions/:id/reject — Reject content submission
+  // POST /admin/content-submissions/:id/reject â€” Reject content submission
   fastify.post('/content-submissions/:id/reject', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
@@ -1527,9 +2308,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // ── Support Tickets Administration ─────────────────────────────────────────
+  // â”€â”€ Support Tickets Administration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  // GET /admin/support/tickets — List all support tickets with status filter & search
+  // GET /admin/support/tickets â€” List all support tickets with status filter & search
   fastify.get('/support/tickets', { preValidation: [authGuard, roleGuard(['SUPER_ADMIN', 'ADMIN', 'SUPPORT_ADMIN'])] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const query = request.query as { status?: string; search?: string; page?: string; limit?: string };
@@ -1569,7 +2350,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /admin/support/tickets/:id — Get full support ticket detail
+  // GET /admin/support/tickets/:id â€” Get full support ticket detail
   fastify.get('/support/tickets/:id', { preValidation: [authGuard, roleGuard(['SUPER_ADMIN', 'ADMIN', 'SUPPORT_ADMIN'])] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
@@ -1593,7 +2374,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // PATCH /admin/support/tickets/:id/reply — Save admin reply & update status
+  // PATCH /admin/support/tickets/:id/reply â€” Save admin reply & update status
   fastify.patch('/support/tickets/:id/reply', { preValidation: [authGuard, roleGuard(['SUPER_ADMIN', 'ADMIN', 'SUPPORT_ADMIN'])] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
@@ -1643,15 +2424,135 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({ error: 'Internal Server Error', message: err.message });
     }
   });
-}
 
-// ────────────────────────────────────────────────────────────────────────────
+  // ─── GET /admin/analytics ────────────────────────────────────────────────────
+  // Platform analytics with 60s Redis cache. Auth via global roleGuard hook.
+  fastify.get('/analytics', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const query = request.query as { days?: string };
+      const numDays = Math.min(90, Math.max(7, parseInt(query.days ?? '7', 10) || 7));
+
+      // 1. Redis cache check (60s TTL — prevents heavy DB aggregation on every refresh)
+      const cacheKey = `cache:admin_analytics:${numDays}`;
+      try {
+        const cached = await redis.get(cacheKey);
+        if (cached) return reply.send(JSON.parse(cached));
+      } catch { /* redis failure non-fatal */ }
+
+      const now = new Date();
+      const last24h   = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const startDate = new Date(now.getTime() - numDays * 24 * 60 * 60 * 1000);
+
+      // 2. Single parallel DB batch — zero N+1 queries
+      const [
+        totalUsers, dauRows,
+        rsTotal, jobTotal, subTotal, propTotal, stakeTotal,
+        rangeUsers, rangeSellers, rangeJobs, rangeRS,
+      ] = await Promise.all([
+        prisma.user.count({ where: { role: 'MEMBER' } }),
+        prisma.session.groupBy({ by: ['userId'], where: { lastActivityAt: { gte: last24h } } }),
+        prisma.readStake.aggregate({ _sum: { amountCC: true }, _count: true }),
+        prisma.job.aggregate({ _sum: { amountCC: true }, _count: true }),
+        prisma.subscription.aggregate({ _sum: { amountCC: true }, _count: true }),
+        prisma.proposal.aggregate({ _sum: { depositCC: true }, _count: true }),
+        prisma.creatorStake.aggregate({ _sum: { amountCC: true }, _count: true }),
+        prisma.user.findMany({ where: { createdAt: { gte: startDate } }, select: { createdAt: true, isSeller: true, sellerApproved: true } }),
+        prisma.user.findMany({ where: { sellerApproved: true, updatedAt: { gte: startDate } }, select: { updatedAt: true } }),
+        prisma.job.findMany({ where: { createdAt: { gte: startDate } }, select: { createdAt: true, amountCC: true } }),
+        prisma.readStake.findMany({ where: { stakedAt: { gte: startDate } }, select: { stakedAt: true, amountCC: true } }),
+      ]);
+
+      const dauCount = dauRows.length;
+
+      // 3. Platform revenue = fees only (not gross transaction volume)
+      const rsVol    = rsTotal._sum.amountCC    ?? 0;
+      const jobVol   = jobTotal._sum.amountCC   ?? 0;
+      const subVol   = subTotal._sum.amountCC   ?? 0;
+      const propVol  = propTotal._sum.depositCC ?? 0;
+      const stakeVol = stakeTotal._sum.amountCC ?? 0;
+
+      const rsFee    = rsVol    * 0.30;
+      const jobFee   = jobVol   * 0.05;
+      const subFee   = subVol   * 0.30;
+      const propFee  = propVol;
+      const stakeFee = stakeVol * 0.05;
+
+      const totalRevenue   = rsFee + jobFee + subFee + propFee + stakeFee;
+      const totalGrossVol  = rsVol + jobVol + subVol + propVol + stakeVol;
+      const totalTxCount   = (rsTotal._count ?? 0) + (jobTotal._count ?? 0) + (subTotal._count ?? 0) + (propTotal._count ?? 0);
+      const avgRS = totalUsers > 0 ? parseFloat(((rsTotal._count ?? 0) / totalUsers).toFixed(1)) : 0;
+
+      const safeRev = totalRevenue > 0 ? totalRevenue : 1;
+      const revenueBreakdown = [
+        { label: 'Content read fees (30%)',  value: +rsFee.toFixed(2),    pct: +((rsFee    / safeRev) * 100).toFixed(1), color: '#8C5CFF', amount: `${rsFee.toFixed(1)} CC` },
+        { label: 'Check-in pool share',      value: +stakeFee.toFixed(2), pct: +((stakeFee / safeRev) * 100).toFixed(1), color: '#4ADE80', amount: `${stakeFee.toFixed(1)} CC` },
+        { label: 'Job milestone fees (5%)',  value: +jobFee.toFixed(2),   pct: +((jobFee   / safeRev) * 100).toFixed(1), color: '#5993F4', amount: `${jobFee.toFixed(1)} CC` },
+        { label: 'Subscription fees (30%)', value: +subFee.toFixed(2),   pct: +((subFee   / safeRev) * 100).toFixed(1), color: '#F87171', amount: `${subFee.toFixed(1)} CC` },
+        { label: 'Job proposal deposits',   value: +propFee.toFixed(2),  pct: +((propFee  / safeRev) * 100).toFixed(1), color: '#AC8EF3', amount: `${propFee.toFixed(1)} CC` },
+        { label: 'Other', value: 0, pct: 0, color: '#DAC95A', amount: '0 CC' },
+      ];
+
+      // 4. Daily time-series — UTC date boundaries for consistency across timezones
+      const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      type DayEntry = { date: string; fullDate: string; registered: number; freelancers: number; volume: number };
+      const dailyMap: Record<string, DayEntry> = {};
+      for (let i = numDays - 1; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 86400000);
+        const key = d.toISOString().slice(0, 10);
+        dailyMap[key] = {
+          date:       `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`,
+          fullDate:   `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()} (UTC)`,
+          registered: 0, freelancers: 0, volume: 0,
+        };
+      }
+      rangeUsers.forEach(u    => { const k = u.createdAt.toISOString().slice(0,10); if (dailyMap[k]) dailyMap[k].registered   += 1; });
+      rangeSellers.forEach(s  => { const k = s.updatedAt.toISOString().slice(0,10); if (dailyMap[k]) dailyMap[k].freelancers  += 1; });
+      rangeJobs.forEach(j     => { const k = j.createdAt.toISOString().slice(0,10); if (dailyMap[k]) dailyMap[k].volume       += j.amountCC; });
+      rangeRS.forEach(r       => { const k = r.stakedAt.toISOString().slice(0,10);  if (dailyMap[k]) dailyMap[k].volume       += r.amountCC; });
+
+      const series  = Object.values(dailyMap);
+      const maxVol  = Math.max(1, ...series.map(s => s.volume));
+      const dailyVolumeSeries = series.map(s => ({ ...s, pct: Math.min(100, Math.round((s.volume / maxVol) * 100)) }));
+
+      const payload = {
+        success: true,
+        stats: {
+          totalCCTransactions:          totalTxCount,
+          totalCCTransactionsFormatted: totalTxCount.toLocaleString(),
+          dailyActiveUsers:             dauCount,
+          avgReadSessionsPerUser:       avgRS,
+          networkSharePct:              0.46,
+          totalRevenueCC:               +totalRevenue.toFixed(2),
+          totalGrossVolumeCC:           +totalGrossVol.toFixed(2),
+        },
+        revenueBreakdown,
+        dailyVolumeSeries,
+        cantonRewards: {
+          monthlyCCTransactions:   totalTxCount.toLocaleString(),
+          networkTotalEst:         '18.3M',
+          monthlyRewardsEstCC:     0.00,
+          usdValueEst:             '$0.00',
+          networkShareProgressPct: 0.46,
+          disclaimer:              'Rewards are estimated projections, not guaranteed values.',
+        },
+      };
+
+      try { await redis.set(cacheKey, JSON.stringify(payload), { EX: 60 }); } catch { /* non-fatal */ }
+      return reply.send(payload);
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+} // end adminRoutes
+
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Public invite-acceptance routes (no auth guard)
-// ────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function publicInviteRoutes(fastify: FastifyInstance) {
 
-  // GET /auth/admin/invites/:token — Validate invite token
+  // GET /auth/admin/invites/:token â€” Validate invite token
   fastify.get('/admin/invites/:token', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { token } = request.params as { token: string };
@@ -1673,7 +2574,7 @@ export async function publicInviteRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /auth/admin/invites/:token/accept — Create admin account via invite
+  // POST /auth/admin/invites/:token/accept â€” Create admin account via invite
   fastify.post('/admin/invites/:token/accept', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { token } = request.params as { token: string };

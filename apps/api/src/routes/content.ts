@@ -4,8 +4,10 @@ import { prisma } from '../lib/prisma.js';
 import { redis } from '../lib/redis.js';
 import { authGuard, creatorGuard } from '../middleware/auth.js';
 import { RiskService, riskRestrictionGuard } from '../middleware/riskCheck.js';
+import { RiskEngine } from '../services/risk-engine.js';
 import { CantonService } from '../services/canton.js';
 import { NotificationService } from '../services/notification.js';
+import { getPlatformConfig } from '../services/platform-config.js';
 
 const CreateContentSchema = z.object({
   title: z.string().min(3).max(100),
@@ -71,12 +73,14 @@ export async function contentRoutes(fastify: FastifyInstance) {
       });
 
       if (!creatorStake) {
+        const pConfig = await getPlatformConfig();
+        const lockDays = (pConfig as any).creatorLockDays ?? 30; // 30-day minimum lock period
         const unlockAt = new Date();
-        unlockAt.setDate(unlockAt.getDate() + 30); // 30-day lock period
+        unlockAt.setDate(unlockAt.getDate() + lockDays);
         creatorStake = await prisma.creatorStake.create({
           data: {
             userId,
-            amountCC: 250.0,
+            amountCC: (pConfig as any).creatorStakeCC ?? 100,
             status: 'LOCKED',
             lockedAt: new Date(),
             unlockAt,
@@ -278,12 +282,17 @@ export async function contentRoutes(fastify: FastifyInstance) {
       });
 
       // 4. Start 10-minute timer in Redis (600 seconds)
+      // 4. Start 20-minute timer in Redis (1200 seconds default, or platform config)
+      const pConfig = await getPlatformConfig();
+      const minReadSec = pConfig.minReadTimeSeconds ?? 1200;
       const timerKey = `read_timer:${userId}:${contentId}`;
-      await redis.set(timerKey, 'active', { EX: 600 });
+      await redis.set(timerKey, 'active', { EX: minReadSec });
+
+      const minReadMinutes = Math.round(minReadSec / 60);
 
       return reply.send({
         success: true,
-        message: 'Read stake of 5 CC locked successfully. 10-minute reading timer started.',
+        message: `Read stake of 5 CC locked successfully. ${minReadMinutes}-minute reading timer started.`,
         readStake,
         cantonTxId: cantonResult.txId,
       });
@@ -307,18 +316,21 @@ export async function contentRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: 'Not Found', message: 'No active read stake found for this content.' });
       }
 
+      const pConfig = await getPlatformConfig();
+      const minReadSec = pConfig.minReadTimeSeconds ?? 1200;
+      const minReadMinutes = Math.round(minReadSec / 60);
+      const minReadMs = minReadSec * 1000;
+
       const timerKey = `read_timer:${userId}:${contentId}`;
       const timerActive = await redis.get(timerKey);
       
       const timeElapsedMs = readStake.timerStartedAt
         ? Date.now() - new Date(readStake.timerStartedAt).getTime()
         : 0;
-      
-      const tenMinutesInMs = 600 * 1000;
 
-      // Check if timer has completed (either Redis key is gone and timeElapsed is >= 10m)
-      if (!timerActive || timeElapsedMs >= tenMinutesInMs) {
-        // Success: 10 minutes completed!
+      // Check if timer has completed (either Redis key is gone and timeElapsed is >= 20m)
+      if (!timerActive || timeElapsedMs >= minReadMs) {
+        // Success: 20 minutes completed!
         // Canton txn: ReadStake archive, StakeReceipt create (3 txns)
         const cantonResult = await CantonService.executeReadUnstake(userId, contentId, readStake.damlContractId || 'mock_contract');
 
@@ -340,38 +352,40 @@ export async function contentRoutes(fastify: FastifyInstance) {
 
         return reply.send({
           success: true,
-          message: '10-minute read completed. 5 CC unstake returned to wallet.',
+          message: `${minReadMinutes}-minute read completed. 5 CC unstake returned to wallet.`,
           status: 'UNSTAKED',
           cantonTxId: cantonResult.txId,
         });
       } else {
-        // Early unstake violation: CC forfeited!
-        const elapsedSec = Math.floor(timeElapsedMs / 1000);
-        
-        // Canton transaction: Forfeit split or stake loss
-        const cantonResult = await CantonService.executeReadUnstake(userId, contentId, readStake.damlContractId || 'mock_contract');
+        // Early unstake violation — CC forfeited
+        const elapsedSec    = Math.floor(timeElapsedMs / 1000);
+
+        // Canton transaction: Forfeit
+        const cantonResult  = await CantonService.executeReadUnstake(userId, contentId, readStake.damlContractId || 'mock_contract');
 
         await prisma.readStake.update({
           where: { id: readStake.id },
-          data: {
-            status: 'FORFEITED',
-            unstakedAt: new Date(),
-          },
+          data:  { status: 'FORFEITED', unstakedAt: new Date() },
         });
 
-        // Enforce anti-sybil flag: Stake-unstake before 10 min timer (+15 risk score)
-        const newRisk = await RiskService.addRiskSignal(
-          userId,
-          `Stake-unstake before 10 min timer (read only ${elapsedSec}s)`,
-          15,
-          { contentId, secondsRead: elapsedSec }
-        );
+        // Grace-period timer violation check (1st strike = warning; 2nd+ = +15 risk)
+        const timerResult = await RiskEngine.checkTimerViolation(userId, contentId, elapsedSec);
+
+        const responseMessage = timerResult.warned
+          ? `Early unstake warning: You unstaked after only ${elapsedSec}s ` +
+            `(minimum ${minReadSec}s required). 5 CC forfeited. ` +
+            `This is your first violation — no risk penalty applied. Repeated violations will increase your risk score.`
+          : `Staking timer failed: You unstaked early after only ${elapsedSec}s ` +
+            `(minimum ${minReadSec}s / ${minReadMinutes} minutes required). ` +
+            `5 CC has been FORFEITED and a risk flag applied (strike ${timerResult.newRiskScore}).`;
 
         return reply.send({
-          success: false,
-          message: `Staking timer failed: You unstaked early after only ${elapsedSec} seconds (minimum 600s required). 5 CC has been FORFEITED and a risk flag applied.`,
-          status: 'FORFEITED',
-          riskScore: newRisk,
+          success:    false,
+          message:    responseMessage,
+          status:     'FORFEITED',
+          warned:     timerResult.warned,
+          riskAdded:  timerResult.riskAdded,
+          riskScore:  timerResult.newRiskScore,
           cantonTxId: cantonResult.txId,
         });
       }

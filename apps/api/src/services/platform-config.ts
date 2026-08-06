@@ -95,7 +95,7 @@ const DEFAULT_CONFIG = {
   platformFeeSub: 0.30,
   platformFeeFreelance: 0.05,
   readStakeAmountCC: 5,
-  minReadTimeSeconds: 600,
+  minReadTimeSeconds: 1200,
   gracePeriodHours: 2,
   creatorStakeCC: 100,
   creatorLockDays: 14,

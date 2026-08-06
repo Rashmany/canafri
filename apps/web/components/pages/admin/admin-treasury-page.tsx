@@ -1,20 +1,22 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Landmark, 
   ArrowUpRight, 
   Clock, 
   CheckCircle2, 
   XCircle, 
-  ShieldAlert, 
   Key, 
   Coins, 
   UserCheck, 
   AlertTriangle,
   X,
+  RefreshCw,
+  Copy,
   Check
 } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,51 +35,75 @@ interface WithdrawalRequest {
   executedTxId?: string;
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
+interface TreasuryData {
+  treasuryBalanceCC: number;
+  availableCC: number;
+  escrowLockedCC: number;
+  minReserveRequirementCC: number;
+  reserveStatus: 'HEALTHY' | 'WARNING_UNDER_RESERVE';
+  revenueThisMonth: number;
+  feesThisMonth: number;
+  feesLastMonth: number;
+  momChangePct: number;
+  totalFeesAllTime: number;
+  subscriptionFeeCC: number;
+  activeSubscriptions: number;
+  pendingWithdrawalCount: number;
+  withdrawalHistory: Array<{
+    id: string;
+    adminName: string;
+    adminId?: string;
+    target?: string;
+    amountCC: number;
+    beforeCC: number;
+    afterCC: number;
+    signers: string[];
+    status: string;
+    timeAgo: string;
+    createdAt: string;
+  }>;
+  cantonStatus: string;
+  cantonAddress: string;
+}
 
-const INITIAL_REQUESTS: WithdrawalRequest[] = [
-  {
-    id: 'TX-9082',
-    amount: 3200,
-    requestedBy: 'Finance Admin (Sarah K.)',
-    timeAgo: '2hr ago',
-    destination: 'a67..1C...84f',
-    reason: 'Validator Staking Rewards Allocation',
-    status: 'Pending Approval',
-  },
-  {
-    id: 'TX-8921',
-    amount: 1500,
-    requestedBy: 'Finance Admin (Sarah K.)',
-    timeAgo: '1 day ago',
-    destination: '0x3D2...99a1',
-    reason: 'Platform Liquidity Sweep',
-    status: 'Executed',
-    approvedBy: 'Super Admin (David M.)',
-    executedTxId: '0x8892f392...a381',
-  },
-  {
-    id: 'TX-8742',
-    amount: 800,
-    requestedBy: 'Finance Admin (Sarah K.)',
-    timeAgo: '3 days ago',
-    destination: '0x12A...f531',
-    reason: 'Intercom Integrations Fee Payout',
-    status: 'Rejected',
-  }
-];
+// ─── API Setup ────────────────────────────────────────────────────────────────
+
+const API = '/api';
+
+function getToken() {
+  if (typeof window === 'undefined') return '';
+  return (
+    localStorage.getItem('canafri_admin_access_token') ||
+    localStorage.getItem('canafri_access_token') ||
+    ''
+  );
+}
+
+async function apiFetch(path: string, opts: RequestInit = {}) {
+  return fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getToken()}`,
+      ...(opts.headers ?? {}),
+    },
+  });
+}
+
+// ─── Reserve Details Modal ───────────────────────────────────────────────────
 
 function ReserveDetailsModal({ 
   isOpen, 
   onClose,
-  walletBalance 
+  walletBalance,
+  cantonAddress
 }: { 
   isOpen: boolean; 
   onClose: () => void;
   walletBalance: number;
+  cantonAddress: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const cantonAddress = 'canton://canafri.canton.network/contracts/escrow-vault-reserves#vault_canafri_multisig_01a9b2';
 
   if (!isOpen) return null;
 
@@ -86,6 +112,8 @@ function ReserveDetailsModal({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const freeLiquidity = Math.max(0, walletBalance - 10000);
 
   return (
     <div
@@ -120,14 +148,14 @@ function ReserveDetailsModal({
               <button
                 type="button"
                 onClick={handleCopy}
-                className="text-[#8C5CFF] hover:text-[#AC8EF3] transition-colors shrink-0 p-1 hover:bg-[#8C5CFF]/10 rounded"
+                className="text-[#8C5CFF] hover:text-[#AC8EF3] transition-colors shrink-0 p-1 hover:bg-[#8C5CFF]/10 rounded flex items-center gap-1"
               >
                 {copied ? (
-                  <span className="text-emerald-400 text-[10px] font-semibold">Copied!</span>
+                  <span className="text-emerald-400 text-[10px] font-semibold flex items-center gap-1">
+                    <Check size={12} /> Copied!
+                  </span>
                 ) : (
-                  <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
-                  </svg>
+                  <Copy size={14} />
                 )}
               </button>
             </div>
@@ -139,7 +167,9 @@ function ReserveDetailsModal({
               <span className="font-sans text-[0.625rem] text-[#A0A0A0] uppercase tracking-wider font-semibold">Reserve Guard Status</span>
               <div className="flex items-center gap-1.5 mt-1.5">
                 <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="font-sans text-[0.8125rem] font-bold text-emerald-400">Secure</span>
+                <span className="font-sans text-[0.8125rem] font-bold text-emerald-400">
+                  {walletBalance >= 10000 ? 'Secure' : 'Warning: Low Reserve'}
+                </span>
               </div>
             </div>
             <div className="bg-[#080808]/40 border border-border/60 rounded-xl p-3.5">
@@ -164,7 +194,7 @@ function ReserveDetailsModal({
               </div>
               <div className="flex flex-col">
                 <span className="text-[#A0A0A0]">Free Liquidity</span>
-                <span className="font-bold text-[#8C5CFF] mt-0.5">{(walletBalance - 10000).toLocaleString()} CC</span>
+                <span className="font-bold text-[#8C5CFF] mt-0.5">{freeLiquidity.toLocaleString()} CC</span>
               </div>
             </div>
           </div>
@@ -178,14 +208,14 @@ function ReserveDetailsModal({
               <div className="flex items-center justify-between text-[0.75rem] bg-[#080808]/20 border border-border/40 px-3 py-2 rounded-lg">
                 <div className="flex flex-col min-w-0">
                   <span className="font-semibold text-white/95">Finance Admin node</span>
-                  <span className="font-mono text-[9px] text-[#A0A0A0] truncate">canafri::nodes::finance_SarahK#nd_3c4d12</span>
+                  <span className="font-mono text-[9px] text-[#A0A0A0] truncate">canafri::nodes::finance_admin#nd_3c4d12</span>
                 </div>
                 <span className="text-emerald-400 text-[10px] font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 shrink-0">CONNECTED</span>
               </div>
               <div className="flex items-center justify-between text-[0.75rem] bg-[#080808]/20 border border-border/40 px-3 py-2 rounded-lg">
                 <div className="flex flex-col min-w-0">
                   <span className="font-semibold text-white/95">Super Admin node</span>
-                  <span className="font-mono text-[9px] text-[#A0A0A0] truncate">canafri::nodes::super_DavidM#nd_8a39ef</span>
+                  <span className="font-mono text-[9px] text-[#A0A0A0] truncate">canafri::nodes::super_admin#nd_8a39ef</span>
                 </div>
                 <span className="text-emerald-400 text-[10px] font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 shrink-0">CONNECTED</span>
               </div>
@@ -210,51 +240,121 @@ function ReserveDetailsModal({
   );
 }
 
+// ─── Main Component ──────────────────────────────────────────────────────────
+
 export default function AdminTreasuryPage() {
-  // Active role state to simulate separation of duties
+  const { toast } = useToast();
   const [activeRole, setActiveRole] = useState<AdminRole>('Super Admin');
-  const [requests, setRequests] = useState<WithdrawalRequest[]>(INITIAL_REQUESTS);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   
-  // Platform balances states (in CC)
-  const [walletBalance, setWalletBalance] = useState(42180);
-  const [revenueThisMonth, setRevenueThisMonth] = useState(6820);
+  // Real backend treasury data
+  const [data, setData] = useState<TreasuryData | null>(null);
   
-  // Form state for Finance Admin withdrawal requests
+  // Pending requests state (combines local active pending requests & backend history)
+  const [localRequests, setLocalRequests] = useState<WithdrawalRequest[]>([]);
+  
+  // Form state
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawDest, setWithdrawDest] = useState('');
   const [withdrawReason, setWithdrawReason] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   
-  // Success toast/banner message
+  // Success banner
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Link Nav queue tab filter
+  // Filter tab
   const [queueTab, setQueueTab] = useState<'All' | 'New' | 'Approved' | 'Rejected'>('All');
   
-  // Modal state
+  // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Computed Values
+  // Fetch live treasury metrics from backend
+  const loadTreasury = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch('/admin/treasury');
+      if (res.ok) {
+        const result = await res.json();
+        if (result.success) {
+          setData(result);
+        } else {
+          toast('Failed to load treasury data.', 'error');
+        }
+      } else {
+        toast('Server error fetching treasury status.', 'error');
+      }
+    } catch {
+      toast('Network error loading treasury status.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    loadTreasury();
+  }, [loadTreasury]);
+
+  // Derived metrics
+  const walletBalance = data?.treasuryBalanceCC ?? 0;
+  const revenueThisMonth = data?.revenueThisMonth ?? 0;
+  const feesThisMonth = data?.feesThisMonth ?? 0;
+  const subscriptionFeeCC = data?.subscriptionFeeCC ?? 0;
+  const escrowLockedCC = data?.escrowLockedCC ?? 0;
+  const momChangePct = data?.momChangePct ?? 0;
+  const cantonAddress = data?.cantonAddress ?? 'canton://canafri.canton.network/contracts/escrow-vault-reserves#vault_canafri_multisig_01a9b2';
+
+  const donutBackground = useMemo(() => {
+    if (revenueThisMonth <= 0) {
+      return 'conic-gradient(#262626 0% 100%)';
+    }
+    const subPct = Math.min(100, Math.round((subscriptionFeeCC / revenueThisMonth) * 100));
+    const feePct = Math.min(100 - subPct, Math.round((feesThisMonth / revenueThisMonth) * 100));
+    return `conic-gradient(#8C5CFF 0% ${subPct}%, #4ADE80 ${subPct}% ${subPct + feePct}%, #DAC95A ${subPct + feePct}% 100%)`;
+  }, [revenueThisMonth, subscriptionFeeCC, feesThisMonth]);
+
+  // Merge history from backend and local active pending requests
+  const allRequests = useMemo(() => {
+    const list: WithdrawalRequest[] = [...localRequests];
+    if (data?.withdrawalHistory) {
+      data.withdrawalHistory.forEach((h) => {
+        if (!list.some(r => r.id === h.id || (r.destination === h.target && r.amount === h.amountCC))) {
+          list.push({
+            id: h.id.slice(-7).toUpperCase(),
+            amount: h.amountCC,
+            requestedBy: h.adminName,
+            timeAgo: h.timeAgo,
+            destination: h.target || 'N/A',
+            reason: 'Treasury multi-sig withdrawal',
+            status: 'Executed',
+            executedTxId: `0x${h.id.replace(/[^a-f0-9]/gi, '').slice(0, 12)}...canton`,
+          });
+        }
+      });
+    }
+    return list;
+  }, [localRequests, data]);
+
   const pendingWithdrawals = useMemo(() => {
-    return requests
+    return allRequests
       .filter(r => r.status === 'Pending Approval')
       .reduce((sum, r) => sum + r.amount, 0);
-  }, [requests]);
+  }, [allRequests]);
 
-  const availableBalance = walletBalance - pendingWithdrawals;
+  const availableBalance = Math.max(0, walletBalance - 10000 - pendingWithdrawals);
 
   const filteredRequests = useMemo(() => {
-    return requests.filter(req => {
+    return allRequests.filter(req => {
       if (queueTab === 'All') return true;
       if (queueTab === 'New') return req.status === 'Pending Approval';
       if (queueTab === 'Approved') return req.status === 'Executed' || req.status === 'Approved & Executing';
       if (queueTab === 'Rejected') return req.status === 'Rejected';
       return true;
     });
-  }, [requests, queueTab]);
+  }, [allRequests, queueTab]);
 
-  // Handle request submission (Finance Admin only)
-  const handleRequestSubmit = (e: React.FormEvent) => {
+  // Handle Withdrawal Request Submission (Finance Admin / Signature 1)
+  const handleRequestSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
@@ -264,13 +364,8 @@ export default function AdminTreasuryPage() {
       return;
     }
 
-    if (amount > availableBalance) {
-      setFormError('Insufficient available balance to cover this request.');
-      return;
-    }
-
     if (walletBalance - amount < 10000) {
-      setFormError('Transaction blocked: Platform balance would drop below the 10,000 CC minimum reserve.');
+      setFormError(`Transaction blocked: Treasury balance would drop below the 10,000 CC minimum reserve requirement. Maximum available: ${(walletBalance - 10000).toFixed(2)} CC.`);
       return;
     }
 
@@ -284,71 +379,132 @@ export default function AdminTreasuryPage() {
       return;
     }
 
-    // Success - add request
-    const newRequest: WithdrawalRequest = {
-      id: `TX-${Math.floor(1000 + Math.random() * 9000)}`,
-      amount,
-      requestedBy: 'Finance Admin (Sarah K.)',
-      timeAgo: 'Just now',
-      destination: withdrawDest,
-      reason: withdrawReason,
-      status: 'Pending Approval',
-    };
+    setSubmitting(true);
+    try {
+      const res = await apiFetch('/admin/treasury/withdraw', {
+        method: 'POST',
+        body: JSON.stringify({
+          amountCC: amount,
+          destinationWallet: withdrawDest.trim(),
+        }),
+      });
 
-    setRequests(prev => [newRequest, ...prev]);
-    setSuccessMsg(`Withdrawal request ${newRequest.id} for ${amount} CC submitted to Super Admin.`);
-    
-    // Reset form
-    setWithdrawAmount('');
-    setWithdrawDest('');
-    setWithdrawReason('');
+      const resData = await res.json();
+      if (res.ok && resData.success) {
+        if (resData.status === 'PENDING_SECOND_SIGNATURE') {
+          const reqId = `TX-${Math.floor(1000 + Math.random() * 9000)}`;
+          const newReq: WithdrawalRequest = {
+            id: reqId,
+            amount,
+            requestedBy: 'Finance Admin',
+            timeAgo: 'Just now',
+            destination: withdrawDest.trim(),
+            reason: withdrawReason.trim(),
+            status: 'Pending Approval',
+          };
+          setLocalRequests(prev => [newReq, ...prev]);
+          setSuccessMsg(`Withdrawal request registered! Signature 1 recorded. Requires Super Admin second signature to execute on Canton network.`);
+          toast('Withdrawal request submitted for Super Admin signature.', 'info');
+        } else if (resData.status === 'EXECUTED') {
+          setSuccessMsg(resData.message || `Withdrawal of ${amount} CC executed successfully on Canton network.`);
+          toast('Withdrawal executed successfully!', 'success');
+          await loadTreasury();
+        }
+
+        setWithdrawAmount('');
+        setWithdrawDest('');
+        setWithdrawReason('');
+      } else {
+        setFormError(resData.message || 'Failed to submit withdrawal request.');
+        toast(resData.message || 'Withdrawal failed.', 'error');
+      }
+    } catch {
+      setFormError('Network error connecting to treasury API.');
+      toast('Network error during withdrawal request.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  // Super Admin action handlers
-  const handleApprove = (id: string) => {
-    const req = requests.find(r => r.id === id);
-    if (!req) return;
+  // Handle Super Admin Approval / Signature 2
+  const handleApprove = async (req: WithdrawalRequest) => {
+    setSubmitting(true);
+    try {
+      const res = await apiFetch('/admin/treasury/withdraw', {
+        method: 'POST',
+        body: JSON.stringify({
+          amountCC: req.amount,
+          destinationWallet: req.destination,
+        }),
+      });
 
-    // Transition status to approved and execute balance updates
-    setRequests(prev => prev.map(r => {
-      if (r.id !== id) return r;
-      return { 
-        ...r, 
-        status: 'Executed', 
-        approvedBy: 'Super Admin (David M.)',
-        executedTxId: `0x${Math.random().toString(16).substr(2, 8)}...${Math.random().toString(16).substr(2, 4)}`
-      };
-    }));
+      const resData = await res.json();
+      if (res.ok && resData.success) {
+        setLocalRequests(prev => prev.map(r => {
+          if (r.id !== req.id) return r;
+          return {
+            ...r,
+            status: 'Executed',
+            approvedBy: 'Super Admin',
+            executedTxId: `0x${Math.random().toString(16).substr(2, 10)}...canton`,
+          };
+        }));
 
-    setWalletBalance(prev => prev - req.amount);
-    setSuccessMsg(`Withdrawal ${id} approved! Canton on-chain transaction executed successfully.`);
+        setSuccessMsg(`Withdrawal ${req.id} approved! Second signature confirmed. Canton on-chain transaction executed.`);
+        toast(`Withdrawal ${req.id} executed successfully on Canton network!`, 'success');
+        await loadTreasury();
+      } else {
+        toast(resData.message || 'Approval failed.', 'error');
+      }
+    } catch {
+      toast('Network error confirming withdrawal signature.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleReject = (id: string) => {
-    setRequests(prev => prev.map(r => {
+    setLocalRequests(prev => prev.map(r => {
       if (r.id !== id) return r;
       return { ...r, status: 'Rejected' };
     }));
-    setSuccessMsg(`Withdrawal request ${id} has been rejected.`);
+    setSuccessMsg(`Withdrawal request ${id} rejected.`);
+    toast(`Withdrawal ${id} rejected.`, 'info');
   };
 
   return (
     <div className="h-full overflow-y-auto no-scrollbar">
-      <ReserveDetailsModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} walletBalance={walletBalance} />
+      <ReserveDetailsModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        walletBalance={walletBalance}
+        cantonAddress={cantonAddress}
+      />
       <div className="flex flex-col gap-5 w-full max-w-[1200px] mx-auto px-6 py-6">
         
-        {/* Header with Role Toggle Switcher */}
+        {/* Header with Refresh & Role Switcher */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/40 pb-4">
           <div>
-            <h1 className="font-sans text-[1.375rem] font-bold text-white tracking-tight">
-              Treasury Monitor
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="font-sans text-[1.375rem] font-bold text-white tracking-tight">
+                Treasury Monitor
+              </h1>
+              <button
+                type="button"
+                onClick={loadTreasury}
+                disabled={loading}
+                className="flex size-7 items-center justify-center rounded-lg text-[#A0A0A0] hover:bg-foreground/5 hover:text-white transition-colors disabled:opacity-40"
+                aria-label="Refresh treasury"
+              >
+                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              </button>
+            </div>
             <p className="font-sans text-[0.75rem] text-[#A0A0A0] mt-0.5">
               On-chain multisig custody reserves and network revenue splits.
             </p>
           </div>
 
-          {/* Separation of Duties Switch */}
+          {/* Role Switcher */}
           <div className="flex items-center gap-1.5 bg-[#080808] border border-border p-1 rounded-xl self-start sm:self-auto shadow-inner">
             <button
               type="button"
@@ -367,7 +523,7 @@ export default function AdminTreasuryPage() {
           </div>
         </div>
 
-        {/* Success message banner */}
+        {/* Success Banner */}
         {successMsg && (
           <div className="flex items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 font-sans text-[0.75rem] text-emerald-400 animate-slide-up">
             <div className="flex items-center gap-2">
@@ -389,7 +545,7 @@ export default function AdminTreasuryPage() {
           <div className="flex flex-col justify-center rounded-xl border border-border bg-card px-4 py-3.5 hover:border-[#8C5CFF]/20 transition-all duration-300">
             <span className="font-sans text-[0.6875rem] font-medium text-[#A0A0A0]">Platform Wallet Balance</span>
             <span className="font-sans text-[1.25rem] font-bold text-white mt-1 leading-none">
-              {walletBalance.toLocaleString()} CC
+              {loading ? '...' : `${walletBalance.toLocaleString()} CC`}
             </span>
             <span className="font-sans text-[0.625rem] text-[#A0A0A0] mt-1.5">
               ≈ ${(walletBalance * 0.19).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} USD
@@ -399,11 +555,11 @@ export default function AdminTreasuryPage() {
           <div className="flex flex-col justify-center rounded-xl border border-border bg-card px-4 py-3.5 hover:border-[#8C5CFF]/20 transition-all duration-300">
             <span className="font-sans text-[0.6875rem] font-medium text-[#A0A0A0]">This Month Revenue</span>
             <span className="font-sans text-[1.25rem] font-bold text-emerald-400 mt-1 leading-none">
-              +{revenueThisMonth.toLocaleString()} CC
+              {loading ? '...' : `+${revenueThisMonth.toLocaleString()} CC`}
             </span>
             <span className="font-sans text-[0.625rem] text-emerald-500/80 mt-1.5 flex items-center gap-1 font-medium">
               <ArrowUpRight size={11} />
-              +12.4% vs last month
+              {momChangePct >= 0 ? `+${momChangePct}%` : `${momChangePct}%`} vs last month
             </span>
           </div>
 
@@ -414,7 +570,7 @@ export default function AdminTreasuryPage() {
             </span>
             <span className="font-sans text-[0.625rem] text-amber-500/80 mt-1.5 flex items-center gap-1">
               <Clock size={11} />
-              {requests.filter(r => r.status === 'Pending Approval').length} pending signature
+              {allRequests.filter(r => r.status === 'Pending Approval').length} pending signature
             </span>
           </div>
 
@@ -424,45 +580,51 @@ export default function AdminTreasuryPage() {
               {availableBalance.toLocaleString()} CC
             </span>
             <span className="font-sans text-[0.625rem] text-[#A0A0A0] mt-1.5">
-              Unlocked & ready for deployment
+              Unlocked above 10,000 CC reserve
             </span>
           </div>
         </div>
 
-        {/* 2. Middle Revenue Breakdown Cards (Reduced Height & Margins) */}
+        {/* 2. Middle Revenue Breakdown Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="flex flex-col justify-between rounded-xl border border-border bg-card p-3.5 hover:border-[#8C5CFF]/25 transition-all">
             <div>
               <span className="font-sans text-[0.6875rem] font-semibold text-[#A0A0A0] uppercase tracking-wider">Subscription Revenue</span>
-              <p className="font-sans text-[1.25rem] font-bold text-white mt-1">0 CC</p>
+              <p className="font-sans text-[1.25rem] font-bold text-white mt-1">
+                {loading ? '...' : `${subscriptionFeeCC} CC`}
+              </p>
             </div>
             <span className="font-sans text-[0.625rem] text-[#A0A0A0] mt-2">
-              ≈ $0.00 at current rate
+              {data?.activeSubscriptions ?? 0} active subscriptions (20 CC/mo)
             </span>
           </div>
 
           <div className="flex flex-col justify-between rounded-xl border border-border bg-card p-3.5 hover:border-[#8C5CFF]/25 transition-all">
             <div>
               <span className="font-sans text-[0.6875rem] font-semibold text-[#A0A0A0] uppercase tracking-wider">Freelance Fee Revenue</span>
-              <p className="font-sans text-[1.25rem] font-bold text-white mt-1">920 CC</p>
+              <p className="font-sans text-[1.25rem] font-bold text-white mt-1">
+                {loading ? '...' : `${feesThisMonth.toFixed(1)} CC`}
+              </p>
             </div>
             <span className="font-sans text-[0.625rem] text-emerald-400 font-semibold mt-2">
-              +8% this month
+              5% platform fee collected
             </span>
           </div>
 
           <div className="flex flex-col justify-between rounded-xl border border-border bg-card p-3.5 hover:border-[#8C5CFF]/25 transition-all">
             <div>
-              <span className="font-sans text-[0.6875rem] font-semibold text-[#A0A0A0] uppercase tracking-wider">Canton App Rewards</span>
-              <p className="font-sans text-[1.25rem] font-bold text-white mt-1">290 CC</p>
+              <span className="font-sans text-[0.6875rem] font-semibold text-[#A0A0A0] uppercase tracking-wider">Escrow Locked in Jobs</span>
+              <p className="font-sans text-[1.25rem] font-bold text-[#8C5CFF] mt-1">
+                {loading ? '...' : `${escrowLockedCC} CC`}
+              </p>
             </div>
             <span className="font-sans text-[0.625rem] text-[#A0A0A0] mt-2">
-              Featured app share split
+              Held safely in active job escrows
             </span>
           </div>
         </div>
 
-        {/* 3. Multi Signature Banner Workflow (Reduced Height) */}
+        {/* 3. Multi Signature Banner Workflow */}
         <div className="rounded-xl border border-[#8C5CFF]/20 bg-[#8C5CFF]/5 p-4 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 rounded-full bg-[#8C5CFF]/5 blur-xl pointer-events-none" />
           
@@ -473,7 +635,7 @@ export default function AdminTreasuryPage() {
             <div className="flex-1 min-w-0">
               <h3 className="font-sans text-[0.875rem] font-bold text-white tracking-tight">Multi Signature Required</h3>
               <p className="font-sans text-[0.75rem] text-foreground/80 leading-normal mt-1">
-                All withdrawals need Finance Admin to request + Super Admin to approve before Canton executes.
+                All withdrawals require Finance Admin to request + Super Admin to approve before Canton executes.
               </p>
               
               {/* Flow Steps */}
@@ -506,24 +668,26 @@ export default function AdminTreasuryPage() {
           </div>
         </div>
 
-        {/* 4. Split Layout - Side-by-side Revenue Breakdown & Request Form */}
+        {/* 4. Split Layout - Revenue Breakdown & Request Form */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
           
-          {/* Revenue Breakdown Donut Chart */}
+          {/* Revenue Breakdown */}
           <div className="rounded-2xl border border-border bg-card p-5 h-full">
             <h3 className="font-sans text-[0.875rem] font-bold text-white">Revenue Breakdown</h3>
             <p className="font-sans text-[0.725rem] text-[#A0A0A0] mt-0.5">Distribution of platform incoming fees</p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mt-6">
-              {/* Custom CSS Donut Chart */}
-              <div className="relative size-32 shrink-0 rounded-full flex items-center justify-center"
-                   style={{
-                     background: 'conic-gradient(#8C5CFF 0% 82.3%, #4ADE80 82.3% 95.8%, #DAC95A 95.8% 100%)'
-                   }}>
-                {/* Outer circle cut-out */}
+              <div
+                className="relative size-32 shrink-0 rounded-full flex items-center justify-center"
+                style={{
+                  background: donutBackground
+                }}
+              >
                 <div className="absolute inset-3.5 rounded-full bg-card flex flex-col items-center justify-center">
                   <span className="font-sans text-[0.625rem] text-[#A0A0A0] uppercase tracking-wider font-semibold">Total</span>
-                  <span className="font-sans text-[1.125rem] font-bold text-white mt-0.5">50,000</span>
+                  <span className="font-sans text-[1.125rem] font-bold text-white mt-0.5">
+                    {revenueThisMonth.toLocaleString()}
+                  </span>
                 </div>
               </div>
 
@@ -532,9 +696,9 @@ export default function AdminTreasuryPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="size-2.5 rounded-sm bg-[#8C5CFF]" />
-                    <span className="font-sans text-[0.75rem] text-[#A0A0A0]">Subscription pool (30%)</span>
+                    <span className="font-sans text-[0.75rem] text-[#A0A0A0]">Subscriptions (20 CC/mo)</span>
                   </div>
-                  <span className="font-sans text-[0.75rem] font-bold text-white">5,610 CC <span className="text-[#A0A0A0] font-normal text-[0.625rem] ml-1">82.3%</span></span>
+                  <span className="font-sans text-[0.75rem] font-bold text-white">{subscriptionFeeCC} CC</span>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -542,29 +706,29 @@ export default function AdminTreasuryPage() {
                     <div className="size-2.5 rounded-sm bg-[#4ADE80]" />
                     <span className="font-sans text-[0.75rem] text-[#A0A0A0]">Freelance milestone fees (5%)</span>
                   </div>
-                  <span className="font-sans text-[0.75rem] font-bold text-white">920 CC <span className="text-[#A0A0A0] font-normal text-[0.625rem] ml-1">13.5%</span></span>
+                  <span className="font-sans text-[0.75rem] font-bold text-white">{feesThisMonth.toFixed(1)} CC</span>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="size-2.5 rounded-sm bg-[#DAC95A]" />
-                    <span className="font-sans text-[0.75rem] text-[#A0A0A0]">Canton featured app rewards</span>
+                    <span className="font-sans text-[0.75rem] text-[#A0A0A0]">Canton App Rewards</span>
                   </div>
-                  <span className="font-sans text-[0.75rem] font-bold text-white">290 CC <span className="text-[#A0A0A0] font-normal text-[0.625rem] ml-1">4.2%</span></span>
+                  <span className="font-sans text-[0.75rem] font-bold text-white">0 CC</span>
                 </div>
 
                 <div className="flex items-center justify-between opacity-50">
                   <div className="flex items-center gap-2">
                     <div className="size-2.5 rounded-sm bg-[#A0A0A0]" />
-                    <span className="font-sans text-[0.75rem] text-[#A0A0A0]">Boost tip fees (5%)</span>
+                    <span className="font-sans text-[0.75rem] text-[#A0A0A0]">Boost tip fees</span>
                   </div>
-                  <span className="font-sans text-[0.75rem] font-bold text-white">0 CC <span className="text-[#A0A0A0] font-normal text-[0.625rem] ml-1">Phase 3</span></span>
+                  <span className="font-sans text-[0.75rem] font-bold text-white">Phase 2</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Right side: Withdrawal Form / Action controls */}
+          {/* Withdrawal Form */}
           <div className="h-full">
             {activeRole === 'Finance Admin' ? (
               <div className="rounded-2xl border border-border bg-card p-5">
@@ -593,7 +757,8 @@ export default function AdminTreasuryPage() {
                       value={withdrawAmount}
                       onChange={e => setWithdrawAmount(e.target.value)}
                       placeholder="e.g. 3200"
-                      className="w-full rounded-xl bg-[#080808] border border-border px-3.5 py-2 font-sans text-[0.75rem] text-white focus:border-[#8C5CFF] focus:outline-none placeholder-foreground/30"
+                      disabled={submitting}
+                      className="w-full rounded-xl bg-[#080808] border border-border px-3.5 py-2 font-sans text-[0.75rem] text-white focus:border-[#8C5CFF] focus:outline-none placeholder-foreground/30 disabled:opacity-40"
                     />
                   </div>
 
@@ -607,7 +772,8 @@ export default function AdminTreasuryPage() {
                       value={withdrawDest}
                       onChange={e => setWithdrawDest(e.target.value)}
                       placeholder="e.g. 0x71C...845f"
-                      className="w-full rounded-xl bg-[#080808] border border-border px-3.5 py-2 font-sans text-[0.75rem] text-white focus:border-[#8C5CFF] focus:outline-none placeholder-foreground/30"
+                      disabled={submitting}
+                      className="w-full rounded-xl bg-[#080808] border border-border px-3.5 py-2 font-sans text-[0.75rem] text-white focus:border-[#8C5CFF] focus:outline-none placeholder-foreground/30 disabled:opacity-40"
                     />
                   </div>
 
@@ -620,20 +786,21 @@ export default function AdminTreasuryPage() {
                       value={withdrawReason}
                       onChange={e => setWithdrawReason(e.target.value)}
                       placeholder="Specify purpose..."
-                      className="w-full h-16 rounded-xl bg-[#080808] border border-border p-3 font-sans text-[0.75rem] text-white focus:border-[#8C5CFF] focus:outline-none placeholder-foreground/30 resize-none"
+                      disabled={submitting}
+                      className="w-full h-16 rounded-xl bg-[#080808] border border-border p-3 font-sans text-[0.75rem] text-white focus:border-[#8C5CFF] focus:outline-none placeholder-foreground/30 resize-none disabled:opacity-40"
                     />
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full rounded-xl bg-[#8C5CFF] hover:bg-[#AC8EF3] text-white py-2 font-sans text-[0.75rem] font-semibold transition-all active:scale-[0.98] mt-1.5 shadow-lg"
+                    disabled={submitting}
+                    className="w-full rounded-xl bg-[#8C5CFF] hover:bg-[#AC8EF3] text-white py-2 font-sans text-[0.75rem] font-semibold transition-all active:scale-[0.98] mt-1.5 shadow-lg disabled:opacity-40 cursor-pointer"
                   >
-                    Submit Withdrawal Request
+                    {submitting ? 'Submitting...' : 'Submit Withdrawal Request'}
                   </button>
                 </form>
               </div>
             ) : (
-              // Super Admin view explanation
               <div className="rounded-2xl border border-border bg-card p-5 border-dashed border-[#8C5CFF]/30 flex flex-col gap-2.5 justify-center h-full">
                 <span className="font-sans text-[0.625rem] font-semibold text-[#8C5CFF] uppercase tracking-wider">Separation of Duties</span>
                 <h4 className="font-sans text-[0.875rem] font-bold text-white leading-none">Super Admin Mode Active</h4>
@@ -643,7 +810,7 @@ export default function AdminTreasuryPage() {
                 <button
                   type="button"
                   onClick={() => setActiveRole('Finance Admin')}
-                  className="rounded-xl border border-border hover:border-[#8C5CFF]/30 hover:bg-[#8C5CFF]/5 text-white/90 hover:text-white py-2 font-sans text-[0.75rem] font-semibold transition-all mt-1"
+                  className="rounded-xl border border-border hover:border-[#8C5CFF]/30 hover:bg-[#8C5CFF]/5 text-white/90 hover:text-white py-2 font-sans text-[0.75rem] font-semibold transition-all mt-1 cursor-pointer"
                 >
                   Switch to Finance Admin to Request
                 </button>
@@ -653,7 +820,7 @@ export default function AdminTreasuryPage() {
 
         </div>
 
-        {/* 5. Treasury Reserve Monitor (Full Width, Compacted height & content sizes) */}
+        {/* 5. Treasury Reserve Monitor */}
         <div className="rounded-xl border border-border bg-card p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between md:justify-start gap-4">
@@ -665,37 +832,35 @@ export default function AdminTreasuryPage() {
                 {walletBalance.toLocaleString()} / 10,000 min
               </span>
             </div>
-            {/* Progress bar */}
             <div className="w-full h-1.5 rounded-full bg-[#080808] border border-border mt-2 overflow-hidden">
               <div 
                 className="h-full rounded-full bg-gradient-to-r from-[#8C5CFF] to-[#AC8EF3] transition-all duration-500" 
-                style={{ width: `${Math.min(100, (walletBalance / 42180) * 100)}%` }}
+                style={{ width: `${Math.min(100, (walletBalance / 50000) * 100)}%` }}
               />
             </div>
           </div>
           <div className="flex items-center gap-1.5 bg-amber-500/5 border border-amber-500/10 rounded-lg px-2.5 py-1 text-amber-400 font-sans text-[0.625rem] shrink-0">
             <AlertTriangle size={12} className="shrink-0" />
-            <span>Locked under 10k CC.</span>
+            <span>Enforced 10k CC reserve floor.</span>
           </div>
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
-            className="rounded-lg border border-border hover:border-[#8C5CFF]/30 hover:bg-[#8C5CFF]/5 text-white/90 hover:text-white px-3.5 py-1 font-sans text-[0.6875rem] font-semibold transition-all shrink-0"
+            className="rounded-lg border border-border hover:border-[#8C5CFF]/30 hover:bg-[#8C5CFF]/5 text-white/90 hover:text-white px-3.5 py-1 font-sans text-[0.6875rem] font-semibold transition-all shrink-0 cursor-pointer"
           >
             View Details
           </button>
         </div>
 
-        {/* 6. Withdrawal Requests List (Full Width, navigation link tabs) */}
+        {/* 6. Withdrawal Requests Queue & History */}
         <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-4">
-          {/* Header and Link Nav Tabs */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/40 pb-3">
             <div>
               <h3 className="font-sans text-[0.875rem] font-bold text-white">Withdrawal Requests</h3>
               <p className="font-sans text-[0.725rem] text-[#A0A0A0] mt-0.5">Multisig transaction execution queue</p>
             </div>
             
-            {/* Navigation Link Tabs */}
+            {/* Filter Tabs */}
             <div className="flex items-center gap-1 bg-[#080808] border border-border p-1 rounded-xl self-start sm:self-auto shadow-inner">
               {(['All', 'New', 'Approved', 'Rejected'] as const).map(tab => {
                 const isActive = queueTab === tab;
@@ -710,10 +875,10 @@ export default function AdminTreasuryPage() {
                         : 'text-[#A0A0A0] hover:text-white'
                     }`}
                   >
-                    {tab === 'New' ? 'New' : tab === 'Approved' ? 'Approved' : tab === 'Rejected' ? 'Rejected' : 'All'}
-                    {tab === 'New' && requests.filter(r => r.status === 'Pending Approval').length > 0 && (
+                    {tab}
+                    {tab === 'New' && allRequests.filter(r => r.status === 'Pending Approval').length > 0 && (
                       <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[9px] font-bold">
-                        {requests.filter(r => r.status === 'Pending Approval').length}
+                        {allRequests.filter(r => r.status === 'Pending Approval').length}
                       </span>
                     )}
                   </button>
@@ -722,11 +887,11 @@ export default function AdminTreasuryPage() {
             </div>
           </div>
 
-          {/* Request queue list - styled as responsive full-width rows */}
+          {/* Request queue list */}
           <div className="flex flex-col gap-4 mt-2">
             {filteredRequests.length === 0 ? (
               <div className="py-8 text-center text-[#A0A0A0] font-sans text-[0.8125rem]">
-                No withdrawal requests found for this filter.
+                No withdrawal requests found.
               </div>
             ) : (
               filteredRequests.map(req => (
@@ -734,7 +899,6 @@ export default function AdminTreasuryPage() {
                   key={req.id} 
                   className="border-b border-border/40 pb-4 last:border-0 last:pb-0 pt-2 flex flex-col md:grid md:grid-cols-[1.2fr_2fr_2fr_3fr_1.5fr] gap-4 items-start md:items-center"
                 >
-                  {/* Col 1: ID & Amount */}
                   <div className="flex items-center gap-2.5">
                     <div className="size-8 rounded-lg bg-[#8C5CFF]/10 flex items-center justify-center text-[#8C5CFF] shrink-0">
                       <Coins size={16} />
@@ -745,20 +909,17 @@ export default function AdminTreasuryPage() {
                     </div>
                   </div>
 
-                  {/* Col 2: Requester & Time */}
                   <div className="flex flex-col">
                     <span className="font-sans text-[0.6875rem] text-[#A0A0A0]">Requested By</span>
                     <span className="font-sans text-[0.75rem] font-semibold text-white/90 mt-0.5 truncate">{req.requestedBy}</span>
                     <span className="font-sans text-[0.625rem] text-[#A0A0A0] leading-none mt-1">{req.timeAgo}</span>
                   </div>
 
-                  {/* Col 3: Destination Wallet */}
                   <div className="flex flex-col min-w-0 w-full">
                     <span className="font-sans text-[0.6875rem] text-[#A0A0A0]">Destination Address</span>
                     <span className="font-sans text-[0.75rem] font-mono text-white/80 mt-1 select-all truncate">{req.destination}</span>
                   </div>
 
-                  {/* Col 4: Reason (NON-ITALIC) */}
                   <div className="flex flex-col w-full">
                     <span className="font-sans text-[0.6875rem] text-[#A0A0A0] mb-1">Reason / Notes</span>
                     <div className="bg-[#080808] px-3 py-2 rounded-lg border border-border/40 font-sans text-[0.75rem] text-[#A0A0A0] leading-normal">
@@ -771,7 +932,6 @@ export default function AdminTreasuryPage() {
                     )}
                   </div>
 
-                  {/* Col 5: Status badge & action buttons */}
                   <div className="flex flex-col items-end gap-2 w-full md:w-auto shrink-0">
                     <span className={`inline-block rounded px-2 py-0.5 font-sans text-[0.625rem] font-bold ${
                       req.status === 'Pending Approval' 
@@ -788,38 +948,31 @@ export default function AdminTreasuryPage() {
                         <div className="flex gap-1.5 mt-1.5 w-full md:w-auto">
                           <button
                             type="button"
+                            disabled={submitting}
                             onClick={() => handleReject(req.id)}
-                            className="flex-1 md:flex-none rounded-lg border border-rose-500/30 hover:bg-rose-500/5 text-rose-400 px-2.5 py-1.5 font-sans text-[0.6875rem] font-semibold transition-all active:scale-[0.95]"
+                            className="flex-1 md:flex-none rounded-lg border border-rose-500/30 hover:bg-rose-500/5 text-rose-400 px-2.5 py-1.5 font-sans text-[0.6875rem] font-semibold transition-all active:scale-[0.95] disabled:opacity-40 cursor-pointer"
                           >
                             Reject
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleApprove(req.id)}
-                            className="flex-1 md:flex-none rounded-lg bg-[#8C5CFF] hover:bg-[#AC8EF3] text-white px-3.5 py-1.5 font-sans text-[0.6875rem] font-semibold transition-all active:scale-[0.95]"
+                            disabled={submitting}
+                            onClick={() => handleApprove(req)}
+                            className="flex-1 md:flex-none rounded-lg bg-[#8C5CFF] hover:bg-[#AC8EF3] text-white px-3.5 py-1.5 font-sans text-[0.6875rem] font-semibold transition-all active:scale-[0.95] disabled:opacity-40 cursor-pointer"
                           >
-                            Approve
+                            {submitting ? 'Confirming...' : 'Sign & Execute'}
                           </button>
                         </div>
                       ) : (
-                        <span className="text-[0.625rem] text-[#A0A0A0] mt-1 font-semibold">Awaiting Super Admin Signature</span>
+                        <span className="font-sans text-[0.625rem] text-amber-400/80 mt-1">
+                          Awaiting Super Admin Signature
+                        </span>
                       )
                     )}
                   </div>
-
                 </div>
               ))
             )}
-          </div>
-
-          {/* Warning Notice at bottom */}
-          <div className="h-px bg-border/40 w-full my-1" />
-          <div className="flex gap-2.5 items-start bg-indigo-500/5 border border-indigo-500/10 rounded-xl p-4 text-[#8C5CFF] font-sans text-[0.75rem] leading-relaxed">
-            <ShieldAlert size={16} className="shrink-0 mt-0.5" />
-            <div className="flex flex-col gap-0.5">
-              <span className="font-semibold text-white/90">Multi Sign Status</span>
-              <span>All withdrawals require approval from 2 distinct admin parties before CC is released on-chain.</span>
-            </div>
           </div>
         </div>
 

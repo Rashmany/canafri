@@ -12,62 +12,76 @@ datasource db {
 // ─────────────────────────────────────────
 
 model User {
-  id              String      @id @default(cuid())
-  phoneHash       String?     @unique
-  phoneVerified   Boolean     @default(false)
-  phonePrefix     String?
-  passwordHash    String?
-  email           String?     @unique
-  emailVerified   Boolean     @default(false)
-  walletAddress   String?     @unique
-  walletBoundAt   DateTime?
-  displayName     String
-  username        String      @unique
-  avatarUrl       String?
-  bio             String?
-  country         String?
-  website         String?
-  isCreator       Boolean     @default(false)
-  isSeller        Boolean     @default(false)
-  sellerApplied   Boolean     @default(false)
-  sellerApproved  Boolean     @default(false)
-  sellerModeOn    Boolean     @default(false)
-  trustScore      Int         @default(50)
-  riskScore       Int         @default(0)
-  status          UserStatus  @default(ACTIVE)
-  role            UserRole    @default(MEMBER)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id                  String      @id @default(cuid())
+  phoneHash           String?     @unique
+  phoneVerified       Boolean     @default(false)
+  phonePrefix         String?
+  passwordHash        String?
+  email               String?     @unique
+  emailVerified       Boolean     @default(false)
+  walletAddress       String?     @unique
+  walletBoundAt       DateTime?
+  displayName         String
+  username            String      @unique
+  avatarUrl           String?
+  bio                 String?
+  country             String?
+  website             String?
+  isCreator           Boolean     @default(false)
+  isSeller            Boolean     @default(false)
+  sellerApplied       Boolean     @default(false)
+  sellerApproved      Boolean     @default(false)
+  sellerModeOn        Boolean     @default(false)
+  trustScore          Int         @default(50)
+  riskScore           Int         @default(0)
+  status              UserStatus  @default(ACTIVE)
+  role                UserRole    @default(MEMBER)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
 
   // Revocation metadata
-  revokedBy       String?
-  revokedAt       DateTime?
-  revokeReason    String?
+  revokedBy           String?
+  revokedAt           DateTime?
+  revokeReason        String?
 
-  subscription    Subscription?
-  creatorStake    CreatorStake?
-  sentMessages    Message[]       @relation("SentMessages")
-  receivedMessages Message[]      @relation("ReceivedMessages")
-  postedJobs      Job[]           @relation("ClientJobs")
-  freelanceJobs   Job[]           @relation("FreelancerJobs")
-  proposals       Proposal[]
-  content         Content[]
-  readStakes      ReadStake[]
-  contentReplies  ContentReply[]
-  sessions        Session[]
-  riskFlags       RiskFlag[]
-  securityAudits  SecurityAudit[]
-  totpSecret      String?
-  totpEnabled     Boolean         @default(false)
-  reviewsGiven    Review[]        @relation("ReviewsGiven")
-  reviewsReceived Review[]        @relation("ReviewsReceived")
-  notifications   Notification[]
-  supportTickets  SupportTicket[]
+  // ── Risk v2 fields ──────────────────────────────────────────────────
+  // timerViolationCount: tracks stake-timer early-unstake strikes.
+  //   First offence = warning only; 2nd+ = risk increment.
+  timerViolationCount Int         @default(0)
+  // lastViolationAt: timestamp of last security risk event for decay calc.
+  lastViolationAt     DateTime?
+  // needsReview: replaces auto-suspend. Set when riskScore >= 81.
+  needsReview         Boolean     @default(false)
+
+  subscription        Subscription?
+  creatorStake        CreatorStake?
+  sentMessages        Message[]         @relation("SentMessages")
+  receivedMessages    Message[]         @relation("ReceivedMessages")
+  postedJobs          Job[]             @relation("ClientJobs")
+  freelanceJobs       Job[]             @relation("FreelancerJobs")
+  proposals           Proposal[]
+  content             Content[]
+  readStakes          ReadStake[]
+  contentReplies      ContentReply[]
+  sessions            Session[]
+  riskFlags           RiskFlag[]
+  riskEvents          RiskEvent[]
+  policyViolations    PolicyViolation[]
+  trustEvents         TrustEvent[]
+  securityAudits      SecurityAudit[]
+  totpSecret          String?
+  totpEnabled         Boolean           @default(false)
+  reviewsGiven        Review[]          @relation("ReviewsGiven")
+  reviewsReceived     Review[]          @relation("ReviewsReceived")
+  notifications       Notification[]
+  supportTickets      SupportTicket[]
 
   @@index([phoneHash])
   @@index([walletAddress])
   @@index([riskScore])
+  @@index([needsReview])
 }
+
 
 enum UserStatus {
   ACTIVE
@@ -555,6 +569,91 @@ model RiskFlag {
   @@index([resolvedAt])
   @@index([createdAt])
 }
+
+// ─────────────────────────────────────────
+// RISK ENGINE v2
+// ─────────────────────────────────────────
+
+/// Categorises the source of a security risk score change.
+enum RiskCategory {
+  SECURITY    // phone reuse, multi-account, confirmed bot
+  POLICY      // spam, harassment, fake listing escalated to security
+  MANUAL      // admin manually adjusted score
+  DECAY       // automatic 30-day clean-period recovery
+}
+
+/// Full immutable audit trail of every security risk delta.
+model RiskEvent {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id])
+  delta     Int          // positive = increase, negative = decay / reduction
+  reason    String       // human-readable description
+  category  RiskCategory
+  metadata  Json?        // extra context (contentId, ip, disputeId, etc.)
+  adminId   String?      // set when category = MANUAL
+  createdAt DateTime     @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([category])
+}
+
+/// Standardised policy violation categories used by moderators.
+enum ViolationCategory {
+  SPAM
+  HARASSMENT
+  FAKE_LISTING
+  COPYRIGHT_ABUSE
+  FAKE_IDENTITY
+  PLATFORM_ABUSE
+}
+
+/// Moderation actions separate from security risk.
+model PolicyViolation {
+  id         String            @id @default(cuid())
+  userId     String
+  user       User              @relation(fields: [userId], references: [id])
+  category   ViolationCategory
+  details    String?           // admin notes
+  contentId  String?           // linked content record if applicable
+  adminId    String            // userId of the issuing admin
+  resolved   Boolean           @default(false)
+  resolvedAt DateTime?
+  createdAt  DateTime          @default(now())
+
+  @@index([userId])
+  @@index([category])
+  @@index([resolved])
+}
+
+/// Trust score change categories for independent reputation tracking.
+enum TrustGain {
+  JOB_COMPLETE
+  ESCROW_COMPLETE
+  ACCOUNT_AGE
+  POSITIVE_REVIEW
+  CONTENT_PUBLISHED
+  ADMIN_ADJUSTMENT
+  DISPUTE_LOSS
+  POLICY_VIOLATION
+}
+
+/// Full audit trail of trust score changes (independent of security risk).
+model TrustEvent {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  delta     Int       // positive = reputation gain, negative = loss
+  reason    String
+  category  TrustGain
+  adminId   String?   // set when category = ADMIN_ADJUSTMENT
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
 
 // ─────────────────────────────────────────
 // NOTIFICATION

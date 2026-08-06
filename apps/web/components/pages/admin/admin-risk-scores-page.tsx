@@ -1,33 +1,26 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Search,
-  Filter,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   TrendingUp,
   TrendingDown,
   AlertTriangle,
   ShieldCheck,
-  ShieldAlert,
-  Clock,
   X,
-  Check,
-  User,
   Activity,
-  FileText,
-  Eye,
-  Info,
+  RefreshCw,
 } from 'lucide-react';
+import { apiFetch } from '@/lib/api-client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type RiskTier = 'Clean' | 'Watch' | 'Restricted' | 'Blocked';
 
 interface RiskUser {
-  id: number;
+  id: string | number;
   name: string;
   handle: string;
   email: string;
@@ -39,7 +32,6 @@ interface RiskUser {
     ipMatches?: string[];
     phoneMatched?: string;
     speedApps?: number;
-    aiPercentage?: number;
     timerDiff?: string;
     subscriptionPattern?: string;
   };
@@ -54,105 +46,6 @@ interface RiskPattern {
   icon: string;
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const MOCK_RISK_USERS: RiskUser[] = [
-  {
-    id: 1,
-    name: 'John Trek',
-    handle: '@johntrek',
-    email: 'johntrek@gmail.com',
-    avatarInitials: 'JT',
-    score: 91,
-    primarySignal: 'Fake deliverables reported',
-    trend: 'up',
-    evidence: {
-      speedApps: 18,
-      aiPercentage: 88,
-    },
-    explanation: 'I used an AI assistant to edit my grammatical mistakes, but the core work is mine.'
-  },
-  {
-    id: 2,
-    name: 'Sarah Connor',
-    handle: '@sconnor',
-    email: 'sconnor@cyberdyne.com',
-    avatarInitials: 'SC',
-    score: 82,
-    primarySignal: 'Plagiarised content detected',
-    trend: 'down',
-    evidence: {
-      aiPercentage: 92,
-    },
-    explanation: 'The code is boilerplate code. It was not intended to copy any proprietary source.'
-  },
-  {
-    id: 3,
-    name: 'David Miller',
-    handle: '@davidm',
-    email: 'davidm@canafri.io',
-    avatarInitials: 'DM',
-    score: 82,
-    primarySignal: 'Plagiarised content detected',
-    trend: 'down',
-    evidence: {
-      aiPercentage: 91,
-    },
-    explanation: 'Shared common repository files.'
-  },
-  {
-    id: 4,
-    name: 'Alice Johnson',
-    handle: '@alicej',
-    email: 'alicej@example.com',
-    avatarInitials: 'AJ',
-    score: 91,
-    primarySignal: 'Fake deliverables reported',
-    trend: 'up',
-    evidence: {
-      ipMatches: ['192.168.1.102', '192.168.1.105'],
-    },
-    explanation: 'My brother also has an account from the same house.'
-  },
-  {
-    id: 5,
-    name: 'Robert Patrick',
-    handle: '@t1000',
-    email: 't1000@cyberdyne.com',
-    avatarInitials: 'RP',
-    score: 82,
-    primarySignal: 'Plagiarised content detected',
-    trend: 'down',
-    evidence: {
-      timerDiff: '2 mins',
-    },
-    explanation: 'Accidentally triggered unstake instead of deposit.'
-  },
-  {
-    id: 6,
-    name: 'Michael Biehn',
-    handle: '@kyle_reese',
-    email: 'reese@cyberdyne.com',
-    avatarInitials: 'MB',
-    score: 82,
-    primarySignal: 'Plagiarised content detected',
-    trend: 'down',
-    evidence: {
-      subscriptionPattern: 'High volume signup sequence',
-    },
-    explanation: 'Multiple team members subscribed at once.'
-  }
-];
-
-const MOCK_PATTERNS: RiskPattern[] = [
-  { id: 'ip',        name: 'Multiple registrations same IP',     count: 31, percent: 80, icon: 'language' },
-  { id: 'phone',     name: 'Phone reuse attempt',                count: 25, percent: 65, icon: 'phone' },
-  { id: 'velocity',  name: 'Rapid job application velocity',     count: 15, percent: 40, icon: 'work' },
-  { id: 'ai',        name: 'AI content detection over 85%',      count: 25, percent: 65, icon: 'verified' },
-  { id: 'timer',     name: 'Stake-unstake before 10 min timer',  count: 6,  percent: 15, icon: 'time' },
-  { id: 'anomaly',   name: 'Subscription pattern anomaly',       count: 8,  percent: 20, icon: 'chart' },
-];
-
 const PAGE_SIZE = 6;
 
 // ─── Tiers helper ─────────────────────────────────────────────────────────────
@@ -164,6 +57,15 @@ function tierConfig(score: number): { label: RiskTier; color: string; bg: string
   return                  { label: 'Blocked',    color: 'text-red-400',     bg: 'bg-red-500/10',     action: 'Account suspended' };
 }
 
+// Default fallback signals if database has no active risk flags
+const DEFAULT_PATTERNS: RiskPattern[] = [
+  { id: 'ip',       name: 'Multiple registrations same IP',    count: 0, percent: 0, icon: 'language' },
+  { id: 'phone',    name: 'Phone reuse attempt',               count: 0, percent: 0, icon: 'phone' },
+  { id: 'velocity', name: 'Rapid job application velocity',    count: 0, percent: 0, icon: 'work' },
+  { id: 'timer',    name: 'Stake-unstake before 20 min timer', count: 0, percent: 0, icon: 'time' },
+  { id: 'anomaly',  name: 'Subscription pattern anomaly',      count: 0, percent: 0, icon: 'chart' },
+];
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AdminRiskScoresPage() {
@@ -173,21 +75,65 @@ export default function AdminRiskScoresPage() {
   const [selectedUser, setSelectedUser] = useState<RiskUser | null>(null);
   const [showToast, setShowToast] = useState<string | null>(null);
 
-  // Stats summary counts
-  const stats = useMemo(() => {
-    let clean = 0, watch = 0, restricted = 0, blocked = 0;
-    MOCK_RISK_USERS.forEach(u => {
-      const cfg = tierConfig(u.score);
-      if (cfg.label === 'Clean')      clean++;
-      else if (cfg.label === 'Watch') watch++;
-      else if (cfg.label === 'Restricted') restricted++;
-      else if (cfg.label === 'Blocked') blocked++;
-    });
-    return { clean, watch, restricted, blocked };
+  // Live state from backend
+  const [loading, setLoading] = useState(true);
+  const [isResolving, setIsResolving] = useState(false);
+  const [riskUsers, setRiskUsers] = useState<RiskUser[]>([]);
+  const [patterns, setPatterns] = useState<RiskPattern[]>(DEFAULT_PATTERNS);
+  const [tierStats, setTierStats] = useState<{ clean: number; watch: number; restricted: number; blocked: number }>({
+    clean: 0,
+    watch: 0,
+    restricted: 0,
+    blocked: 0,
+  });
+
+  const fetchRiskData = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/admin/risk-scores');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.riskUsers) setRiskUsers(data.riskUsers);
+        if (Array.isArray(data.patterns) && data.patterns.length > 0) {
+          setPatterns(data.patterns);
+        } else {
+          setPatterns(DEFAULT_PATTERNS);
+        }
+        if (data.stats) setTierStats(data.stats);
+      }
+    } catch (e) {
+      console.error('Failed to load risk scores:', e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchRiskData();
+  }, [fetchRiskData]);
+
+  // Compute live tier stats from loaded risk users if available
+  const stats = useMemo(() => {
+    if (riskUsers.length > 0) {
+      let clean = 0, watch = 0, restricted = 0, blocked = 0;
+      riskUsers.forEach(u => {
+        const cfg = tierConfig(u.score);
+        if (cfg.label === 'Clean')      clean++;
+        else if (cfg.label === 'Watch') watch++;
+        else if (cfg.label === 'Restricted') restricted++;
+        else if (cfg.label === 'Blocked') blocked++;
+      });
+      return {
+        clean: tierStats.clean > clean ? tierStats.clean : clean,
+        watch: tierStats.watch > watch ? tierStats.watch : watch,
+        restricted: tierStats.restricted > restricted ? tierStats.restricted : restricted,
+        blocked: tierStats.blocked > blocked ? tierStats.blocked : blocked,
+      };
+    }
+    return tierStats;
+  }, [riskUsers, tierStats]);
+
   const filtered = useMemo(() => {
-    let list = MOCK_RISK_USERS;
+    let list = riskUsers;
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(u => u.name.toLowerCase().includes(q) || u.handle.toLowerCase().includes(q) || u.primarySignal.toLowerCase().includes(q));
@@ -196,7 +142,7 @@ export default function AdminRiskScoresPage() {
       list = list.filter(u => tierConfig(u.score).label === tierFilter);
     }
     return list;
-  }, [search, tierFilter]);
+  }, [search, tierFilter, riskUsers]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageData = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -206,9 +152,28 @@ export default function AdminRiskScoresPage() {
     setTimeout(() => setShowToast(null), 3000);
   };
 
-  const handleResolveRisk = (userId: number, decision: string) => {
-    setSelectedUser(null);
-    triggerToast(`Resolution applied: User account set to ${decision}.`);
+  const handleResolveRisk = async (userId: string | number, decision: 'Clean' | 'Watch' | 'Restricted' | 'Blocked') => {
+    setIsResolving(true);
+    try {
+      const res = await apiFetch(`/api/admin/users/${userId}/resolve-risk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Resolution failed');
+      }
+
+      setSelectedUser(null);
+      triggerToast(`Resolution applied: User account set to ${decision}.`);
+      await fetchRiskData();
+    } catch (err: any) {
+      triggerToast(err.message || 'Failed to update risk score');
+    } finally {
+      setIsResolving(false);
+    }
   };
 
   const pageNumbers = () => {
@@ -270,7 +235,7 @@ export default function AdminRiskScoresPage() {
         <div className="rounded-[16px] border border-border bg-[#0b0b0b] p-6 flex flex-col gap-4">
           <h3 className="text-[16px] font-bold text-white/80">Automated Risk Signals</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {MOCK_PATTERNS.map(pat => (
+            {patterns.map(pat => (
               <div key={pat.id} className="flex items-center justify-between border-b border-border/40 pb-3 last:border-0 last:pb-0">
                 <div className="flex items-center gap-3">
                   <Activity size={16} className="text-[#8C5CFF] shrink-0" />
@@ -498,17 +463,20 @@ export default function AdminRiskScoresPage() {
                   {selectedUser.evidence.ipMatches && (
                     <p>IP Address Match: Matches with active accounts {selectedUser.evidence.ipMatches.join(', ')}</p>
                   )}
+                  {selectedUser.evidence.phoneMatched && (
+                    <p>Phone Match: {selectedUser.evidence.phoneMatched}</p>
+                  )}
                   {selectedUser.evidence.speedApps && (
                     <p>Trigger Velocity: {selectedUser.evidence.speedApps} applications within 60 seconds</p>
                   )}
-                  {selectedUser.evidence.aiPercentage && (
-                    <p>AI Similarity Match: {selectedUser.evidence.aiPercentage}% similarity verified by parser</p>
-                  )}
                   {selectedUser.evidence.timerDiff && (
-                    <p>Time Anomaly: Stake-unstake duration was {selectedUser.evidence.timerDiff}</p>
+                    <p>Time Anomaly: Stake-unstake duration was {selectedUser.evidence.timerDiff} (minimum 20 minutes required)</p>
                   )}
                   {selectedUser.evidence.subscriptionPattern && (
                     <p>Pattern Flag: {selectedUser.evidence.subscriptionPattern}</p>
+                  )}
+                  {!selectedUser.evidence.ipMatches && !selectedUser.evidence.speedApps && !selectedUser.evidence.timerDiff && !selectedUser.evidence.subscriptionPattern && (
+                    <p className="text-[#606060]">No automated evidence recorded — admin flagged.</p>
                   )}
                 </div>
               </div>
@@ -528,24 +496,27 @@ export default function AdminRiskScoresPage() {
             <div className="flex gap-2.5 mt-6 pt-4 border-t border-border">
               <button
                 type="button"
+                disabled={isResolving}
                 onClick={() => handleResolveRisk(selectedUser.id, 'Clean')}
-                className="flex-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 py-2.5 font-sans text-[13px] font-semibold transition-colors text-center"
+                className="flex-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 py-2.5 font-sans text-[13px] font-semibold transition-colors text-center disabled:opacity-50"
               >
-                Dismiss Risk
+                {isResolving ? 'Updating...' : 'Dismiss Risk'}
               </button>
               <button
                 type="button"
+                disabled={isResolving}
                 onClick={() => handleResolveRisk(selectedUser.id, 'Watch')}
-                className="flex-1 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 py-2.5 font-sans text-[13px] font-semibold transition-colors text-center"
+                className="flex-1 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 py-2.5 font-sans text-[13px] font-semibold transition-colors text-center disabled:opacity-50"
               >
-                Keep On Watch
+                {isResolving ? 'Updating...' : 'Keep On Watch'}
               </button>
               <button
                 type="button"
+                disabled={isResolving}
                 onClick={() => handleResolveRisk(selectedUser.id, 'Blocked')}
-                className="flex-1 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 py-2.5 font-sans text-[13px] font-semibold transition-colors text-center"
+                className="flex-1 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 py-2.5 font-sans text-[13px] font-semibold transition-colors text-center disabled:opacity-50"
               >
-                Block Account
+                {isResolving ? 'Updating...' : 'Block Account'}
               </button>
             </div>
           </div>
