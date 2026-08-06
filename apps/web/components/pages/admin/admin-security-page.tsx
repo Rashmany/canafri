@@ -65,6 +65,28 @@ const INITIAL_LOGIN_HISTORY: LoginAttempt[] = [
   { id: 'h-20', timestamp: '2026-07-07 09:30:15', ip: '192.168.1.104', device: 'macOS (Chrome)', status: 'Success' },
 ];
 
+const API = '/api';
+
+function getToken() {
+  if (typeof window === 'undefined') return '';
+  return (
+    localStorage.getItem('canafri_admin_access_token') ||
+    localStorage.getItem('canafri_access_token') ||
+    ''
+  );
+}
+
+async function apiFetch(path: string, opts: RequestInit = {}) {
+  return fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getToken()}`,
+      ...(opts.headers ?? {}),
+    },
+  });
+}
+
 export default function AdminSecurityPage() {
   // Password State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -78,6 +100,7 @@ export default function AdminSecurityPage() {
   const [showReauth, setShowReauth] = useState(false);
   const [reauthPassword, setReauthPassword] = useState('');
   const [reauthError, setReauthError] = useState('');
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
 
   // 2FA State
   const [totpEnabled, setTotpEnabled] = useState(false);
@@ -132,24 +155,48 @@ export default function AdminSecurityPage() {
     if (!allReqsMet) return;
     if (newPassword !== confirmPassword) return;
     
-    // Trigger re-authentication before save
+    // Trigger re-authentication modal before submit
     setShowReauth(true);
     setReauthError('');
+    setReauthPassword(currentPassword); // prefill with entered current password
   };
 
-  const handleConfirmReauth = () => {
-    if (reauthPassword !== 'admin123') { // simulated admin check
-      setReauthError('Invalid current password verification.');
+  const handleConfirmReauth = async () => {
+    if (!reauthPassword) {
+      setReauthError('Please enter your current administrator password.');
       return;
     }
     
-    // Save successful simulated action
-    setShowReauth(false);
-    setReauthPassword('');
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    triggerToast('Administrator password updated successfully');
+    setPasswordSubmitting(true);
+    setReauthError('');
+
+    try {
+      const res = await apiFetch('/admin/change-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          currentPassword: reauthPassword,
+          newPassword,
+          confirmPassword,
+          revokeOtherSessions: true,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setShowReauth(false);
+        setReauthPassword('');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        triggerToast('Administrator password updated successfully.');
+      } else {
+        setReauthError(data.message || 'Failed to update password. Verification failed.');
+      }
+    } catch {
+      setReauthError('Network error while saving password.');
+    } finally {
+      setPasswordSubmitting(false);
+    }
   };
 
   const triggerToast = (msg: string) => {
@@ -672,10 +719,11 @@ export default function AdminSecurityPage() {
               </button>
               <button
                 type="button"
+                disabled={passwordSubmitting}
                 onClick={handleConfirmReauth}
-                className="flex-1 px-4 py-2.5 text-[13px] font-semibold text-white bg-[#8C5CFF] rounded-[10px] hover:bg-[#7A4AEE] transition-colors"
+                className="flex-1 px-4 py-2.5 text-[13px] font-semibold text-white bg-[#8C5CFF] rounded-[10px] hover:bg-[#7A4AEE] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                Confirm
+                {passwordSubmitting ? <RefreshCw className="size-3.5 animate-spin" /> : 'Confirm'}
               </button>
             </div>
           </div>

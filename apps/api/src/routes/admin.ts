@@ -6,6 +6,7 @@ import { authGuard, roleGuard } from '../middleware/auth.js';
 import { HashService } from '../lib/hash.js';
 import { AuditService } from '../services/audit.js';
 import { CantonService } from '../services/canton.js';
+import { activeActivityProvider } from '../services/activityProvider.js';
 import { RiskService } from '../middleware/riskCheck.js';
 import { RiskEngine } from '../services/risk-engine.js';
 import { TrustEngine } from '../services/trust-engine.js';
@@ -2540,6 +2541,99 @@ export async function adminRoutes(fastify: FastifyInstance) {
       try { await redis.set(cacheKey, JSON.stringify(payload), { EX: 60 }); } catch { /* non-fatal */ }
       return reply.send(payload);
     } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // GET /admin/canton-activity - Delegate activity feed to activeActivityProvider (PlatformActivityProvider / CantonLedgerProvider abstraction)
+  fastify.get('/canton-activity', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const payload = await activeActivityProvider.getActivityFeed();
+      return reply.send(payload);
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // POST /admin/change-password - Change admin password with re-verification & session revocation
+  fastify.post('/change-password', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId } = (request.user as any) || {};
+      if (!userId) {
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User unauthenticated.' });
+      }
+
+      const ChangeAdminPasswordSchema = z.object({
+        currentPassword: z.string().min(1, 'Current password is required.'),
+        newPassword: z.string()
+          .min(12, 'Password must be at least 12 characters long.')
+          .refine(val => /[A-Z]/.test(val), { message: 'Password must contain at least one uppercase letter.' })
+          .refine(val => /[0-9]/.test(val), { message: 'Password must contain at least one number.' })
+          .refine(val => /[^A-Za-z0-9]/.test(val), { message: 'Password must contain at least one special character.' }),
+        confirmPassword: z.string(),
+        revokeOtherSessions: z.boolean().optional().default(true),
+      }).refine(data => data.newPassword === data.confirmPassword, {
+        message: 'New password and confirmation do not match.',
+        path: ['confirmPassword'],
+      });
+
+      const body = ChangeAdminPasswordSchema.parse(request.body);
+
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user || !user.passwordHash) {
+        return reply.status(404).send({ error: 'Not Found', message: 'User account not found.' });
+      }
+
+      // 1. Verify current password
+      const currentValid = await HashService.verifyPassword(body.currentPassword, user.passwordHash);
+      if (!currentValid) {
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Current password verification failed. Please enter your correct current password.' });
+      }
+
+      // 2. Ensure new password is not identical to current
+      const isSame = await HashService.verifyPassword(body.newPassword, user.passwordHash);
+      if (isSame) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'New password cannot be identical to your current password.' });
+      }
+
+      // 3. Hash and store new password
+      const newHash = await HashService.hashPassword(body.newPassword);
+      await prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash: newHash },
+      });
+
+      // 4. Revoke other sessions if requested
+      if (body.revokeOtherSessions) {
+        try {
+          const currentToken = (request.headers.authorization || '').replace('Bearer ', '').trim();
+          await prisma.session.deleteMany({
+            where: {
+              userId,
+              token: { not: currentToken },
+            },
+          });
+        } catch {
+          /* session cleanup non-fatal */
+        }
+      }
+
+      // 5. Audit Log
+      await AuditService.log({
+        userId,
+        action: 'ADMIN_PASSWORD_CHANGED',
+        target: userId,
+        after: { revokeOtherSessions: body.revokeOtherSessions, ip: request.ip },
+      });
+
+      return reply.send({
+        success: true,
+        message: 'Administrator password updated successfully.',
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', message: error.errors[0]?.message || 'Invalid password parameters.', details: error.errors });
+      }
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
   });
