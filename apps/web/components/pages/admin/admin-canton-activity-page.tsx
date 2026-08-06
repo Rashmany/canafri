@@ -48,21 +48,25 @@ interface Transaction {
   timestamp: Date;
   amount?: string;
   status: 'confirmed' | 'pending' | 'failed';
-  blockHeight?: number;
+  source?: 'Platform' | 'Canton Ledger';
+  referenceId?: string;
+  contractId?: string | null;
+  blockHeight?: number | null;
   txHash?: string;
 }
 
 interface NodeHealth {
   identity: string;
-  status: 'Connected' | 'Syncing' | 'Disconnected';
+  status: 'Connected' | 'Syncing' | 'Disconnected' | 'Platform Mode';
   sequencer: string;
   domain: string;
   damlPackage: string;
   superValidator: string;
   latency: number; // ms
-  blockHeight: number;
+  blockHeight: number | null;
   peerCount: number;
   syncedAt: Date;
+  modeDescription?: string;
 }
 
 interface NetworkStats {
@@ -190,12 +194,20 @@ function StatCard({
   );
 }
 
-function NodeRow({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
+function NodeRow({
+  label,
+  value,
+  valueColor = 'text-muted-foreground',
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
   return (
     <>
-      <div className="flex items-center justify-between py-2">
-        <span className="text-[13px] font-medium text-muted-foreground">{label}</span>
-        <span className={`text-[10px] font-normal ${valueColor ?? 'text-foreground/80'}`}>{value}</span>
+      <div className="flex items-center justify-between py-2 text-[12px]">
+        <span className="text-muted-foreground">{label}</span>
+        <span className={`font-mono font-medium truncate max-w-[200px] ${valueColor}`}>{value}</span>
       </div>
       <div className="h-px bg-border/40 last:hidden" />
     </>
@@ -213,6 +225,7 @@ function TxIcon({ type }: { type: TxType }) {
 }
 
 function TxRow({ tx, fresh }: { tx: Transaction; fresh?: boolean }) {
+  const isCanton = tx.source === 'Canton Ledger';
   return (
     <div
       className={`flex gap-3 items-center px-4 py-4 border-b border-border/40 last:border-0 transition-all duration-500 ${
@@ -222,14 +235,23 @@ function TxRow({ tx, fresh }: { tx: Transaction; fresh?: boolean }) {
       <TxIcon type={tx.type} />
       <div className="flex-1 min-w-0 flex items-center justify-between">
         <div className="flex flex-col gap-1.5 min-w-0 pr-4">
-          <span className="text-[15px] font-medium text-foreground leading-tight truncate">{tx.title}</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[15px] font-medium text-foreground leading-tight truncate">{tx.title}</span>
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+              isCanton
+                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                : 'bg-[#8C5CFF]/15 text-[#8C5CFF] border border-[#8C5CFF]/30'
+            }`}>
+              {tx.source || 'Platform'}
+            </span>
+          </div>
           <span className="text-[13px] text-muted-foreground">{tx.address}</span>
         </div>
         <div className="flex flex-col items-end gap-1 flex-shrink-0">
           <span className="text-[10px] text-muted-foreground whitespace-nowrap">{timeAgo(tx.timestamp)}</span>
-          {tx.txHash && (
-            <span className="text-[9px] text-muted-foreground/60 font-mono whitespace-nowrap">{tx.txHash}</span>
-          )}
+          <span className="text-[9px] text-muted-foreground/80 font-mono whitespace-nowrap">
+            {tx.contractId ? `CID: ${tx.contractId}` : (tx.referenceId || tx.txHash || `TX-${tx.id.slice(-6)}`)}
+          </span>
         </div>
       </div>
     </div>
@@ -238,6 +260,28 @@ function TxRow({ tx, fresh }: { tx: Transaction; fresh?: boolean }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+const API = '/api';
+
+function getToken() {
+  if (typeof window === 'undefined') return '';
+  return (
+    localStorage.getItem('canafri_admin_access_token') ||
+    localStorage.getItem('canafri_access_token') ||
+    ''
+  );
+}
+
+async function apiFetch(path: string, opts: RequestInit = {}) {
+  return fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getToken()}`,
+      ...(opts.headers ?? {}),
+    },
+  });
+}
+
 export default function AdminCantonActivityPage() {
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [freshTxIds, setFreshTxIds] = useState<Set<string>>(new Set());
@@ -245,20 +289,21 @@ export default function AdminCantonActivityPage() {
   const [filterType, setFilterType] = useState<TxType | 'all'>('all');
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [ticker, setTicker] = useState(0); // force re-render for time display
+  const [loading, setLoading] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
-  const [stats] = useState<NetworkStats>({
-    transactionsToday: 2847,
+  const [stats, setStats] = useState<NetworkStats>({
+    transactionsToday: 0,
     txTrend: 12,
-    featuredAppMarkers: 2847,
-    avgConfirmationTime: 1.4,
+    featuredAppMarkers: 0,
+    avgConfirmationTime: 1.2,
     nodeUptime: 99.98,
-    totalVolume: '1.2M CC',
-    activeContracts: 389,
+    totalVolume: '0 CC',
+    activeContracts: 0,
   });
 
-  const [node] = useState<NodeHealth>({
-    identity: 'canafri-node-01',
+  const [node, setNode] = useState<NodeHealth>({
+    identity: 'canafri-canton-node-01',
     status: 'Connected',
     sequencer: 'global.canton.network',
     domain: 'Global Synchronizer',
@@ -267,50 +312,72 @@ export default function AdminCantonActivityPage() {
     latency: 24,
     blockHeight: 1048592,
     peerCount: 18,
-    syncedAt: new Date(Date.now() - 300000),
+    syncedAt: new Date(),
   });
 
-  const [rewards] = useState<RewardsInfo>({
+  const [rewards, setRewards] = useState<RewardsInfo>({
     estimatedThisMonth: 0,
-    usdEquivalent: 437000,
+    usdEquivalent: 0,
     networkShare: 0.46,
     rewardsPool: '516M CC',
     lastPayout: '2 days ago',
     nextPayout: 'in 28 days',
   });
 
-  // Simulate live transaction feed
-  const addTransaction = useCallback(() => {
-    const template = MOCK_TX_TEMPLATES[Math.floor(Math.random() * MOCK_TX_TEMPLATES.length)];
-    const cc = [5, 10, 20, 50, 100, 120, 240][Math.floor(Math.random() * 7)];
-    const address = MOCK_ADDRESSES[Math.floor(Math.random() * MOCK_ADDRESSES.length)];
-    const id = `tx-live-${Date.now()}`;
+  const fetchCantonActivity = useCallback(async () => {
+    try {
+      const res = await apiFetch('/admin/canton-activity');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          if (data.stats) setStats(data.stats);
+          if (data.node) {
+            setNode({
+              ...data.node,
+              syncedAt: new Date(data.node.syncedAt),
+            });
+          }
+          if (data.rewards) setRewards(data.rewards);
+          if (Array.isArray(data.transactions) && data.transactions.length > 0) {
+            const parsedTxs: Transaction[] = data.transactions.map((t: any) => ({
+              ...t,
+              timestamp: new Date(t.timestamp),
+            }));
 
-    const newTx: Transaction = {
-      id,
-      type: template.type,
-      title: template.title(cc),
-      address,
-      timestamp: new Date(),
-      status: 'confirmed',
-      blockHeight: node.blockHeight + Math.floor(Math.random() * 3),
-      txHash: `0x${Math.random().toString(16).slice(2, 6)}...${Math.random().toString(16).slice(2, 6)}`,
-    };
+            // Track fresh new transaction IDs for green highlight animation
+            const existingIds = new Set(transactions.map(t => t.id));
+            const newIds = parsedTxs.filter(t => !existingIds.has(t.id)).map(t => t.id);
+            if (newIds.length > 0) {
+              setFreshTxIds(prev => new Set([...prev, ...newIds]));
+              setTimeout(() => {
+                setFreshTxIds(prev => {
+                  const next = new Set(prev);
+                  newIds.forEach(id => next.delete(id));
+                  return next;
+                });
+              }, 2500);
+            }
 
-    setTransactions(prev => [newTx, ...prev.slice(0, 49)]);
-    setFreshTxIds(prev => new Set([...prev, id]));
-    setTimeout(() => {
-      setFreshTxIds(prev => { const next = new Set(prev); next.delete(id); return next; });
-    }, 2500);
-  }, [node.blockHeight]);
+            setTransactions(parsedTxs);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[CantonActivity] Error fetching live Canton activity:', err);
+    }
+  }, [transactions]);
+
+  useEffect(() => {
+    fetchCantonActivity();
+  }, []);
 
   useEffect(() => {
     if (!isLive) return;
     const interval = setInterval(() => {
-      addTransaction();
-    }, 4000 + Math.random() * 3000);
+      fetchCantonActivity();
+    }, 8000);
     return () => clearInterval(interval);
-  }, [isLive, addTransaction]);
+  }, [isLive, fetchCantonActivity]);
 
   // Ticker for relative timestamps
   useEffect(() => {
@@ -472,7 +539,7 @@ export default function AdminCantonActivityPage() {
               {/* Refresh */}
               <button
                 type="button"
-                onClick={addTransaction}
+                onClick={fetchCantonActivity}
                 className="flex items-center justify-center size-[30px] text-foreground/70 bg-background border border-border rounded-[8px] hover:bg-border/40 hover:text-foreground transition-colors"
                 title="Refresh"
               >
@@ -521,8 +588,8 @@ export default function AdminCantonActivityPage() {
                 Showing {Math.min(filteredTxs.length, 50)} of {filteredTxs.length} events
               </span>
               <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Zap className="size-3 text-emerald-400" />
-                <span>Block #{node.blockHeight.toLocaleString()}</span>
+                <Zap className="size-3 text-[#8C5CFF]" />
+                <span>{node.blockHeight !== null ? `Block #${node.blockHeight.toLocaleString()}` : 'Platform Activity Mode'}</span>
               </div>
             </div>
           )}
@@ -540,12 +607,14 @@ export default function AdminCantonActivityPage() {
               <div className={`flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full ${
                 node.status === 'Connected'
                   ? 'bg-emerald-400/10 text-emerald-400'
+                  : node.status === 'Platform Mode'
+                  ? 'bg-[#8C5CFF]/10 text-[#8C5CFF]'
                   : node.status === 'Syncing'
                   ? 'bg-amber-400/10 text-amber-400'
                   : 'bg-red-400/10 text-red-400'
               }`}>
                 <span className={`size-1.5 rounded-full ${
-                  node.status === 'Connected' ? 'bg-emerald-400' : node.status === 'Syncing' ? 'bg-amber-400' : 'bg-red-400'
+                  node.status === 'Connected' ? 'bg-emerald-400' : node.status === 'Platform Mode' ? 'bg-[#8C5CFF]' : node.status === 'Syncing' ? 'bg-amber-400' : 'bg-red-400'
                 }`} />
                 {node.status}
               </div>
@@ -554,7 +623,7 @@ export default function AdminCantonActivityPage() {
 
             <div className="flex flex-col">
               <NodeRow label="Node identity"    value={node.identity} />
-              <NodeRow label="Status"           value={node.status}           valueColor={node.status === 'Connected' ? 'text-emerald-400' : 'text-muted-foreground'} />
+              <NodeRow label="Status"           value={node.status}           valueColor={node.status === 'Connected' ? 'text-emerald-400' : 'text-[#8C5CFF]'} />
               <NodeRow label="Sequencer"        value={node.sequencer} />
               <NodeRow label="Domain"           value={node.domain} />
               <NodeRow label="Daml package"     value={node.damlPackage} />
@@ -574,8 +643,8 @@ export default function AdminCantonActivityPage() {
                 <span className="text-[14px] font-medium text-foreground">{node.peerCount}</span>
               </div>
               <div className="flex-1 bg-background border border-border rounded-xl p-3 flex flex-col gap-1">
-                <span className="text-[10px] text-muted-foreground">Block Height</span>
-                <span className="text-[14px] font-medium text-foreground">{node.blockHeight.toLocaleString()}</span>
+                <span className="text-[10px] text-muted-foreground">Ledger Sync</span>
+                <span className="text-[14px] font-medium text-foreground">{node.blockHeight !== null ? `#${node.blockHeight.toLocaleString()}` : 'Platform Mode'}</span>
               </div>
             </div>
           </div>
