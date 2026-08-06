@@ -2424,7 +2424,127 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({ error: 'Internal Server Error', message: err.message });
     }
   });
-}
+
+  // ─── GET /admin/analytics ────────────────────────────────────────────────────
+  // Platform analytics with 60s Redis cache. Auth via global roleGuard hook.
+  fastify.get('/analytics', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const query = request.query as { days?: string };
+      const numDays = Math.min(90, Math.max(7, parseInt(query.days ?? '7', 10) || 7));
+
+      // 1. Redis cache check (60s TTL — prevents heavy DB aggregation on every refresh)
+      const cacheKey = `cache:admin_analytics:${numDays}`;
+      try {
+        const cached = await redis.get(cacheKey);
+        if (cached) return reply.send(JSON.parse(cached));
+      } catch { /* redis failure non-fatal */ }
+
+      const now = new Date();
+      const last24h   = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const startDate = new Date(now.getTime() - numDays * 24 * 60 * 60 * 1000);
+
+      // 2. Single parallel DB batch — zero N+1 queries
+      const [
+        totalUsers, dauRows,
+        rsTotal, jobTotal, subTotal, propTotal, stakeTotal,
+        rangeUsers, rangeSellers, rangeJobs, rangeRS,
+      ] = await Promise.all([
+        prisma.user.count({ where: { role: 'MEMBER' } }),
+        prisma.session.groupBy({ by: ['userId'], where: { lastActivityAt: { gte: last24h } } }),
+        prisma.readStake.aggregate({ _sum: { amountCC: true }, _count: true }),
+        prisma.job.aggregate({ _sum: { amountCC: true }, _count: true }),
+        prisma.subscription.aggregate({ _sum: { amountCC: true }, _count: true }),
+        prisma.proposal.aggregate({ _sum: { depositCC: true }, _count: true }),
+        prisma.creatorStake.aggregate({ _sum: { amountCC: true }, _count: true }),
+        prisma.user.findMany({ where: { createdAt: { gte: startDate } }, select: { createdAt: true, isSeller: true, sellerApproved: true } }),
+        prisma.user.findMany({ where: { sellerApproved: true, updatedAt: { gte: startDate } }, select: { updatedAt: true } }),
+        prisma.job.findMany({ where: { createdAt: { gte: startDate } }, select: { createdAt: true, amountCC: true } }),
+        prisma.readStake.findMany({ where: { stakedAt: { gte: startDate } }, select: { stakedAt: true, amountCC: true } }),
+      ]);
+
+      const dauCount = dauRows.length;
+
+      // 3. Platform revenue = fees only (not gross transaction volume)
+      const rsVol    = rsTotal._sum.amountCC    ?? 0;
+      const jobVol   = jobTotal._sum.amountCC   ?? 0;
+      const subVol   = subTotal._sum.amountCC   ?? 0;
+      const propVol  = propTotal._sum.depositCC ?? 0;
+      const stakeVol = stakeTotal._sum.amountCC ?? 0;
+
+      const rsFee    = rsVol    * 0.30;
+      const jobFee   = jobVol   * 0.05;
+      const subFee   = subVol   * 0.30;
+      const propFee  = propVol;
+      const stakeFee = stakeVol * 0.05;
+
+      const totalRevenue   = rsFee + jobFee + subFee + propFee + stakeFee;
+      const totalGrossVol  = rsVol + jobVol + subVol + propVol + stakeVol;
+      const totalTxCount   = (rsTotal._count ?? 0) + (jobTotal._count ?? 0) + (subTotal._count ?? 0) + (propTotal._count ?? 0);
+      const avgRS = totalUsers > 0 ? parseFloat(((rsTotal._count ?? 0) / totalUsers).toFixed(1)) : 0;
+
+      const safeRev = totalRevenue > 0 ? totalRevenue : 1;
+      const revenueBreakdown = [
+        { label: 'Content read fees (30%)',  value: +rsFee.toFixed(2),    pct: +((rsFee    / safeRev) * 100).toFixed(1), color: '#8C5CFF', amount: `${rsFee.toFixed(1)} CC` },
+        { label: 'Check-in pool share',      value: +stakeFee.toFixed(2), pct: +((stakeFee / safeRev) * 100).toFixed(1), color: '#4ADE80', amount: `${stakeFee.toFixed(1)} CC` },
+        { label: 'Job milestone fees (5%)',  value: +jobFee.toFixed(2),   pct: +((jobFee   / safeRev) * 100).toFixed(1), color: '#5993F4', amount: `${jobFee.toFixed(1)} CC` },
+        { label: 'Subscription fees (30%)', value: +subFee.toFixed(2),   pct: +((subFee   / safeRev) * 100).toFixed(1), color: '#F87171', amount: `${subFee.toFixed(1)} CC` },
+        { label: 'Job proposal deposits',   value: +propFee.toFixed(2),  pct: +((propFee  / safeRev) * 100).toFixed(1), color: '#AC8EF3', amount: `${propFee.toFixed(1)} CC` },
+        { label: 'Other', value: 0, pct: 0, color: '#DAC95A', amount: '0 CC' },
+      ];
+
+      // 4. Daily time-series — UTC date boundaries for consistency across timezones
+      const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      type DayEntry = { date: string; fullDate: string; registered: number; freelancers: number; volume: number };
+      const dailyMap: Record<string, DayEntry> = {};
+      for (let i = numDays - 1; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 86400000);
+        const key = d.toISOString().slice(0, 10);
+        dailyMap[key] = {
+          date:       `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`,
+          fullDate:   `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()} (UTC)`,
+          registered: 0, freelancers: 0, volume: 0,
+        };
+      }
+      rangeUsers.forEach(u    => { const k = u.createdAt.toISOString().slice(0,10); if (dailyMap[k]) dailyMap[k].registered   += 1; });
+      rangeSellers.forEach(s  => { const k = s.updatedAt.toISOString().slice(0,10); if (dailyMap[k]) dailyMap[k].freelancers  += 1; });
+      rangeJobs.forEach(j     => { const k = j.createdAt.toISOString().slice(0,10); if (dailyMap[k]) dailyMap[k].volume       += j.amountCC; });
+      rangeRS.forEach(r       => { const k = r.stakedAt.toISOString().slice(0,10);  if (dailyMap[k]) dailyMap[k].volume       += r.amountCC; });
+
+      const series  = Object.values(dailyMap);
+      const maxVol  = Math.max(1, ...series.map(s => s.volume));
+      const dailyVolumeSeries = series.map(s => ({ ...s, pct: Math.min(100, Math.round((s.volume / maxVol) * 100)) }));
+
+      const payload = {
+        success: true,
+        stats: {
+          totalCCTransactions:          totalTxCount,
+          totalCCTransactionsFormatted: totalTxCount.toLocaleString(),
+          dailyActiveUsers:             dauCount,
+          avgReadSessionsPerUser:       avgRS,
+          networkSharePct:              0.46,
+          totalRevenueCC:               +totalRevenue.toFixed(2),
+          totalGrossVolumeCC:           +totalGrossVol.toFixed(2),
+        },
+        revenueBreakdown,
+        dailyVolumeSeries,
+        cantonRewards: {
+          monthlyCCTransactions:   totalTxCount.toLocaleString(),
+          networkTotalEst:         '18.3M',
+          monthlyRewardsEstCC:     0.00,
+          usdValueEst:             '$0.00',
+          networkShareProgressPct: 0.46,
+          disclaimer:              'Rewards are estimated projections, not guaranteed values.',
+        },
+      };
+
+      try { await redis.set(cacheKey, JSON.stringify(payload), { EX: 60 }); } catch { /* non-fatal */ }
+      return reply.send(payload);
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+} // end adminRoutes
+
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Public invite-acceptance routes (no auth guard)
