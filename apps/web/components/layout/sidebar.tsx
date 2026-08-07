@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard,
   Wallet,
@@ -19,6 +19,8 @@ import {
   Moon,
   Laptop,
   Check,
+  MoreHorizontal,
+  ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
 import { AvatarOnline } from '@/components/ui/avatar-online';
@@ -122,7 +124,7 @@ interface SidebarDividerProps {
 }
 
 function SidebarDivider({ className = '' }: SidebarDividerProps) {
-  return <div className={`h-px w-full shrink-0 bg-border dark:bg-border ${className}`} />;
+  return <div className={`h-px w-full shrink-0 bg-foreground/15 dark:bg-foreground/15 ${className}`} />;
 }
 
 // Logo is imported from '@/components/ui/logo' (shared with TopNav)
@@ -228,7 +230,7 @@ function SellingNavItem({ activePage, setActivePage, showLabel = true, onClose }
           'flex h-[3rem] w-full items-center gap-[0.625rem] rounded-[0.75rem]',
           'cursor-pointer transition-colors duration-300 ease-out text-left',
           showLabel ? 'px-[1.5rem]' : 'justify-center px-0',
-          isActive ? 'bg-foreground/10' : 'hover:bg-border/50 dark:hover:bg-border/50',
+          isActive ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold' : 'hover:bg-foreground/10 hover:text-foreground',
         ].join(' ')}
       >
         <span className="relative shrink-0 opacity-80">
@@ -254,24 +256,23 @@ function SellingNavItem({ activePage, setActivePage, showLabel = true, onClose }
         )}
       </button>
 
-      {/* Dropdown */}
+      {/* Dropdown container using main app background */}
       {open && showLabel && (
-        <div className="ml-4 mt-1 flex flex-col gap-[2px] rounded-[0.75rem] border border-border bg-card py-[0.375rem] px-[0.25rem]">
+        <div className="my-1.5 flex flex-col gap-[0.25rem] rounded-[0.75rem] border border-border bg-background p-1.5 shadow-sm animate-accordion-open">
           {subItems.map(({ label, page }) => (
             <button
               key={page}
               type="button"
               onClick={() => handleNavigate(page)}
               className={[
-                'flex h-[2.5rem] w-full items-center gap-[0.5rem] rounded-[0.625rem] px-[1rem]',
+                'flex h-[2.375rem] w-full items-center gap-[0.5rem] rounded-[0.5rem] px-[0.75rem]',
                 'cursor-pointer transition-colors duration-200 text-left',
-                activePage === page ? 'bg-foreground/10' : 'hover:bg-foreground/5',
+                activePage === page
+                  ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold'
+                  : 'text-foreground/80 hover:bg-foreground/10 hover:text-foreground',
               ].join(' ')}
             >
-              <span className={[
-                'font-sans text-[0.75rem] font-normal leading-[1.125rem]',
-                activePage === page ? 'text-foreground opacity-100' : 'text-foreground opacity-70',
-              ].join(' ')}>
+              <span className="font-sans text-[0.75rem] font-medium leading-[1.125rem] whitespace-nowrap">
                 {label}
               </span>
             </button>
@@ -317,7 +318,7 @@ function JobsNavItem({ activePage, setActivePage, showLabel = true, onClose }: J
           'flex h-[3rem] w-full items-center gap-[0.625rem] rounded-[0.75rem]',
           'cursor-pointer transition-colors duration-300 ease-out text-left',
           showLabel ? 'px-[1.5rem]' : 'justify-center px-0',
-          isActive ? 'bg-foreground/10' : 'hover:bg-border/50 dark:hover:bg-border/50',
+          isActive ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold' : 'hover:bg-foreground/10 hover:text-foreground',
         ].join(' ')}
       >
         <span className="relative shrink-0 opacity-80">
@@ -343,24 +344,23 @@ function JobsNavItem({ activePage, setActivePage, showLabel = true, onClose }: J
         )}
       </button>
 
-      {/* Dropdown */}
+      {/* Dropdown container using main app background */}
       {open && showLabel && (
-        <div className="ml-4 mt-1 flex flex-col gap-[2px] rounded-[0.75rem] border border-border bg-card py-[0.375rem] px-[0.25rem]">
+        <div className="my-1.5 flex flex-col gap-[0.25rem] rounded-[0.75rem] border border-border bg-background p-1.5 shadow-sm animate-accordion-open">
           {subItems.map(({ label, page }) => (
             <button
               key={page}
               type="button"
               onClick={() => handleNavigate(page)}
               className={[
-                'flex h-[2.5rem] w-full items-center gap-[0.5rem] rounded-[0.625rem] px-[1rem]',
+                'flex h-[2.375rem] w-full items-center gap-[0.5rem] rounded-[0.5rem] px-[0.75rem]',
                 'cursor-pointer transition-colors duration-200 text-left',
-                activePage === page ? 'bg-foreground/10' : 'hover:bg-foreground/5',
+                activePage === page
+                  ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold'
+                  : 'text-foreground/80 hover:bg-foreground/10 hover:text-foreground',
               ].join(' ')}
             >
-              <span className={[
-                'font-sans text-[0.75rem] font-normal leading-[1.125rem]',
-                activePage === page ? 'text-foreground opacity-100' : 'text-foreground opacity-70',
-              ].join(' ')}>
+              <span className="font-sans text-[0.75rem] font-medium leading-[1.125rem] whitespace-nowrap">
                 {label}
               </span>
             </button>
@@ -371,43 +371,71 @@ function JobsNavItem({ activePage, setActivePage, showLabel = true, onClose }: J
   );
 }
 
-// ─── Theme nav item with sub-items dropdown (Dark/Light/System) ───────────────
+// ─── "More" nav item with Settings, Theme & Support dropdown ──────────────────
 
-interface ThemeNavItemProps {
+interface MoreNavItemProps {
+  activePage: string;
+  setActivePage: (page: string) => void;
   showLabel?: boolean;
   onClose?: () => void;
 }
 
-function ThemeNavItem({ showLabel = true, onClose }: ThemeNavItemProps) {
+function MoreNavItem({ activePage, setActivePage, showLabel = true, onClose }: MoreNavItemProps) {
   const [open, setOpen] = useState(false);
+  const [themeSubOpen, setThemeSubOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme } = useTheme();
 
-  const options: { label: string; mode: 'dark' | 'light' | 'system'; icon: LucideIcon }[] = [
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setThemeSubOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  const isActive = activePage === 'Settings' || activePage === 'Support' || open;
+
+  const handleNavigate = (page: string) => {
+    setActivePage(page);
+    setOpen(false);
+    onClose?.();
+  };
+
+  const themeOptions: { label: string; mode: 'dark' | 'light' | 'system'; icon: LucideIcon }[] = [
     { label: 'Dark mode', mode: 'dark', icon: Moon },
     { label: 'Light mode', mode: 'light', icon: Sun },
     { label: 'System mode', mode: 'system', icon: Laptop },
   ];
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
+      {/* Trigger Button labeled "More" */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title={!showLabel ? 'Theme' : undefined}
+        title={!showLabel ? 'More' : undefined}
         className={[
           'flex h-[3rem] w-full items-center gap-[0.625rem] rounded-[0.75rem]',
           'cursor-pointer transition-colors duration-300 ease-out text-left',
           showLabel ? 'px-[1.5rem]' : 'justify-center px-0',
-          open ? 'bg-foreground/10' : 'hover:bg-border/50 dark:hover:bg-border/50',
+          isActive ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold' : 'hover:bg-foreground/10 hover:text-foreground',
         ].join(' ')}
       >
-        <span className="relative shrink-0 opacity-80">
-          <Palette size={20} strokeWidth={1.5} className="text-foreground" />
+        <span className="relative shrink-0 opacity-80 flex items-center justify-center">
+          <MoreHorizontal size={20} strokeWidth={1.5} className="text-foreground" />
         </span>
         {showLabel && (
           <>
-            <span className="flex-1 whitespace-nowrap font-sans text-[0.8125rem] font-normal leading-[1.125rem] text-foreground opacity-80">
-              Theme
+            <span className={[
+              'flex-1 whitespace-nowrap font-sans text-[0.8125rem] font-normal leading-[1.125rem] text-foreground transition-opacity duration-300 ease-out',
+              isActive ? 'opacity-100' : 'opacity-80',
+            ].join(' ')}>
+              More
             </span>
             <span className={[
               'text-foreground/50 transition-transform duration-200',
@@ -421,44 +449,87 @@ function ThemeNavItem({ showLabel = true, onClose }: ThemeNavItemProps) {
         )}
       </button>
 
-      {/* Dropdown list (ul) */}
-      {open && (
-        <ul className={[
-          'mt-1 flex flex-col gap-[2px] rounded-[0.75rem] border border-border bg-card py-[0.375rem] px-[0.25rem]',
-          showLabel ? 'ml-4' : 'ml-0',
-        ].join(' ')}>
-          {options.map(({ label, mode, icon: Icon }) => {
-            const isSelected = theme === mode;
-            return (
-              <li key={mode}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTheme(mode);
-                    onClose?.();
-                  }}
-                  className={[
-                    'flex h-[2.25rem] w-full items-center justify-between gap-[0.5rem] rounded-[0.625rem] px-[0.75rem]',
-                    'cursor-pointer transition-colors duration-200 text-left',
-                    isSelected
-                      ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold'
-                      : 'hover:bg-foreground/5 text-foreground/80',
-                  ].join(' ')}
-                >
-                  <div className="flex items-center gap-2">
-                    <Icon size={14} className={isSelected ? 'text-[#8C5CFF]' : 'text-foreground/70'} />
-                    {showLabel && (
-                      <span className="font-sans text-[0.75rem] font-normal leading-[1.125rem]">
-                        {label}
-                      </span>
-                    )}
-                  </div>
-                  {isSelected && <Check size={14} className="text-[#8C5CFF]" />}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+      {/* Expanded "More" Dropdown container using main app background */}
+      {open && showLabel && (
+        <div className="my-1.5 flex flex-col gap-[0.25rem] rounded-[0.75rem] border border-border bg-background p-1.5 shadow-sm animate-accordion-open">
+          {/* 1. Settings */}
+          <button
+            type="button"
+            onClick={() => handleNavigate('Settings')}
+            className={[
+              'flex h-[2.375rem] w-full items-center gap-2.5 rounded-[0.5rem] px-3',
+              'cursor-pointer text-left transition-colors duration-200',
+              activePage === 'Settings'
+                ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold'
+                : 'text-foreground/80 hover:bg-foreground/10 hover:text-foreground',
+            ].join(' ')}
+          >
+            <Settings size={15} strokeWidth={1.75} className="shrink-0" />
+            <span className="font-sans text-[0.75rem] font-medium leading-[1.125rem] whitespace-nowrap">
+              Settings
+            </span>
+          </button>
+
+          {/* 2. Theme Sub-menu */}
+          <div className="flex flex-col">
+            <button
+              type="button"
+              onClick={() => setThemeSubOpen((v) => !v)}
+              className="flex h-[2.375rem] w-full items-center justify-between gap-2.5 rounded-[0.5rem] px-3 cursor-pointer text-left transition-colors duration-200 text-foreground/80 hover:bg-foreground/10 hover:text-foreground"
+            >
+              <div className="flex items-center gap-2.5">
+                <Palette size={15} strokeWidth={1.75} className="shrink-0" />
+                <span className="font-sans text-[0.75rem] font-medium leading-[1.125rem] whitespace-nowrap capitalize">
+                  Theme ({theme})
+                </span>
+              </div>
+              <ChevronDown size={12} className={['transition-transform duration-200', themeSubOpen ? 'rotate-180' : ''].join(' ')} />
+            </button>
+
+            {themeSubOpen && (
+              <div className="ml-4 my-1 flex flex-col gap-1 border-l border-border/60 pl-2.5 py-1 animate-accordion-open">
+                {themeOptions.map(({ label, mode, icon: Icon }) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => {
+                      setTheme(mode);
+                      onClose?.();
+                    }}
+                    className={[
+                      'flex h-[2rem] w-full items-center justify-between rounded-[0.375rem] px-2 text-[0.6875rem] font-sans transition-colors',
+                      theme === mode ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold' : 'text-foreground/75 hover:bg-foreground/10 hover:text-foreground',
+                    ].join(' ')}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Icon size={13} />
+                      <span>{label}</span>
+                    </div>
+                    {theme === mode && <Check size={12} className="text-[#8C5CFF]" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 3. Support */}
+          <button
+            type="button"
+            onClick={() => handleNavigate('Support')}
+            className={[
+              'flex h-[2.375rem] w-full items-center gap-2.5 rounded-[0.5rem] px-3',
+              'cursor-pointer text-left transition-colors duration-200',
+              activePage === 'Support'
+                ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold'
+                : 'text-foreground/80 hover:bg-foreground/10 hover:text-foreground',
+            ].join(' ')}
+          >
+            <LifeBuoy size={15} strokeWidth={1.75} className="shrink-0" />
+            <span className="font-sans text-[0.75rem] font-medium leading-[1.125rem] whitespace-nowrap">
+              Support
+            </span>
+          </button>
+        </div>
       )}
     </div>
   );
@@ -492,8 +563,8 @@ function NavItem({
         'cursor-pointer transition-colors duration-300 ease-out text-left',
         showLabel ? 'px-[1.5rem]' : 'justify-center px-0',
         active
-          ? 'bg-foreground/10'
-          : 'hover:bg-border/50 dark:hover:bg-border/50',
+          ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold'
+          : 'hover:bg-foreground/10 hover:text-foreground',
       ].join(' ')}
     >
       {/* Icon wrapper — dot badge shown in collapsed state */}
@@ -550,11 +621,70 @@ function ProfileRow({
   showLabel = true,
 }: ProfileRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
 
   // Collapsed tablet — show avatar only
   if (!showLabel) {
     return (
-      <div className="flex w-full justify-center">
+      <div ref={containerRef} className="relative flex w-full justify-center">
+        {menuOpen && (
+          <div className="absolute bottom-0 left-full ml-3 z-[100] w-48 overflow-hidden rounded-[0.875rem] border border-border bg-background p-2 shadow-xl animate-accordion-open">
+            <button
+              type="button"
+              onClick={() => { setMenuOpen(false); onViewProfile?.(); }}
+              className="flex w-full items-center gap-3 border-b border-border p-2 text-left hover:bg-foreground/10 transition-colors"
+            >
+              <AvatarOnline src={avatarSrc} alt={name} size="sm" online />
+              <div className="min-w-0">
+                <p className="font-sans text-[0.8125rem] font-medium text-foreground truncate">{name}</p>
+                <p className="font-sans text-[0.6875rem] text-muted truncate">{handle}</p>
+              </div>
+            </button>
+            <div className="py-1">
+              <ProfileMenuButton
+                icon={
+                  <svg className="size-4 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                  </svg>
+                }
+                label="View Profile"
+                onClick={() => { setMenuOpen(false); onViewProfile?.(); }}
+              />
+              <ProfileMenuButton
+                icon={
+                  <svg className="size-4 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                  </svg>
+                }
+                label="Account Settings"
+                onClick={() => { setMenuOpen(false); onViewSettings?.(); }}
+              />
+              <SidebarDivider className="my-1" />
+              <ProfileMenuButton
+                icon={
+                  <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
+                  </svg>
+                }
+                label="Log Out"
+                onClick={() => { setMenuOpen(false); onLogout?.(); }}
+                destructive
+              />
+            </div>
+          </div>
+        )}
         <AvatarOnline
           src={avatarSrc}
           alt={name}
@@ -566,15 +696,15 @@ function ProfileRow({
   }
 
   return (
-    <div className="relative w-full px-[0.5rem] pb-4">
+    <div ref={containerRef} className="relative w-full px-1 pb-2">
       {/* ── Context menu ── */}
       {menuOpen && (
-        <div className="absolute bottom-full left-0 z-50 mb-2 w-full min-w-[13rem] overflow-hidden rounded-[0.875rem] border border-border bg-card shadow-xl">
+        <div className="absolute bottom-full left-0 right-0 z-[100] mb-2 overflow-hidden rounded-[0.875rem] border border-border bg-background p-1 shadow-xl animate-accordion-open">
           {/* Header preview in popup */}
           <button
             type="button"
             onClick={() => { setMenuOpen(false); onViewProfile?.(); }}
-            className="flex w-full items-center gap-3 border-b border-border px-4 py-[0.875rem] text-left hover:bg-foreground/5 transition-colors rounded-t-[0.875rem]"
+            className="flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left hover:bg-foreground/10 transition-colors rounded-t-[0.875rem]"
           >
             <AvatarOnline src={avatarSrc} alt={name} size="sm" online />
             <div className="min-w-0">
@@ -584,7 +714,7 @@ function ProfileRow({
           </button>
 
           {/* Actions */}
-          <div className="py-[0.375rem]">
+          <div className="py-1">
             <ProfileMenuButton
               icon={
                 <svg className="size-4 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
@@ -605,7 +735,7 @@ function ProfileRow({
               onClick={() => { setMenuOpen(false); onViewSettings?.(); }}
             />
 
-            <div className="mx-3 my-1 h-px bg-border" />
+            <SidebarDivider className="my-1" />
 
             <ProfileMenuButton
               icon={
@@ -622,7 +752,7 @@ function ProfileRow({
       )}
 
       {/* ── Profile display row ── */}
-      <div className="flex w-full items-center justify-between gap-2 rounded-[0.75rem] px-2 py-1.5 hover:bg-foreground/5 transition-colors">
+      <div className="flex w-full items-center justify-between gap-2 rounded-[0.75rem] px-2 py-1.5 hover:bg-foreground/10 transition-colors">
         {/* Avatar + name — navigates to profile directly */}
         <div
           role="button"
@@ -680,9 +810,9 @@ function ProfileMenuButton({
       type="button"
       onClick={onClick}
       className={[
-        'flex w-full items-center gap-[0.625rem] px-4 py-[0.625rem]',
+        'flex w-full items-center gap-[0.625rem] px-3 py-[0.5rem] rounded-[0.5rem]',
         'font-sans text-[0.8125rem] transition-colors text-left',
-        'hover:bg-foreground/5',
+        'hover:bg-foreground/10',
         destructive
           ? 'text-red-400 hover:text-red-300'
           : 'text-foreground/80 hover:text-foreground',
@@ -726,7 +856,7 @@ function DesktopSidebar({
   unreadMessageCount = 0,
 }: SharedSidebarProps) {
   return (
-    <aside className="flex h-screen w-[14rem] shrink-0 flex-col overflow-hidden bg-sidebar px-[0.9375rem] py-[2.5rem]">
+    <aside className="flex h-screen w-[14rem] shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar px-[0.9375rem] py-[2.5rem] shadow-sm">
       {/* Logo — fixed header */}
       <div className="flex w-full shrink-0 flex-col gap-[1.875rem]">
         <Logo />
@@ -790,33 +920,30 @@ function DesktopSidebar({
 
         <div className="flex-1" />
 
-        <SidebarDivider />
-        <nav className="flex w-full flex-col gap-[0.3125rem]">
-          {SECONDARY_NAV.map((item) => (
-            <div key={item.label} className="flex flex-col gap-[0.3125rem]">
-              <NavItem
-                label={item.label}
-                icon={item.icon}
-                active={activePage === item.label}
-                onClick={() => setActivePage(item.label)}
-              />
-              {item.label === 'Settings' && <ThemeNavItem />}
-            </div>
-          ))}
-        </nav>
-        <div className="pl-[1.5rem]">
+        {/* Section Divider */}
+        <SidebarDivider className="my-2" />
+
+        {/* Bottom nav: More dropdown + Seller mode + Profile */}
+        <div className="flex flex-col gap-1">
+          <MoreNavItem
+            activePage={activePage}
+            setActivePage={setActivePage}
+            showLabel={true}
+          />
           {isSeller && (
-            <SellerModeToggle enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
+            <div className="px-2 my-1">
+              <SellerModeToggle enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
+            </div>
           )}
+          <ProfileRow
+            name={user.name}
+            handle={user.handle}
+            avatarSrc={user.avatarSrc}
+            onLogout={onLogout}
+            onViewProfile={onViewProfile}
+            onViewSettings={onViewSettings}
+          />
         </div>
-        <ProfileRow
-          name={user.name}
-          handle={user.handle}
-          avatarSrc={user.avatarSrc}
-          onLogout={onLogout}
-          onViewProfile={onViewProfile}
-          onViewSettings={onViewSettings}
-        />
       </div>
     </aside>
   );
@@ -845,7 +972,7 @@ function TabletSidebar({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       className={[
-        'hidden md:flex lg:hidden flex-col h-screen shrink-0 overflow-y-auto no-scrollbar bg-sidebar px-[0.9375rem] py-[2.5rem]',
+        'hidden md:flex lg:hidden flex-col h-screen shrink-0 overflow-y-auto no-scrollbar border-r border-border bg-sidebar px-[0.9375rem] py-[2.5rem] shadow-sm',
         'transition-[width] duration-300 ease-in-out',
         expanded ? 'w-[14rem]' : 'w-[4.5rem]',
       ].join(' ')}
@@ -917,42 +1044,36 @@ function TabletSidebar({
 
         <div className="flex-1" />
 
-        <SidebarDivider className="mt-6" />
-        <div className="flex flex-col gap-[0.3125rem]">
-          {SECONDARY_NAV.map((item) => (
-            <div key={item.label} className="flex flex-col gap-[0.3125rem]">
-              <NavItem
-                label={item.label}
-                icon={item.icon}
-                active={activePage === item.label}
-                showLabel={expanded}
-                onClick={() => setActivePage(item.label)}
-              />
-              {item.label === 'Settings' && <ThemeNavItem showLabel={expanded} />}
-            </div>
-          ))}
-        </div>
+        {/* Section Divider */}
+        <SidebarDivider className="my-2" />
 
-        <div className="flex justify-center px-2 mt-[1.875rem]">
-          {isSeller && (
-            expanded ? (
-              <SellerModeToggle enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
-            ) : (
-              <SellerModeTogglePill enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
-            )
-          )}
-        </div>
-
-        <div className={`mt-[1.875rem] ${expanded ? '' : 'flex justify-center px-0'}`}>
-          <ProfileRow
-            name={user.name}
-            handle={user.handle}
-            avatarSrc={user.avatarSrc}
-            onLogout={onLogout}
-            onViewProfile={onViewProfile}
-            onViewSettings={onViewSettings}
+        {/* Bottom nav */}
+        <div className="flex flex-col gap-1">
+          <MoreNavItem
+            activePage={activePage}
+            setActivePage={setActivePage}
             showLabel={expanded}
           />
+          {isSeller && (
+            <div className={`my-1 ${expanded ? 'px-2' : 'flex justify-center px-0'}`}>
+              {expanded ? (
+                <SellerModeToggle enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
+              ) : (
+                <SellerModeTogglePill enabled={sellerMode} onToggle={() => setSellerMode(!sellerMode)} />
+              )}
+            </div>
+          )}
+          <div className={`${expanded ? '' : 'flex justify-center px-0'}`}>
+            <ProfileRow
+              name={user.name}
+              handle={user.handle}
+              avatarSrc={user.avatarSrc}
+              onLogout={onLogout}
+              onViewProfile={onViewProfile}
+              onViewSettings={onViewSettings}
+              showLabel={expanded}
+            />
+          </div>
         </div>
       </div>
     </aside>
@@ -997,7 +1118,7 @@ function MobileSidebar({
         aria-label="Navigation menu"
         className={[
           'fixed left-0 top-0 z-50 flex h-full w-[80vw] max-w-[22rem] flex-col',
-          'overflow-hidden bg-sidebar px-[0.9375rem] py-[2rem]',
+          'overflow-hidden border-r border-border bg-sidebar px-[0.9375rem] py-[2rem]',
           'transition-transform duration-300 ease-in-out',
           open ? 'translate-x-0' : '-translate-x-full',
         ].join(' ')}
@@ -1087,31 +1208,26 @@ function MobileSidebar({
           </nav>
 
           <div className="flex-1" />
-          <SidebarDivider />
+          <SidebarDivider className="my-2" />
 
-          <nav className="flex w-full flex-col gap-[0.3125rem]">
-            {SECONDARY_NAV.map((item) => (
-              <NavItem
-                key={item.label}
-                label={item.label}
-                icon={item.icon}
-                active={activePage === item.label}
-                onClick={() => { setActivePage(item.label); onClose(); }}
-              />
-            ))}
-          </nav>
-
-          {/* Log Out */}
-          <button
-            type="button"
-            onClick={() => { onClose(); onLogout?.(); }}
-            className="flex w-full items-center gap-[0.625rem] rounded-[0.75rem] px-[1.5rem] py-[0.625rem] font-sans text-[0.8125rem] text-red-400 transition-colors hover:bg-foreground/5 hover:text-red-300"
-          >
-            <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
-            </svg>
-            Log Out
-          </button>
+          <div className="flex flex-col gap-1">
+            <MoreNavItem
+              activePage={activePage}
+              setActivePage={setActivePage}
+              onClose={onClose}
+            />
+            {/* Log Out */}
+            <button
+              type="button"
+              onClick={() => { onClose(); onLogout?.(); }}
+              className="flex w-full items-center gap-[0.625rem] rounded-[0.75rem] px-[1.5rem] py-[0.625rem] font-sans text-[0.8125rem] text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
+            >
+              <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
+              </svg>
+              Log Out
+            </button>
+          </div>
         </div>
       </aside>
     </>

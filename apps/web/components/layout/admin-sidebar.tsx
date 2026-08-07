@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -211,7 +211,7 @@ const GOVERNANCE_ITEMS: AdminNavItemConfig[] = [
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function SidebarDivider({ className = '' }: { className?: string }) {
-  return <div className={`h-px w-full shrink-0 bg-border ${className}`} />;
+  return <div className={`h-px w-full shrink-0 bg-foreground/15 dark:bg-foreground/15 ${className}`} />;
 }
 
 // ─── Nav Item ─────────────────────────────────────────────────────────────────
@@ -234,7 +234,7 @@ function AdminNavItem({ config, active, onClick, showLabel = true }: NavItemProp
         'flex h-[3rem] w-full items-center gap-[0.625rem] rounded-[0.75rem]',
         'cursor-pointer transition-colors duration-300 ease-out text-left',
         showLabel ? 'px-[1.5rem]' : 'justify-center px-0',
-        active ? 'bg-foreground/10' : 'hover:bg-border/50 dark:hover:bg-border/50',
+        active ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold' : 'hover:bg-foreground/10 hover:text-foreground',
       ].join(' ')}
     >
       <span className="relative shrink-0 opacity-80">
@@ -302,7 +302,7 @@ function SidebarDropdown({
               className={[
                 'flex h-[3rem] w-full items-center justify-center rounded-[0.75rem]',
                 'cursor-pointer transition-colors duration-300 ease-out',
-                activePage === item.page ? 'bg-foreground/10' : 'hover:bg-border/50',
+                activePage === item.page ? 'bg-[#8C5CFF]/15 text-[#8C5CFF]' : 'hover:bg-foreground/10',
               ].join(' ')}
             >
               <Icon size={18} strokeWidth={1.5} className={activePage === item.page ? 'text-[#8C5CFF]' : 'text-foreground opacity-80'} />
@@ -322,7 +322,7 @@ function SidebarDropdown({
         className={[
           'flex h-[3rem] w-full items-center gap-[0.625rem] rounded-[0.75rem] px-[1.5rem]',
           'cursor-pointer transition-colors duration-300 ease-out text-left',
-          isChildActive ? 'bg-foreground/10' : 'hover:bg-border/50',
+          isChildActive ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold' : 'hover:bg-foreground/10 hover:text-foreground',
         ].join(' ')}
       >
         <span className="relative shrink-0 flex size-5 items-center justify-center">
@@ -355,11 +355,11 @@ function SidebarDropdown({
       <div
         className={[
           'overflow-hidden transition-all duration-300 ease-in-out',
-          open ? 'max-h-[20rem] opacity-100' : 'max-h-0 opacity-0',
+          open ? 'max-h-[20rem] opacity-100 animate-accordion-open' : 'max-h-0 opacity-0',
         ].join(' ')}
       >
-        {/* Connector line + items */}
-        <div className="relative ml-[2.625rem] mt-0.5 flex flex-col gap-[0.1875rem] border-l border-border/60 pl-3 pb-1">
+        {/* Dropdown container using main app background */}
+        <div className="my-1.5 flex flex-col gap-[0.25rem] rounded-[0.75rem] border border-border bg-background p-1.5 shadow-sm">
           {items.map(item => {
             const Icon = item.icon;
             const active = activePage === item.page;
@@ -369,11 +369,11 @@ function SidebarDropdown({
                 type="button"
                 onClick={() => { setActivePage(item.page); onItemClick?.(); }}
                 className={[
-                  'flex h-[2.5rem] w-full items-center gap-2.5 rounded-[0.625rem] px-3',
-                  'cursor-pointer transition-colors duration-200 text-left',
+                  'flex h-[2.375rem] w-full items-center gap-2.5 rounded-[0.5rem] px-3',
+                  'cursor-pointer text-left transition-colors duration-200',
                   active
-                    ? 'bg-[#8C5CFF]/10 text-[#8C5CFF]'
-                    : 'text-foreground/70 hover:bg-border/40 hover:text-foreground',
+                    ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold'
+                    : 'text-foreground/80 hover:bg-foreground/10 hover:text-foreground',
                 ].join(' ')}
               >
                 <Icon size={15} strokeWidth={1.75} className="shrink-0" />
@@ -405,37 +405,70 @@ interface ProfileRowProps {
 
 function AdminProfileRow({ name, handle, avatarSrc, role, onLogout, showLabel = true }: ProfileRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
 
   if (!showLabel) {
     return (
-      <div className="flex w-full justify-center">
+      <div ref={containerRef} className="relative flex w-full justify-center">
+        {menuOpen && (
+          <div className="absolute bottom-0 left-full ml-3 z-[100] w-48 overflow-hidden rounded-[0.875rem] border border-border bg-background p-2 shadow-xl animate-accordion-open">
+            <div className="flex items-center gap-2 border-b border-border p-2">
+              <AvatarOnline src={avatarSrc} alt={name} size="sm" online />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-sans text-[0.8125rem] font-medium text-foreground">{name}</p>
+                <p className="truncate font-sans text-[0.6875rem] text-muted">{handle}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setMenuOpen(false); onLogout?.(); }}
+              className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left font-sans text-[0.8125rem] font-medium text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
+            >
+              <svg className="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
+              </svg>
+              Log Out
+            </button>
+          </div>
+        )}
         <AvatarOnline src={avatarSrc} alt={name} online onClick={() => setMenuOpen(v => !v)} />
       </div>
     );
   }
 
   return (
-    <div className="relative w-full px-[0.5rem] pb-4">
+    <div ref={containerRef} className="relative w-full px-1 pb-2">
       {menuOpen && (
-        <div className="absolute bottom-full left-0 z-50 mb-2 w-full min-w-[13rem] overflow-hidden rounded-[0.875rem] border border-border bg-card shadow-xl">
+        <div className="absolute bottom-full left-0 right-0 z-[100] mb-2 overflow-hidden rounded-[0.875rem] border border-border bg-background p-1 shadow-xl animate-accordion-open transition-all">
           {/* Admin badge header */}
-          <div className="flex items-center gap-3 border-b border-border px-4 py-[0.875rem]">
+          <div className="flex items-center gap-2.5 border-b border-border px-3 py-2.5">
             <AvatarOnline src={avatarSrc} alt={name} size="sm" online />
             <div className="min-w-0 flex-1">
-              <p className="font-sans text-[0.8125rem] font-medium text-foreground truncate">{name}</p>
-              <p className="font-sans text-[0.6875rem] text-muted truncate">{handle}</p>
+              <p className="truncate font-sans text-[0.8125rem] font-medium text-foreground">{name}</p>
+              <p className="truncate font-sans text-[0.6875rem] text-muted">{handle}</p>
             </div>
-            <span className="shrink-0 rounded-full bg-[#8C5CFF]/10 px-2 py-0.5 font-sans text-[0.625rem] font-semibold text-[#8C5CFF]">
+            <span className="shrink-0 rounded-full bg-background border border-border/70 px-2 py-0.5 font-sans text-[0.625rem] font-semibold text-foreground">
               {getRoleLabel(role)}
             </span>
           </div>
-          <div className="py-[0.375rem]">
+          <div className="py-1">
             <button
               type="button"
               onClick={() => { setMenuOpen(false); onLogout?.(); }}
-              className="flex w-full items-center gap-[0.625rem] px-4 py-[0.625rem] font-sans text-[0.8125rem] text-red-400 transition-colors hover:bg-foreground/5 hover:text-red-300 text-left"
+              className="flex w-full items-center gap-2.5 rounded-[0.625rem] px-3 py-2 text-left font-sans text-[0.8125rem] font-medium text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
             >
-              <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+              <svg className="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
               </svg>
               Log Out
@@ -444,20 +477,20 @@ function AdminProfileRow({ name, handle, avatarSrc, role, onLogout, showLabel = 
         </div>
       )}
 
-      <div className="flex w-full items-center justify-between gap-2 rounded-[0.75rem] px-2 py-1.5 hover:bg-foreground/5 transition-colors">
+      <div className="flex w-full items-center justify-between gap-2 rounded-[0.75rem] px-2 py-1.5 transition-colors hover:bg-foreground/10">
         <div
           role="button"
           tabIndex={0}
           onClick={() => setMenuOpen(v => !v)}
           onKeyDown={e => e.key === 'Enter' && setMenuOpen(v => !v)}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-[0.6875rem] hover:opacity-80 transition-opacity"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-[0.6875rem] transition-opacity hover:opacity-80"
         >
           <AvatarOnline src={avatarSrc} alt={name} online />
           <div className="flex min-w-0 flex-col">
-            <p className="whitespace-nowrap font-sans text-[0.8125rem] font-semibold leading-5 text-foreground truncate">{name}</p>
+            <p className="truncate font-sans text-[0.8125rem] font-semibold leading-5 text-foreground">{name}</p>
             <div className="flex items-center gap-1.5">
-              <p className="whitespace-nowrap font-sans text-[0.6875rem] font-normal leading-4 text-muted truncate">{handle}</p>
-              <span className="shrink-0 rounded-full bg-[#8C5CFF]/10 px-1.5 py-0.5 font-sans text-[0.5625rem] font-semibold text-[#8C5CFF]">
+              <p className="truncate font-sans text-[0.6875rem] font-normal leading-4 text-muted">{handle}</p>
+              <span className="shrink-0 rounded-full bg-background border border-border/70 px-1.5 py-0.5 font-sans text-[0.5625rem] font-semibold text-foreground">
                 {getRoleLabel(role)}
               </span>
             </div>
@@ -468,7 +501,7 @@ function AdminProfileRow({ name, handle, avatarSrc, role, onLogout, showLabel = 
           aria-expanded={menuOpen}
           aria-label="Open admin menu"
           onClick={() => setMenuOpen(v => !v)}
-          className="cursor-pointer opacity-70 hover:opacity-100 transition-opacity text-foreground flex size-5 items-center justify-center"
+          className="flex size-5 cursor-pointer items-center justify-center text-foreground opacity-70 transition-opacity hover:opacity-100"
         >
           <span className={['transition-transform duration-200', menuOpen ? 'rotate-180' : ''].join(' ')}>
             <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -494,7 +527,7 @@ interface SharedAdminSidebarProps {
 
 function AdminDesktopSidebar({ activePage, setActivePage, user, onLogout }: SharedAdminSidebarProps) {
   return (
-    <aside className="flex h-screen w-[14rem] shrink-0 flex-col overflow-hidden bg-sidebar px-[0.9375rem] py-[2.5rem]">
+    <aside className="flex h-screen w-[14rem] shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar px-[0.9375rem] py-[2.5rem] shadow-sm">
       {/* Logo */}
       <div className="flex w-full shrink-0 flex-col gap-[1.875rem]">
         <Logo />
@@ -503,8 +536,8 @@ function AdminDesktopSidebar({ activePage, setActivePage, user, onLogout }: Shar
 
       {/* Admin badge — shows the signed-in admin's actual role */}
       <div className="mt-3 mb-1 flex items-center gap-2 px-[1.5rem]">
-        <span className="rounded-full bg-[#8C5CFF]/10 px-2.5 py-1 font-sans text-[0.625rem] font-bold uppercase tracking-wider text-[#8C5CFF]">
-          {getRoleLabel(user.role)} Console
+        <span className="rounded-full bg-background border border-border/80 px-2.5 py-1 font-sans text-[0.625rem] font-bold uppercase tracking-wider text-foreground shadow-xs">
+          {getRoleLabel(user.role)}
         </span>
         <RolePermissionTooltip role={user.role} />
       </div>
@@ -541,16 +574,20 @@ function AdminDesktopSidebar({ activePage, setActivePage, user, onLogout }: Shar
 
         <div className="flex-1" />
 
-        <SidebarDivider />
-        <AdminThemeNavItem showLabel={true} />
-        <SidebarDivider className="my-1" />
-        <AdminProfileRow
-          name={user.name}
-          handle={user.handle}
-          avatarSrc={user.avatarSrc}
-          role={user.role}
-          onLogout={onLogout}
-        />
+        {/* Border line separating top nav group from bottom footer */}
+        <SidebarDivider className="my-2" />
+
+        {/* Bottom footer group: Theme + Profile row */}
+        <div className="flex flex-col gap-0.5">
+          <AdminThemeNavItem showLabel={true} />
+          <AdminProfileRow
+            name={user.name}
+            handle={user.handle}
+            avatarSrc={user.avatarSrc}
+            role={user.role}
+            onLogout={onLogout}
+          />
+        </div>
       </div>
     </aside>
   );
@@ -566,7 +603,7 @@ function AdminTabletSidebar({ activePage, setActivePage, user, onLogout }: Share
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
       style={{ width: expanded ? '14rem' : '4.5rem' }}
-      className="flex h-screen shrink-0 flex-col overflow-hidden bg-sidebar py-[2.5rem] transition-[width] duration-300 ease-in-out"
+      className="flex h-screen shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar py-[2.5rem] shadow-sm transition-[width] duration-300 ease-in-out"
     >
       {/* Logo */}
       <div className="mb-[1.875rem] flex shrink-0 items-center justify-center overflow-hidden px-4">
@@ -577,8 +614,8 @@ function AdminTabletSidebar({ activePage, setActivePage, user, onLogout }: Share
       {/* Role label when expanded */}
       {expanded && (
         <div className="mt-3 mb-1 flex items-center gap-2 px-[1.5rem]">
-          <span className="rounded-full bg-[#8C5CFF]/10 px-2.5 py-1 font-sans text-[0.625rem] font-bold uppercase tracking-wider text-[#8C5CFF]">
-            {getRoleLabel(user.role)} Console
+          <span className="rounded-full bg-background border border-border/80 px-2.5 py-1 font-sans text-[0.625rem] font-bold uppercase tracking-wider text-foreground shadow-xs">
+            {getRoleLabel(user.role)}
           </span>
           <RolePermissionTooltip role={user.role} />
         </div>
@@ -617,19 +654,23 @@ function AdminTabletSidebar({ activePage, setActivePage, user, onLogout }: Share
         </div>
 
         <div className="flex-1" />
-        <SidebarDivider className="mt-6" />
-        <AdminThemeNavItem showLabel={expanded} />
-        <SidebarDivider className="my-1" />
 
-        <div className={`mt-[0.5rem] ${expanded ? '' : 'flex justify-center px-0'}`}>
-          <AdminProfileRow
-            name={user.name}
-            handle={user.handle}
-            avatarSrc={user.avatarSrc}
-            role={user.role}
-            onLogout={onLogout}
-            showLabel={expanded}
-          />
+        {/* Border line separating top nav group from bottom footer */}
+        <SidebarDivider className="my-2" />
+
+        {/* Bottom footer group: Theme + Profile row */}
+        <div className="flex flex-col gap-0.5">
+          <AdminThemeNavItem showLabel={expanded} />
+          <div className={`${expanded ? '' : 'flex justify-center px-0'}`}>
+            <AdminProfileRow
+              name={user.name}
+              handle={user.handle}
+              avatarSrc={user.avatarSrc}
+              role={user.role}
+              onLogout={onLogout}
+              showLabel={expanded}
+            />
+          </div>
         </div>
       </div>
     </aside>
@@ -663,7 +704,7 @@ function AdminMobileSidebar({
         aria-label="Admin navigation menu"
         className={[
           'fixed left-0 top-0 z-50 flex h-full w-[80vw] max-w-[22rem] flex-col',
-          'overflow-hidden bg-sidebar px-[0.9375rem] py-[2rem]',
+          'overflow-hidden border-r border-border bg-sidebar px-[0.9375rem] py-[2rem]',
           'transition-transform duration-300 ease-in-out',
           open ? 'translate-x-0' : '-translate-x-full',
         ].join(' ')}
@@ -676,7 +717,7 @@ function AdminMobileSidebar({
               <p className="truncate font-sans text-[0.875rem] font-medium leading-5 text-foreground">{user.name}</p>
               <p className="truncate font-sans text-[0.6875rem] leading-4 text-muted">{user.handle}</p>
             </div>
-            <span className="shrink-0 rounded-full bg-[#8C5CFF]/10 px-2 py-0.5 font-sans text-[0.625rem] font-semibold text-[#8C5CFF]">
+            <span className="shrink-0 rounded-full bg-background border border-border/70 px-2 py-0.5 font-sans text-[0.625rem] font-semibold text-foreground">
               {getRoleLabel(user.role)}
             </span>
             <RolePermissionTooltip role={user.role} />
@@ -724,16 +765,22 @@ function AdminMobileSidebar({
             ))}
           </nav>
 
-          <AdminThemeNavItem />
-          <SidebarDivider />
+          <div className="flex-1" />
 
-          <AdminProfileRow
-            name={user.name}
-            handle={user.handle}
-            avatarSrc={user.avatarSrc}
-            role={user.role}
-            onLogout={onLogout}
-          />
+          {/* Border line separating top nav group from bottom footer */}
+          <SidebarDivider className="my-2" />
+
+          {/* Bottom footer group: Theme + Profile row */}
+          <div className="flex flex-col gap-0.5">
+            <AdminThemeNavItem />
+            <AdminProfileRow
+              name={user.name}
+              handle={user.handle}
+              avatarSrc={user.avatarSrc}
+              role={user.role}
+              onLogout={onLogout}
+            />
+          </div>
         </div>
       </aside>
     </>
@@ -806,7 +853,19 @@ export default function AdminSidebar({
 
 function AdminThemeNavItem({ showLabel = true }: { showLabel?: boolean }) {
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme } = useTheme();
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
 
   const options: { label: string; mode: 'dark' | 'light' | 'system'; icon: LucideIcon }[] = [
     { label: 'Dark mode', mode: 'dark', icon: Moon },
@@ -815,20 +874,48 @@ function AdminThemeNavItem({ showLabel = true }: { showLabel?: boolean }) {
   ];
 
   return (
-    <div className="relative px-2">
+    <div ref={containerRef} className="relative px-1">
+      {/* Dropdown options (floats upward using main app background) */}
+      {open && (
+        <ul className="absolute bottom-full left-1 right-1 mb-2 z-50 flex flex-col gap-[2px] rounded-[0.75rem] border border-border bg-background p-1.5 shadow-xl animate-accordion-open">
+          {options.map(({ label, mode, icon: Icon }) => {
+            const active = theme === mode;
+            return (
+              <li key={mode}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTheme(mode);
+                    setOpen(false);
+                  }}
+                  className={[
+                    'flex h-[2.375rem] w-full items-center gap-[0.625rem] rounded-[0.5rem] px-[0.75rem]',
+                    'cursor-pointer text-left transition-colors duration-150',
+                    active ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold' : 'text-foreground/80 hover:bg-foreground/10 hover:text-foreground',
+                  ].join(' ')}
+                >
+                  <Icon size={16} strokeWidth={1.75} className="shrink-0" />
+                  <span className="font-sans text-[0.75rem] leading-none">{label}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         title={!showLabel ? 'Theme' : undefined}
         className={[
-          'flex h-[3rem] w-full items-center gap-[0.625rem] rounded-[0.75rem]',
+          'flex h-[2.75rem] w-full items-center gap-[0.625rem] rounded-[0.75rem]',
           'cursor-pointer transition-colors duration-300 ease-out text-left',
-          showLabel ? 'px-[1.5rem]' : 'justify-center px-0',
-          open ? 'bg-foreground/10' : 'hover:bg-border/50',
+          showLabel ? 'px-[1.25rem]' : 'justify-center px-0',
+          open ? 'bg-foreground/10' : 'hover:bg-foreground/10',
         ].join(' ')}
       >
         <span className="relative shrink-0 opacity-80 flex items-center justify-center">
-          <Palette size={19} strokeWidth={1.5} className="text-foreground" />
+          <Palette size={18} strokeWidth={1.5} className="text-foreground" />
         </span>
         {showLabel && (
           <>
@@ -846,37 +933,6 @@ function AdminThemeNavItem({ showLabel = true }: { showLabel?: boolean }) {
           </>
         )}
       </button>
-
-      {/* Dropdown options */}
-      {open && (
-        <ul className={[
-          'mt-1 flex flex-col gap-[2px] rounded-[0.75rem] border border-border bg-card py-[0.375rem] px-[0.25rem] z-50 shadow-xl',
-          showLabel ? 'ml-4' : 'ml-0',
-        ].join(' ')}>
-          {options.map(({ label, mode, icon: Icon }) => {
-            const active = theme === mode;
-            return (
-              <li key={mode}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTheme(mode);
-                    setOpen(false);
-                  }}
-                  className={[
-                    'flex h-[2.375rem] w-full items-center gap-[0.625rem] rounded-[0.5rem] px-[0.75rem]',
-                    'cursor-pointer text-left transition-colors duration-150',
-                    active ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold' : 'text-foreground/80 hover:bg-border/40',
-                  ].join(' ')}
-                >
-                  <Icon size={16} strokeWidth={1.75} className="shrink-0" />
-                  <span className="font-sans text-[0.75rem] leading-none">{label}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
     </div>
   );
 }
