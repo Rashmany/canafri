@@ -59,7 +59,7 @@ export async function authGuard(request: FastifyRequest, reply: FastifyReply) {
       }
     }
 
-    // 3. Verify Session — Redis fast path first
+    // 3. Verify Session & Live User Status — Redis fast path first
     const sessionKey    = `session:${sessionId}`;
     const sessionCached = await redis.get(sessionKey);
 
@@ -67,26 +67,37 @@ export async function authGuard(request: FastifyRequest, reply: FastifyReply) {
       // Slow path: hit the database
       const dbSession = await prisma.session.findUnique({
         where:   { id: sessionId },
-        include: { user: { select: { id: true, status: true } } },
+        include: { user: { select: { id: true, status: true, role: true } } },
       });
 
       if (!dbSession || dbSession.expiresAt < new Date()) {
         return reply.status(401).send({ error: 'Unauthorized', message: 'Session has expired or been revoked.' });
       }
 
-      // 4. Verify User exists and is ACTIVE
+      // Verify User exists and is ACTIVE
       if (!dbSession.user || dbSession.user.status !== 'ACTIVE') {
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Account is not active.' });
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Your administrator access has been revoked. Please contact the platform owner.' });
       }
 
-      // Restore session to Redis
-      await redis.set(sessionKey, JSON.stringify({ userId, role: payload.role }), {
-        EX: 30 * 24 * 60 * 60,
+      // Cache live user info
+      await redis.set(sessionKey, JSON.stringify({ userId, role: dbSession.user.role, status: dbSession.user.status }), {
+        EX: 8 * 60 * 60,
       });
+
+      (request.user as any).role = dbSession.user.role;
+    } else {
+      // Fast path: verify cached session status
+      const parsedSession = JSON.parse(sessionCached);
+      if (parsedSession.status && parsedSession.status !== 'ACTIVE') {
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Your administrator access has been revoked. Please contact the platform owner.' });
+      }
+      if (parsedSession.role) {
+        (request.user as any).role = parsedSession.role;
+      }
     }
 
     // 5. Reset TTL on active sessions (rolling window)
-    await redis.expire(sessionKey, 30 * 24 * 60 * 60);
+    await redis.expire(sessionKey, 8 * 60 * 60);
 
     // 6. Normalise — guarantee userId is always a plain string in handlers
     (request.user as any).userId    = userId;

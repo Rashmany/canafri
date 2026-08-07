@@ -23,7 +23,7 @@ function makeRateLimiter(key: string, max: number, windowSec: number) {
     if (current > max) {
       return reply.status(429).send({
         error: 'Too Many Requests',
-        message: `Rate limit exceeded. Max ${max} requests per ${windowSec}s window.`,
+        message: 'You have made too many requests. Please wait a moment and try again.',
         retryAfter: windowSec,
       });
     }

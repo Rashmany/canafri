@@ -78,6 +78,36 @@ export async function sendTicketConfirmationEmail(
 }
 
 /**
+ * Sent to the administrator when their account password is updated.
+ * Fire-and-forget — never throws.
+ */
+export async function sendAdminPasswordChangedEmail(
+  to: string,
+  details: { ip: string; userAgent: string; timestamp: Date }
+): Promise<void> {
+  try {
+    const html = `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a;border:1px solid #e5e7eb;border-radius:12px;padding:24px">
+        <h2 style="color:#8C5CFF;margin-top:0">Security Alert: Administrator Password Changed</h2>
+        <p>Your CanaFri administrator password was recently updated successfully.</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;background:#f9fafb;padding:12px;border-radius:8px">
+          <tr><td style="padding:6px 12px;color:#555;font-size:13px">Time (UTC)</td><td style="padding:6px 12px;font-weight:600;font-size:13px">${details.timestamp.toUTCString()}</td></tr>
+          <tr><td style="padding:6px 12px;color:#555;font-size:13px">IP Address</td><td style="padding:6px 12px;font-weight:600;font-size:13px">${details.ip}</td></tr>
+          <tr><td style="padding:6px 12px;color:#555;font-size:13px">Device / Browser</td><td style="padding:6px 12px;font-size:12px;color:#374151">${details.userAgent}</td></tr>
+        </table>
+        <p style="font-size:13px;color:#dc2626;font-weight:600">If you did NOT make this password change, your account may be compromised. Please contact support immediately.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0"/>
+        <p style="font-size:11px;color:#9ca3af">Automated security notification from CanaFri Platform Security Engine.</p>
+      </div>
+    `;
+    const text = `Security Alert: Administrator Password Changed\n\nYour CanaFri administrator password was updated.\nTime: ${details.timestamp.toUTCString()}\nIP: ${details.ip}\nBrowser: ${details.userAgent}\n\nIf you did NOT perform this change, contact support immediately.`;
+    await sendEmail({ to, subject: 'Security Alert: Administrator Password Changed — CanaFri', html, text });
+  } catch (err) {
+    console.error(`[EmailService] Failed to send password change security alert to ${to}:`, err);
+  }
+}
+
+/**
  * Sent to the support team inbox when a new ticket arrives.
  * Fire-and-forget — never throws.
  */

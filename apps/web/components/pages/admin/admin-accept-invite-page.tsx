@@ -130,15 +130,9 @@ export default function AdminAcceptInvitePage({ token, onComplete }: AdminAccept
       <div className="relative w-full max-w-[26rem]">
         <div className="rounded-[1.5rem] border border-border bg-card p-8 shadow-2xl shadow-black/10">
 
-          {/* Logo + badge */}
-          <div className="mb-8 flex flex-col items-center gap-3">
+          {/* Logo */}
+          <div className="mb-8 flex flex-col items-center">
             <Logo />
-            <div className="flex items-center gap-2 rounded-full border border-[#8C5CFF]/20 bg-[#8C5CFF]/5 px-4 py-1.5">
-              <ShieldCheck size={14} className="text-[#8C5CFF]" strokeWidth={2} />
-              <span className="font-sans text-[0.6875rem] font-semibold uppercase tracking-widest text-[#8C5CFF]">
-                Admin Invite Setup
-              </span>
-            </div>
           </div>
 
           <div className="mb-7 text-center">
@@ -188,10 +182,10 @@ export default function AdminAcceptInvitePage({ token, onComplete }: AdminAccept
                   id="invite-password"
                   type={showPw ? 'text' : 'password'}
                   required
-                  minLength={8}
+                  minLength={12}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="Minimum 8 characters"
+                  placeholder="Minimum 12 characters"
                   className="w-full rounded-xl border border-border bg-background px-4 py-[0.6875rem] pr-12 font-sans text-[0.8125rem] text-foreground placeholder:text-muted outline-none transition-colors focus:border-[#8C5CFF]/60 focus:ring-2 focus:ring-[#8C5CFF]/10"
                 />
                 <button
@@ -203,6 +197,35 @@ export default function AdminAcceptInvitePage({ token, onComplete }: AdminAccept
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+
+              {/* Password strength requirement checklist – visible only while typing and not yet fully valid */}
+              {password.length > 0 && !(password.length >= 12 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /[0-9]/.test(password) && /[^A-Za-z0-9]/.test(password)) && (
+                <div className="flex flex-col gap-2 p-3 bg-background border border-border rounded-xl text-[11.5px] mt-1">
+                  <span className="font-semibold text-foreground/90">Password Security Requirements:</span>
+                  <div className="grid grid-cols-2 gap-2 mt-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`size-1.5 rounded-full ${password.length >= 12 ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <span className={password.length >= 12 ? 'text-muted line-through' : 'text-foreground/90'}>Min 12 characters</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`size-1.5 rounded-full ${/[A-Z]/.test(password) ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <span className={/[A-Z]/.test(password) ? 'text-muted line-through' : 'text-foreground/90'}>Uppercase letter</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`size-1.5 rounded-full ${/[a-z]/.test(password) ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <span className={/[a-z]/.test(password) ? 'text-muted line-through' : 'text-foreground/90'}>Lowercase letter</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`size-1.5 rounded-full ${/[0-9]/.test(password) ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <span className={/[0-9]/.test(password) ? 'text-muted line-through' : 'text-foreground/90'}>Include number</span>
+                    </div>
+                    <div className="flex items-center gap-2 col-span-2">
+                      <span className={`size-1.5 rounded-full ${/[^A-Za-z0-9]/.test(password) ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <span className={/[^A-Za-z0-9]/.test(password) ? 'text-muted line-through' : 'text-foreground/90'}>Include symbol (!@#$%^&*)</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Error */}
@@ -215,20 +238,18 @@ export default function AdminAcceptInvitePage({ token, onComplete }: AdminAccept
 
             <button
               type="submit"
-              disabled={loading}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#8C5CFF] px-4 py-[0.8125rem] font-sans text-[0.875rem] font-semibold text-white transition-all hover:bg-[#AC8EF3] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-[#8C5CFF]/25 cursor-pointer"
+              disabled={loading || password.length < 12 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#8C5CFF] px-4 py-[0.8125rem] font-sans text-[0.875rem] font-semibold text-white transition-all hover:bg-[#AC8EF3] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-[#8C5CFF]/25 cursor-pointer"
             >
               {loading ? (
                 <><svg className="size-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Creating account…</>
               ) : (
-                <><ShieldCheck size={16} />Complete Setup</>
+                <>Complete Setup</>
               )}
             </button>
           </form>
 
-          <p className="mt-6 text-center font-sans text-[0.6875rem] text-muted">
-            After setup, sign in to activate your Authenticator (MFA).
-          </p>
+
         </div>
       </div>
     </div>

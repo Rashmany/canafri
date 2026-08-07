@@ -801,14 +801,16 @@ export default function AdminTeamPage() {
   // ── Revoke invite ─────────────────────────────────────────────────────────
   const handleRevoke = async (member: AdminMember) => {
     try {
+      // No body — do NOT send Content-Type: application/json with an empty body
+      // as Fastify will try to parse it and throw "Body cannot be empty" error.
       const res = await fetch(`${API}/admin/invites/${member.id}`, {
         method: 'DELETE',
-        headers: authHeader(),
+        headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Revoke failed.');
-      setToast(`Invite revoked for ${member.email}`);
-      await loadTeam();
+      setToast(`Pending invite cancelled for ${member.email}`);
+      setMembers(prev => prev.filter(m => m.id !== member.id));
     } catch (err: any) {
       setToast(`Error: ${err.message}`);
     }
