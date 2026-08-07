@@ -20,7 +20,7 @@ import {
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-type AdminRole = 'Super Admin' | 'Content Admin' | 'Finance Admin' | 'Support Admin';
+type AdminRole = 'Super Admin' | 'Admin' | 'Content Admin' | 'Finance Admin' | 'Support Admin';
 type AdminStatus = 'Online' | 'Offline' | 'Invite Pending' | 'Revoked';
 
 interface AdminMember {
@@ -38,16 +38,17 @@ interface AdminMember {
 // ─── Permissions Matrix ─────────────────────────────────────────────────────
 
 const PERMISSIONS: Record<string, Record<AdminRole, boolean>> = {
-  'User management':      { 'Super Admin': true,  'Content Admin': false, 'Finance Admin': false, 'Support Admin': true  },
-  'Content review':       { 'Super Admin': true,  'Content Admin': true,  'Finance Admin': false, 'Support Admin': false },
-  'Dispute resolution':   { 'Super Admin': true,  'Content Admin': false, 'Finance Admin': false, 'Support Admin': true  },
-  'Treasury withdrawal':  { 'Super Admin': true,  'Content Admin': false, 'Finance Admin': true,  'Support Admin': false },
-  'Platform config':      { 'Super Admin': true,  'Content Admin': false, 'Finance Admin': false, 'Support Admin': false },
-  'Invite / remove admins':{ 'Super Admin': true, 'Content Admin': false, 'Finance Admin': false, 'Support Admin': false },
+  'User management':       { 'Super Admin': true,  'Admin': true,  'Content Admin': false, 'Finance Admin': false, 'Support Admin': true  },
+  'Content review':        { 'Super Admin': true,  'Admin': true,  'Content Admin': true,  'Finance Admin': false, 'Support Admin': false },
+  'Dispute resolution':    { 'Super Admin': true,  'Admin': true,  'Content Admin': false, 'Finance Admin': false, 'Support Admin': true  },
+  'Treasury withdrawal':   { 'Super Admin': true,  'Admin': false, 'Content Admin': false, 'Finance Admin': true,  'Support Admin': false },
+  'Platform config':       { 'Super Admin': true,  'Admin': true,  'Content Admin': false, 'Finance Admin': false, 'Support Admin': false },
+  'Invite / remove admins':{ 'Super Admin': true,  'Admin': false, 'Content Admin': false, 'Finance Admin': false, 'Support Admin': false },
 };
 
 const ROLE_SCOPES: Record<AdminRole, string> = {
-  'Super Admin':    'Primary Signal',
+  'Super Admin':    'Primary Signal & Governance',
+  'Admin':          'General Platform Operations',
   'Content Admin':  'Review Queue, Creators',
   'Finance Admin':  'Treasury, Analytics',
   'Support Admin':  'Users, Disputes',
@@ -55,6 +56,7 @@ const ROLE_SCOPES: Record<AdminRole, string> = {
 
 const ROLE_COLORS: Record<AdminRole, string> = {
   'Super Admin':    'bg-[#8C5CFF] text-white',
+  'Admin':          'bg-[#8C5CFF] text-white',
   'Content Admin':  'bg-[#8C5CFF] text-white',
   'Finance Admin':  'bg-[#8C5CFF] text-white',
   'Support Admin':  'bg-[#8C5CFF] text-white',
@@ -247,16 +249,17 @@ function InviteModal({ onClose, onInvite }: {
   onInvite: (email: string, role: AdminRole) => Promise<string>; // returns invite link
 }) {
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<AdminRole>('Content Admin');
+  const [role, setRole] = useState<AdminRole>('Admin');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const roles: AdminRole[] = ['Content Admin', 'Finance Admin', 'Support Admin'];
+  const roles: AdminRole[] = ['Admin', 'Content Admin', 'Finance Admin', 'Support Admin'];
 
   const ROLE_TO_API: Record<AdminRole, string> = {
     'Super Admin':   'SUPER_ADMIN',
-    'Content Admin': 'ADMIN',
-    'Finance Admin': 'ADMIN',
-    'Support Admin': 'ADMIN',
+    'Admin':         'ADMIN',
+    'Content Admin': 'CONTENT_ADMIN',
+    'Finance Admin': 'FINANCE_ADMIN',
+    'Support Admin': 'SUPPORT_ADMIN',
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -349,16 +352,18 @@ function InviteModal({ onClose, onInvite }: {
 
 function mapRoleToDisplay(role: string): AdminRole {
   if (role === 'SUPER_ADMIN') return 'Super Admin';
+  if (role === 'CONTENT_ADMIN') return 'Content Admin';
   if (role === 'FINANCE_ADMIN') return 'Finance Admin';
   if (role === 'SUPPORT_ADMIN') return 'Support Admin';
-  return 'Content Admin';
+  return 'Admin';
 }
 
 function mapDisplayToApiRole(role: AdminRole): string {
   if (role === 'Super Admin') return 'SUPER_ADMIN';
+  if (role === 'Content Admin') return 'CONTENT_ADMIN';
   if (role === 'Finance Admin') return 'FINANCE_ADMIN';
   if (role === 'Support Admin') return 'SUPPORT_ADMIN';
-  return 'CONTENT_ADMIN';
+  return 'ADMIN';
 }
 
 // ─── Edit Role Modal ────────────────────────────────────────────────────────
@@ -368,7 +373,7 @@ function EditRoleModal({ member, onClose, onSave }: {
   onClose: () => void;
   onSave: (id: string, role: AdminRole) => void;
 }) {
-  const roles: AdminRole[] = ['Content Admin', 'Finance Admin', 'Support Admin', 'Super Admin'];
+  const roles: AdminRole[] = ['Admin', 'Content Admin', 'Finance Admin', 'Support Admin'];
   const [selected, setSelected] = useState<AdminRole>(member.role);
 
   return (
@@ -598,7 +603,7 @@ function MemberRow({
 // ─── Permissions Table ──────────────────────────────────────────────────────
 
 function PermissionsMatrix() {
-  const roles: AdminRole[] = ['Super Admin', 'Content Admin', 'Finance Admin', 'Support Admin'];
+  const roles: AdminRole[] = ['Super Admin', 'Admin', 'Content Admin', 'Finance Admin', 'Support Admin'];
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden">
       {/* Header */}
@@ -606,7 +611,7 @@ function PermissionsMatrix() {
         <div className="flex-1">
           <span className="text-[13px] font-medium text-foreground">Role Permissions Matrix</span>
         </div>
-        <div className="flex gap-0 w-[440px]">
+        <div className="flex gap-0 w-[500px]">
           {roles.map(r => (
             <div key={r} className="flex-1 text-center">
               <span className="text-[10px] font-normal text-foreground/80 whitespace-nowrap">
@@ -622,7 +627,7 @@ function PermissionsMatrix() {
           <div className="flex-1">
             <span className="text-[13px] font-medium text-foreground/80">{perm}</span>
           </div>
-          <div className="flex gap-0 w-[440px]">
+          <div className="flex gap-0 w-[500px]">
             {roles.map(r => (
               <div key={r} className="flex-1 flex items-center justify-center">
                 {roleMap[r] ? (
