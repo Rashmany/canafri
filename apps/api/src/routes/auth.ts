@@ -108,7 +108,12 @@ const CreateAdminSchema = z.object({
   fullName: z.string().min(2).max(80).trim(),
   username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/, 'Username may only contain letters, numbers, and underscores').trim(),
   email: z.string().email().toLowerCase().trim(),
-  password: z.string().min(8),
+  password: z.string()
+    .min(12, 'Password must be at least 12 characters long.')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter.')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter.')
+    .regex(/[0-9]/, 'Password must contain at least one number.')
+    .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character (!@#$%^&*).'),
   role: z.enum(['ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN']),
 });
 

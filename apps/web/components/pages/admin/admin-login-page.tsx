@@ -417,9 +417,6 @@ export default function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) 
           {step === 'recovery-codes' && (
             <>
               <div className="mb-5 text-center">
-                <div className="inline-flex items-center justify-center size-12 rounded-full bg-amber-500/10 text-amber-400 mb-3">
-                  <KeyRound size={22} strokeWidth={1.5} />
-                </div>
                 <h1 className="font-sans text-[1.125rem] font-bold tracking-tight text-foreground">Save Your Recovery Codes</h1>
                 <p className="mt-1.5 font-sans text-[0.8125rem] text-muted leading-5">
                   These <strong className="text-foreground">10 one-time codes</strong> are your emergency backup if you ever lose access to your authenticator app. They will <strong className="text-amber-400">never be shown again</strong>.
@@ -461,8 +458,7 @@ export default function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) 
               {/* Proceed */}
               <button type="button" onClick={handleProceedToDashboard}
                 className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#8C5CFF] py-3 font-sans text-[0.875rem] font-semibold text-white transition-colors hover:bg-[#7A4AEE]">
-                <ShieldCheck size={16} />
-                I've saved my codes — Go to Dashboard
+                I've saved my codes, proceed to Dashboard
               </button>
             </>
           )}
