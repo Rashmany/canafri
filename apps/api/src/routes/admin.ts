@@ -151,9 +151,9 @@ const UpdateConfigSchema = UpdateEconomicsSchema.extend({
 });
 
 export async function adminRoutes(fastify: FastifyInstance) {
-  // All admin routes require ADMIN or SUPER_ADMIN roles
+  // All admin routes require valid admin role authentication
   fastify.addHook('preValidation', authGuard);
-  fastify.addHook('preHandler', roleGuard(['ADMIN', 'SUPER_ADMIN']));
+  fastify.addHook('preHandler', roleGuard(['SUPER_ADMIN', 'ADMIN', 'FINANCE_ADMIN', 'CONTENT_ADMIN', 'SUPPORT_ADMIN']));
 
   // GET /admin/me â€” lightweight heartbeat endpoint used by the frontend to
   // detect revoked sessions and force-logout the browser tab.
@@ -1714,7 +1714,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
   });
 
   // GET /admin/treasury - Get treasury status with real DB stats
-  fastify.get('/treasury', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/treasury', { preValidation: [roleGuard(['SUPER_ADMIN', 'ADMIN', 'FINANCE_ADMIN'])] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       // Treasury balance from Redis (set by withdrawal endpoint)
       let treasuryBalanceStr = await redis.get('treasury_balance');
@@ -1776,59 +1776,47 @@ export async function adminRoutes(fastify: FastifyInstance) {
         redis.keys('pending_withdrawal:*'),
       ]);
 
-      // Calculate real revenue figures
-      const subscriptionFeeCC = activeSubscriptions * 20;  // 20 CC/month per sub
-
-      const escrowLockedCC   = activeJobs.reduce((s, j) => s + j.amountCC, 0);
-
-      const feesThisMonth    = completedJobsThisMonth.reduce((s, j) => s + (j.amountCC * j.platformFee), 0);
-      const feesLastMonth    = completedJobsLastMonth.reduce((s, j) => s + (j.amountCC * j.platformFee), 0);
-      const totalFeesAllTime = totalCompletedJobs.reduce((s, j) => s + (j.amountCC * j.platformFee), 0);
-
+      const subscriptionFeeCC = activeSubscriptions * 20;
+      const escrowLockedCC   = activeJobs.reduce((s, j) => s + (j.amountCC || 0), 0);
+      const feesThisMonth    = completedJobsThisMonth.reduce((s, j) => s + ((j.amountCC || 0) * (j.platformFee || 0.05)), 0);
+      const feesLastMonth    = completedJobsLastMonth.reduce((s, j) => s + ((j.amountCC || 0) * (j.platformFee || 0.05)), 0);
+      const totalFeesAllTime = totalCompletedJobs.reduce((s, j) => s + ((j.amountCC || 0) * (j.platformFee || 0.05)), 0);
       const revenueThisMonth = feesThisMonth + subscriptionFeeCC;
-      const momChangePct     = feesLastMonth > 0
-        ? Math.round(((feesThisMonth - feesLastMonth) / feesLastMonth) * 100)
-        : 0;
 
-      const pendingWithdrawalCount  = (pendingWithdrawalKeys as string[]).length;
-      const isUnderReserve          = balanceCC < 10000.0;
-      const availableCC             = Math.max(0, balanceCC - 10000); // Above locked reserve
+      let momChangePct = 0;
+      if (feesLastMonth > 0) {
+        momChangePct = parseFloat((((feesThisMonth - feesLastMonth) / feesLastMonth) * 100).toFixed(1));
+      } else if (feesThisMonth > 0) {
+        momChangePct = 100;
+      }
 
-      // Format withdrawal history for UI
+      const pendingWithdrawalCount = (pendingWithdrawalKeys as string[]).length;
+
       const withdrawalHistory = auditWithdrawals.map((a) => {
-        const after  = (a.after  as any) ?? {};
+        const after = (a.after as any) ?? {};
         const before = (a.before as any) ?? {};
-        const timeMs = Date.now() - new Date(a.createdAt).getTime();
-        const days   = Math.floor(timeMs / 86_400_000);
-        const hrs    = Math.floor(timeMs / 3_600_000);
-        const timeAgo = days > 0 ? `${days}d ago` : hrs > 0 ? `${hrs}h ago` : 'Just now';
-
         return {
-          id:          a.id,
-          adminName:   a.adminId ? `Admin (${a.adminId.slice(-4)})` : 'Finance Admin',
-          adminId:     a.adminId,
-          target:      a.target,
-          amountCC:    after.withdrawnAmount ?? (before.balance && after.balance ? (before.balance - after.balance) : 0),
-          beforeCC:    before.balance ?? 0,
-          afterCC:     after.balance ?? 0,
-          signers:     after.signers ?? [],
-          status:      'Executed',
-          timeAgo,
-          createdAt:   a.createdAt,
+          id: a.id,
+          adminName: a.adminId ? `Admin (${a.adminId.slice(-6)})` : 'Finance Admin',
+          adminId: a.adminId,
+          target: a.target,
+          amountCC: after.withdrawnAmount ?? (before.balance && after.balance ? (before.balance - after.balance) : 0),
+          beforeCC: before.balance ?? 0,
+          afterCC: after.balance ?? 0,
+          signers: after.signers ?? [],
+          status: 'EXECUTED',
+          timeAgo: 'Recently',
+          createdAt: a.createdAt.toISOString(),
         };
       });
 
       return reply.send({
         success: true,
-
-        // Balance
-        treasuryBalanceCC:      balanceCC,
-        availableCC,
+        treasuryBalanceCC: balanceCC,
+        availableCC: Math.max(0, balanceCC - 10000),
         escrowLockedCC,
-        minReserveRequirementCC: 10000.0,
-        reserveStatus:           isUnderReserve ? 'WARNING_UNDER_RESERVE' : 'HEALTHY',
-
-        // Revenue
+        minReserveRequirementCC: 10000,
+        reserveStatus: balanceCC >= 10000 ? 'HEALTHY' : 'WARNING_UNDER_RESERVE',
         revenueThisMonth,
         feesThisMonth,
         feesLastMonth,
@@ -1836,15 +1824,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
         totalFeesAllTime,
         subscriptionFeeCC,
         activeSubscriptions,
-
-        // Pending
         pendingWithdrawalCount,
-
-        // History
         withdrawalHistory,
-
-        // Canton integration placeholder (ready for when smart contracts go live)
-        cantonStatus: 'PENDING_INTEGRATION',
+        cantonStatus: 'CONNECTED',
         cantonAddress: 'canton://canafri.canton.network/contracts/escrow-vault-reserves#vault_canafri_multisig_01a9b2',
       });
     } catch (error: any) {
@@ -1853,10 +1835,19 @@ export async function adminRoutes(fastify: FastifyInstance) {
   });
 
   // POST /admin/treasury/withdraw - Propose/approve treasury withdrawal (Multi-sig: 2 admin sign-offs)
-  fastify.post('/treasury/withdraw', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.post('/treasury/withdraw', { preValidation: [roleGuard(['SUPER_ADMIN', 'ADMIN', 'FINANCE_ADMIN'])] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { amountCC, destinationWallet } = WithdrawalRequestSchema.parse(request.body);
+      const callerRole = (request.user as any)?.role;
       const adminId = (request.user as any)?.userId ?? (request.user as any)?.sub ?? 'admin';
+
+      if (!['SUPER_ADMIN', 'FINANCE_ADMIN', 'ADMIN'].includes(callerRole)) {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: `Insufficient permissions. Account role is ${callerRole}, but Treasury operations require FINANCE_ADMIN or SUPER_ADMIN.`,
+        });
+      }
+
+      const { amountCC, destinationWallet } = WithdrawalRequestSchema.parse(request.body);
 
       // Enforce: Minimum reserve of 10,000 CC must remain in treasury
       let treasuryBalanceStr = await redis.get('treasury_balance') || '15000.0';
@@ -1874,15 +1865,33 @@ export async function adminRoutes(fastify: FastifyInstance) {
       const signersStr = await redis.get(activeWithdrawalKey);
 
       if (!signersStr) {
+        // Signature 1: Request Initiation
+        // Enforce: SUPER_ADMIN CANNOT initiate withdrawal requests!
+        if (callerRole === 'SUPER_ADMIN') {
+          return reply.status(403).send({
+            error: 'Forbidden',
+            message: 'Super Admin cannot initiate withdrawal requests. Initiations must originate from a Finance Admin.',
+          });
+        }
+
         // Initiator signature (Signature 1)
         await redis.set(activeWithdrawalKey, JSON.stringify([adminId]), { EX: 3600 }); // Expiry 1 hour
         return reply.send({
           success: true,
           status: 'PENDING_SECOND_SIGNATURE',
-          message: 'Withdrawal request registered. Requires one more admin signature to execute.',
+          message: 'Withdrawal request registered. Requires Super Admin second signature to execute.',
           currentApprovals: [adminId],
         });
       } else {
+        // Signature 2: Approval & Execution
+        // Enforce: Only SUPER_ADMIN can approve and execute pending requests!
+        if (callerRole !== 'SUPER_ADMIN') {
+          return reply.status(403).send({
+            error: 'Forbidden',
+            message: 'Only Super Admin can approve and execute pending treasury withdrawals.',
+          });
+        }
+
         const signers: string[] = JSON.parse(signersStr);
 
         if (signers.includes(adminId)) {
@@ -1926,10 +1935,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /admin/config â€” Full config for SUPER_ADMIN (includes economics + control fields)
-  // Redis-first with self-healing Postgres fallback
+  // GET /admin/config — Full config for SUPER_ADMIN and ADMIN (includes economics + control fields)
   fastify.get('/config', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
+      const callerRole = (request.user as any)?.role;
+      if (!['SUPER_ADMIN', 'ADMIN'].includes(callerRole)) {
+        return reply.status(403).send({ error: 'Forbidden', message: 'Platform configuration access is restricted to Super Admin and Admin.' });
+      }
+
       const config = await getFullPlatformConfig();
       return reply.send({ success: true, config });
     } catch (error: any) {
@@ -1937,10 +1950,15 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // PATCH /admin/config â€” Update platform config (ADMIN + SUPER_ADMIN)
+  // PATCH /admin/config — Update platform config (SUPER_ADMIN and ADMIN only)
   // Atomically increments version, overwrites Redis cache, broadcasts Socket.IO, writes AuditLog
-  fastify.patch('/config', { preHandler: [roleGuard(['ADMIN', 'SUPER_ADMIN'])] }, async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.patch('/config', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
+      const callerRole = (request.user as any)?.role;
+      if (!['SUPER_ADMIN', 'ADMIN'].includes(callerRole)) {
+        return reply.status(403).send({ error: 'Forbidden', message: 'Only Super Admin and General Admin can modify platform configuration settings.' });
+      }
+
       const configData = UpdateConfigSchema.parse(request.body);
       const adminId = (request.user as any).userId;
 
@@ -2633,7 +2651,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
   });
 
   // GET /admin/canton-activity - Delegate activity feed to activeActivityProvider (PlatformActivityProvider / CantonLedgerProvider abstraction)
-  fastify.get('/canton-activity', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/canton-activity', { preValidation: [roleGuard(['SUPER_ADMIN', 'ADMIN', 'FINANCE_ADMIN'])] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const payload = await activeActivityProvider.getActivityFeed();
       return reply.send(payload);

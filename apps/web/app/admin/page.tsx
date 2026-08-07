@@ -51,7 +51,39 @@ const PAGE_LABELS = [
 
 type AdminPage = typeof PAGE_LABELS[number];
 
-function renderAdminPage(page: AdminPage, onNavigate: (page: AdminPage) => void) {
+// Roles allowed to access Treasury and Canton Activity
+const TREASURY_ROLES = ['SUPER_ADMIN', 'ADMIN', 'FINANCE_ADMIN'];
+
+// Shown when a role tries to access a restricted page
+function AccessDeniedBlock({ page }: { page: string }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center h-full gap-4 text-center px-6">
+      <div className="flex size-14 items-center justify-center rounded-full bg-red-500/10">
+        <svg className="size-7 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0-10.036A11.959 11.959 0 0 1 3.598 6 11.955 11.955 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+        </svg>
+      </div>
+      <div>
+        <p className="font-sans text-[0.9375rem] font-semibold text-foreground">Access Restricted</p>
+        <p className="mt-1 font-sans text-[0.8125rem] text-muted-foreground max-w-xs">
+          The <strong>{page}</strong> page is only accessible to Finance Admin, General Admin, and Super Admin.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function renderAdminPage(page: AdminPage, onNavigate: (page: AdminPage) => void, role: string) {
+  // Treasury & Canton Activity — restricted to FINANCE_ADMIN, ADMIN, SUPER_ADMIN
+  if (page === 'Treasury') {
+    if (!TREASURY_ROLES.includes(role)) return <AccessDeniedBlock page="Treasury" />;
+    return <AdminTreasuryPage />;
+  }
+  if (page === 'Canton Activity') {
+    if (!TREASURY_ROLES.includes(role)) return <AccessDeniedBlock page="Canton Activity" />;
+    return <AdminCantonActivityPage />;
+  }
+
   if (page === 'Dashboard')       return <AdminDashboardPage onNavigate={onNavigate} />;
   if (page === 'Support Tickets') return <AdminSupportPage />;
   if (page === 'Analytics')       return <AdminAnalyticsPage />;
@@ -61,13 +93,11 @@ function renderAdminPage(page: AdminPage, onNavigate: (page: AdminPage) => void)
   if (page === 'Delisted')        return <AdminDelistedPage />;
   if (page === 'Review Queue')    return <AdminReviewQueuePage />;
   if (page === 'All Users')       return <AdminUsersPage />;
-  if (page === 'Treasury')            return <AdminTreasuryPage />;
   if (page === 'Platform Config')     return <AdminPlatformConfigPage />;
   if (page === 'Content Creators')    return <AdminContentCreatorsPage />;
   if (page === 'Buyers')              return <AdminBuyersPage />;
   if (page === 'Sellers')             return <AdminSellersPage />;
   if (page === 'Risk Scores')         return <AdminRiskScoresPage />;
-  if (page === 'Canton Activity')     return <AdminCantonActivityPage />;
   if (page === 'Admin Team')          return <AdminTeamPage />;
   if (page === 'Security')            return <AdminSecurityPage />;
   return <AdminPlaceholderPage pageName={page} />;
@@ -302,7 +332,7 @@ export default function AdminApp() {
             if (typeof window !== 'undefined') {
               localStorage.setItem('canafri_admin_active_page', page);
             }
-          })}
+          }, adminUser.role)}
         </main>
       </div>
     </div>

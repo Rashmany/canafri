@@ -128,10 +128,10 @@ export function roleGuard(roles: string[]) {
       return reply.status(403).send({ error: 'Forbidden', message: 'Insufficient permissions. Role missing.' });
     }
 
-    const isAdminRole = ['ADMIN', 'SUPER_ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN'].includes(role);
-    if (roles.includes('ADMIN') && isAdminRole) {
+    if (role === 'SUPER_ADMIN') {
       return;
     }
+
     if (roles.includes(role)) {
       return;
     }

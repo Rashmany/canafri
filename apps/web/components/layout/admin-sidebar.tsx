@@ -163,28 +163,49 @@ function RolePermissionTooltip({ role }: { role: string }) {
 
 // ─── Nav configuration ───────────────────────────────────────────────────────
 
+// Standalone nav items (never grouped)
 const ADMIN_NAV: AdminNavItemConfig[] = [
-  { label: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard' },
-  { label: 'Support Tickets', icon: LifeBuoy, page: 'Support Tickets' },
-  { label: 'All Users', icon: Users, page: 'All Users' },
-  { label: 'Risk Scores', icon: AlertTriangle, page: 'Risk Scores' },
-  { label: 'Review Queue', icon: ClipboardCheck, page: 'Review Queue' },
-  { label: 'Delisted', icon: Trash2, page: 'Delisted' },
-  { label: 'Active Jobs', icon: Briefcase, page: 'Active Jobs' },
-  { label: 'Seller Apps', icon: UserCheck, page: 'Seller Apps' },
-  { label: 'Disputes', icon: Scale, page: 'Disputes' },
-  { label: 'Treasury', icon: Landmark, page: 'Treasury' },
-  { label: 'Analytics', icon: BarChart3, page: 'Analytics' },
-  { label: 'Platform Config', icon: Settings2, page: 'Platform Config' },
-  { label: 'Canton Activity', icon: Activity, page: 'Canton Activity' },
-  { label: 'Admin Team', icon: ShieldHalf, page: 'Admin Team' },
-  { label: 'Security', icon: Lock, page: 'Security' },
+  { label: 'Dashboard',       icon: LayoutDashboard, page: 'Dashboard' },
+  { label: 'Seller Apps',     icon: UserCheck,       page: 'Seller Apps' },
+  { label: 'Active Jobs',     icon: Briefcase,       page: 'Active Jobs' },
+  { label: 'Treasury',        icon: Landmark,        page: 'Treasury' },
+  { label: 'Analytics',       icon: BarChart3,       page: 'Analytics' },
+  { label: 'Canton Activity', icon: Activity,        page: 'Canton Activity' },
+  { label: 'Security',        icon: Lock,            page: 'Security' },
 ];
 
-const MANAGE_CREATORS_ITEMS: AdminNavItemConfig[] = [
-  { label: 'Content Creators', icon: Video, page: 'Content Creators' },
-  { label: 'Buyers', icon: ShoppingBag, page: 'Buyers' },
-  { label: 'Sellers', icon: Wrench, page: 'Sellers' },
+// Roles allowed to see Treasury and Canton Activity in the sidebar
+const TREASURY_NAV_ROLES = ['SUPER_ADMIN', 'ADMIN', 'FINANCE_ADMIN'];
+
+// Return the visible nav items for a given role
+function getVisibleNavItems(role: string): AdminNavItemConfig[] {
+  if (TREASURY_NAV_ROLES.includes(role)) return ADMIN_NAV;
+  return ADMIN_NAV.filter(
+    item => item.page !== 'Treasury' && item.page !== 'Canton Activity'
+  );
+}
+
+// ─── Dropdown item groups ─────────────────────────────────────────────────────
+// NOTE: page values are unchanged — only display labels differ where specified.
+
+const USERS_ITEMS: AdminNavItemConfig[] = [
+  { label: 'All Users',        icon: Users,       page: 'All Users' },
+  { label: 'Content Creators', icon: Video,       page: 'Content Creators' },
+  { label: 'Buyers',           icon: ShoppingBag, page: 'Buyers' },
+  { label: 'Sellers',          icon: Wrench,      page: 'Sellers' },
+];
+
+const MODERATION_ITEMS: AdminNavItemConfig[] = [
+  { label: 'Review Queue',       icon: ClipboardCheck, page: 'Review Queue' },
+  { label: 'Risk Scores',        icon: AlertTriangle,  page: 'Risk Scores' },
+  { label: 'Delisted Content',   icon: Trash2,         page: 'Delisted' },
+  { label: 'Dispute Resolution', icon: Scale,          page: 'Disputes' },
+];
+
+const GOVERNANCE_ITEMS: AdminNavItemConfig[] = [
+  { label: 'Platform Config', icon: Settings2,  page: 'Platform Config' },
+  { label: 'Admin Team',      icon: ShieldHalf, page: 'Admin Team' },
+  { label: 'Support Tickets', icon: LifeBuoy,   page: 'Support Tickets' },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -241,29 +262,36 @@ function AdminNavItem({ config, active, onClick, showLabel = true }: NavItemProp
   );
 }
 
-// ─── Manage Creators Dropdown ─────────────────────────────────────────────────
+// ─── Generic Sidebar Dropdown ────────────────────────────────────────────────
+// Replaces ManageCreatorsDropdown — reusable for Users, Moderation, Governance.
 
-interface ManageCreatorsDropdownProps {
+interface SidebarDropdownProps {
+  label: string;
+  icon: LucideIcon;
+  items: AdminNavItemConfig[];
   activePage: string;
   setActivePage: (page: string) => void;
   showLabel?: boolean;
   onItemClick?: () => void;
 }
 
-function ManageCreatorsDropdown({
+function SidebarDropdown({
+  label,
+  icon: TriggerIcon,
+  items,
   activePage,
   setActivePage,
   showLabel = true,
   onItemClick,
-}: ManageCreatorsDropdownProps) {
-  const isChildActive = MANAGE_CREATORS_ITEMS.some(i => i.page === activePage);
+}: SidebarDropdownProps) {
+  const isChildActive = items.some(i => i.page === activePage);
   const [open, setOpen] = useState(isChildActive);
 
   if (!showLabel) {
     // Collapsed (icon-rail / tablet): show each sub-item icon directly
     return (
       <>
-        {MANAGE_CREATORS_ITEMS.map(item => {
+        {items.map(item => {
           const Icon = item.icon;
           return (
             <button
@@ -297,9 +325,8 @@ function ManageCreatorsDropdown({
           isChildActive ? 'bg-foreground/10' : 'hover:bg-border/50',
         ].join(' ')}
       >
-        {/* Gradient icon container */}
         <span className="relative shrink-0 flex size-5 items-center justify-center">
-          <UsersRound
+          <TriggerIcon
             size={19}
             strokeWidth={1.5}
             className={isChildActive ? 'text-[#8C5CFF]' : 'text-foreground opacity-80'}
@@ -310,7 +337,7 @@ function ManageCreatorsDropdown({
           'flex-1 whitespace-nowrap font-sans text-[0.8125rem] font-normal leading-[1.125rem] text-foreground transition-opacity',
           isChildActive ? 'opacity-100' : 'opacity-80',
         ].join(' ')}>
-          Manage Creators
+          {label}
         </span>
 
         {/* Animated chevron */}
@@ -328,12 +355,12 @@ function ManageCreatorsDropdown({
       <div
         className={[
           'overflow-hidden transition-all duration-300 ease-in-out',
-          open ? 'max-h-[16rem] opacity-100' : 'max-h-0 opacity-0',
+          open ? 'max-h-[20rem] opacity-100' : 'max-h-0 opacity-0',
         ].join(' ')}
       >
         {/* Connector line + items */}
         <div className="relative ml-[2.625rem] mt-0.5 flex flex-col gap-[0.1875rem] border-l border-border/60 pl-3 pb-1">
-          {MANAGE_CREATORS_ITEMS.map(item => {
+          {items.map(item => {
             const Icon = item.icon;
             const active = activePage === item.page;
             return (
@@ -485,7 +512,24 @@ function AdminDesktopSidebar({ activePage, setActivePage, user, onLogout }: Shar
       {/* Scrollable nav */}
       <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-[1.875rem] mt-[0.875rem]">
         <nav className="flex w-full flex-col gap-[0.3125rem]">
-          {ADMIN_NAV.map(item => (
+          {/* Dashboard — always standalone at the top */}
+          <AdminNavItem
+            config={ADMIN_NAV[0]}
+            active={activePage === ADMIN_NAV[0].page}
+            onClick={() => setActivePage(ADMIN_NAV[0].page)}
+          />
+
+          {/* Users dropdown */}
+          <SidebarDropdown label="Users" icon={UsersRound} items={USERS_ITEMS} activePage={activePage} setActivePage={setActivePage} />
+
+          {/* Moderation dropdown */}
+          <SidebarDropdown label="Moderation" icon={AlertTriangle} items={MODERATION_ITEMS} activePage={activePage} setActivePage={setActivePage} />
+
+          {/* Governance dropdown */}
+          <SidebarDropdown label="Governance" icon={Settings2} items={GOVERNANCE_ITEMS} activePage={activePage} setActivePage={setActivePage} />
+
+          {/* Remaining standalone items */}
+          {getVisibleNavItems(user.role).slice(1).map(item => (
             <AdminNavItem
               key={item.page}
               config={item}
@@ -493,12 +537,6 @@ function AdminDesktopSidebar({ activePage, setActivePage, user, onLogout }: Shar
               onClick={() => setActivePage(item.page)}
             />
           ))}
-
-          {/* Manage Creators dropdown */}
-          <ManageCreatorsDropdown
-            activePage={activePage}
-            setActivePage={setActivePage}
-          />
         </nav>
 
         <div className="flex-1" />
@@ -549,7 +587,25 @@ function AdminTabletSidebar({ activePage, setActivePage, user, onLogout }: Share
       {/* Scrollable nav */}
       <div className="flex-1 overflow-y-auto no-scrollbar mt-[1.875rem] flex flex-col">
         <div className="flex w-full shrink-0 flex-col gap-[0.3125rem]">
-          {ADMIN_NAV.map(item => (
+          {/* Dashboard — always standalone at the top */}
+          <AdminNavItem
+            config={ADMIN_NAV[0]}
+            active={activePage === ADMIN_NAV[0].page}
+            onClick={() => setActivePage(ADMIN_NAV[0].page)}
+            showLabel={expanded}
+          />
+
+          {/* Users dropdown */}
+          <SidebarDropdown label="Users" icon={UsersRound} items={USERS_ITEMS} activePage={activePage} setActivePage={setActivePage} showLabel={expanded} />
+
+          {/* Moderation dropdown */}
+          <SidebarDropdown label="Moderation" icon={AlertTriangle} items={MODERATION_ITEMS} activePage={activePage} setActivePage={setActivePage} showLabel={expanded} />
+
+          {/* Governance dropdown */}
+          <SidebarDropdown label="Governance" icon={Settings2} items={GOVERNANCE_ITEMS} activePage={activePage} setActivePage={setActivePage} showLabel={expanded} />
+
+          {/* Remaining standalone items */}
+          {getVisibleNavItems(user.role).slice(1).map(item => (
             <AdminNavItem
               key={item.page}
               config={item}
@@ -558,13 +614,6 @@ function AdminTabletSidebar({ activePage, setActivePage, user, onLogout }: Share
               showLabel={expanded}
             />
           ))}
-
-          {/* Manage Creators dropdown */}
-          <ManageCreatorsDropdown
-            activePage={activePage}
-            setActivePage={setActivePage}
-            showLabel={expanded}
-          />
         </div>
 
         <div className="flex-1" />
@@ -648,7 +697,24 @@ function AdminMobileSidebar({
 
         <div className="mt-[1.5rem] flex flex-1 flex-col gap-6 overflow-y-auto no-scrollbar">
           <nav className="flex w-full flex-col gap-[0.3125rem]">
-            {ADMIN_NAV.map(item => (
+            {/* Dashboard — always standalone at the top */}
+            <AdminNavItem
+              config={ADMIN_NAV[0]}
+              active={activePage === ADMIN_NAV[0].page}
+              onClick={() => { setActivePage(ADMIN_NAV[0].page); onClose(); }}
+            />
+
+            {/* Users dropdown */}
+            <SidebarDropdown label="Users" icon={UsersRound} items={USERS_ITEMS} activePage={activePage} setActivePage={setActivePage} onItemClick={onClose} />
+
+            {/* Moderation dropdown */}
+            <SidebarDropdown label="Moderation" icon={AlertTriangle} items={MODERATION_ITEMS} activePage={activePage} setActivePage={setActivePage} onItemClick={onClose} />
+
+            {/* Governance dropdown */}
+            <SidebarDropdown label="Governance" icon={Settings2} items={GOVERNANCE_ITEMS} activePage={activePage} setActivePage={setActivePage} onItemClick={onClose} />
+
+            {/* Remaining standalone items */}
+            {getVisibleNavItems(user.role).slice(1).map(item => (
               <AdminNavItem
                 key={item.page}
                 config={item}
@@ -656,13 +722,6 @@ function AdminMobileSidebar({
                 onClick={() => { setActivePage(item.page); onClose(); }}
               />
             ))}
-
-            {/* Manage Creators dropdown */}
-            <ManageCreatorsDropdown
-              activePage={activePage}
-              setActivePage={setActivePage}
-              onItemClick={onClose}
-            />
           </nav>
 
           <AdminThemeNavItem />
