@@ -284,7 +284,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
         // Temporary block — no risk change yet
         return reply.status(429).send({
           error: 'Too Many Requests',
-          message: `Application velocity limit reached. You may submit a maximum of 10 proposals per hour. Please wait before trying again.`,
+          message: 'You have submitted too many proposals. Please wait before applying again.',
         });
       }
       if (applicationsCount > 20) {
@@ -292,7 +292,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
         await RiskEngine.addSecuritySignal(freelancerId, 'Persistent rapid job application abuse (>20/hr)', 15, { applicationsCount });
         return reply.status(429).send({
           error: 'Too Many Requests',
-          message: `Application velocity limit reached. A risk flag has been applied to your account due to repeated excessive applications.`,
+          message: 'Your account has been flagged due to unusual activity. Please contact support if you believe this is an error.',
         });
       }
 

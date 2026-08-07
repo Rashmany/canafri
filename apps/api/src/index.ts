@@ -49,10 +49,10 @@ const startServer = async () => {
     await server.register(rateLimit, {
       max: 100,
       timeWindow: 60000,
-      errorResponseBuilder: (request, context) => ({
+      errorResponseBuilder: (_request, _context) => ({
         error: 'Too Many Requests',
         statusCode: 429,
-        message: `Global rate limit reached. Limit is ${context.max} requests per minute.`,
+        message: 'You have made too many requests. Please slow down and try again shortly.',
       }),
     });
 

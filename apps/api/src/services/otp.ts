@@ -23,7 +23,7 @@ export class OTPService {
     if (failures && parseInt(failures, 10) >= 3) {
       return {
         success: false,
-        message: 'Account temporarily locked due to too many failed OTP attempts. Try again in 30 minutes.',
+        message: 'Your account has been temporarily locked. Please try again in 30 minutes.',
       };
     }
 
@@ -32,7 +32,7 @@ export class OTPService {
     if (requestCount && parseInt(requestCount, 10) >= 5) {
       return {
         success: false,
-        message: 'OTP request limit exceeded. Maximum 5 OTP requests per hour.',
+        message: 'You have requested too many verification codes. Please wait before trying again.',
       };
     }
 
@@ -139,7 +139,7 @@ export class OTPService {
     if (failures && parseInt(failures, 10) >= 3) {
       return {
         success: false,
-        message: 'Account temporarily locked due to too many failed OTP attempts. Try again in 30 minutes.',
+        message: 'Your account has been temporarily locked. Please try again in 30 minutes.',
       };
     }
 

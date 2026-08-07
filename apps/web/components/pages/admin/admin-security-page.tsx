@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { 
   Lock, 
   ShieldCheck, 
@@ -77,13 +78,18 @@ function getToken() {
 }
 
 async function apiFetch(path: string, opts: RequestInit = {}) {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${getToken()}`,
+    ...(opts.headers as Record<string, string> ?? {}),
+  };
+
+  if (opts.body && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+
   return fetch(`${API}${path}`, {
     ...opts,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${getToken()}`,
-      ...(opts.headers ?? {}),
-    },
+    headers,
   });
 }
 
@@ -106,22 +112,116 @@ export default function AdminSecurityPage() {
   const [totpEnabled, setTotpEnabled] = useState(false);
   const [totpSetupOpen, setTotpSetupOpen] = useState(false);
   const [totpCode, setTotpCode] = useState('');
-  const [totpSetupKey] = useState('HJDU 73HD KA92 LS04');
+  const [totpSetupKey, setTotpSetupKey] = useState('');
+  const [totpQrUrl, setTotpQrUrl] = useState('');
+  const [totpPreAuthId, setTotpPreAuthId] = useState('');
+  const [totpReconfigLoading, setTotpReconfigLoading] = useState(false);
 
-  const [smsEnabled, setSmsEnabled] = useState(false);
-  const [smsSetupOpen, setSmsSetupOpen] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [smsCode, setSmsCode] = useState('');
+  // Build the otpauth:// URI for the QR code
+  const totpUri = useMemo(
+    () => totpSetupKey ? `otpauth://totp/CanaFri%20Admin?secret=${totpSetupKey}&issuer=CanaFri&algorithm=SHA1&digits=6&period=30` : '',
+    [totpSetupKey]
+  );
 
-  const [backupCodes, setBackupCodes] = useState<string[]>([]);
-  const [backupCodesGenerated, setBackupCodesGenerated] = useState(false);
+  // Open the Change TOTP panel: call the dedicated reconfig endpoint for authenticated admins
+  const handleOpenTotpReconfig = async () => {
+    if (totpSetupOpen) { setTotpSetupOpen(false); return; }
+    setTotpReconfigLoading(true);
+    try {
+      const res = await apiFetch('/admin/security/totp-reconfig', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to load TOTP setup.');
+      setTotpSetupKey(data.secret ?? '');
+      setTotpQrUrl(data.qrCodeUrl ?? '');
+      setTotpSetupOpen(true);
+    } catch (err: any) {
+      triggerToast(`Error: ${err.message}`);
+    } finally {
+      setTotpReconfigLoading(false);
+    }
+  };
 
-  // Active Sessions state
-  const [sessions, setSessions] = useState<ActiveSession[]>(INITIAL_SESSIONS);
+  // Verify the 6-digit code and get real server-issued recovery codes
+  const handleTotpReconfigVerify = async () => {
+    if (totpCode.length !== 6) return;
+    setTotpReconfigLoading(true);
+    try {
+      const res = await apiFetch('/admin/security/totp-reconfig/verify', {
+        method: 'POST',
+        body: JSON.stringify({ code: totpCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Verification failed.');
+      if (data.recoveryCodes && data.recoveryCodes.length > 0) {
+        setRecoveryCodes(data.recoveryCodes);
+        setRecoveryCodesVisible(true);
+      }
+      setTotpSetupOpen(false);
+      setTotpCode('');
+      triggerToast('Authenticator re-configured — save your new recovery codes.');
+    } catch (err: any) {
+      triggerToast(`Error: ${err.message}`);
+    } finally {
+      setTotpReconfigLoading(false);
+    }
+  };
+
+  // Recovery codes — generated once during TOTP activation, shown once
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [recoveryCodesVisible, setRecoveryCodesVisible] = useState(false);
+  const [recoveryCodesCopied, setRecoveryCodesCopied] = useState(false);
+
+  // Active Sessions & Login History state
+  const [sessions, setSessions] = useState<ActiveSession[]>([]);
+  const [loginHistory, setLoginHistory] = useState<LoginAttempt[]>([]);
   const [sessionToRevoke, setSessionToRevoke] = useState<ActiveSession | null>(null);
 
   // Toast / Alerts
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const loadSecurityData = useCallback(async () => {
+    try {
+      const [sessRes, histRes] = await Promise.all([
+        apiFetch('/admin/security/sessions'),
+        apiFetch('/admin/security/login-history'),
+      ]);
+
+      if (sessRes.ok) {
+        const data = await sessRes.json();
+        if (Array.isArray(data.sessions)) {
+          setSessions(data.sessions);
+        }
+      }
+
+      if (histRes.ok) {
+        const data = await histRes.json();
+        if (Array.isArray(data.history)) {
+          setLoginHistory(data.history);
+        }
+      }
+    } catch (err) {
+      console.error('[AdminSecurity] Error loading security sessions/history:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSecurityData();
+  }, [loadSecurityData]);
+
+  const confirmRevokeSession = async () => {
+    if (!sessionToRevoke) return;
+    try {
+      const res = await apiFetch(`/admin/security/sessions/${sessionToRevoke.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setSessions(prev => prev.filter(s => s.id !== sessionToRevoke.id));
+        triggerToast('Session revoked successfully.');
+      }
+    } catch {
+      triggerToast('Failed to revoke session.');
+    } finally {
+      setSessionToRevoke(null);
+    }
+  };
 
   // Password requirements calculation
   const reqLength = newPassword.length >= 12;
@@ -204,29 +304,24 @@ export default function AdminSecurityPage() {
     setTimeout(() => setToastMsg(null), 3000);
   };
 
-  // Generate Backup Codes
-  const generateBackup = () => {
-    const codes = Array.from({ length: 10 }, () => 
-      Math.floor(10000000 + Math.random() * 90000000).toString().replace(/(\d{4})(\d{4})/, '$1-$2')
+  // Download recovery codes helper
+  const downloadRecoveryCodes = (codes: string[]) => {
+    const element = document.createElement('a');
+    const file = new Blob(
+      [`CanaFri Admin Recovery Codes\nGenerated: ${new Date().toISOString()}\n\n${codes.join('\n')}\n\nStore these in a secure offline location. Each code can only be used once.`],
+      { type: 'text/plain' }
     );
-    setBackupCodes(codes);
-    setBackupCodesGenerated(true);
-    triggerToast('Emergency backup codes generated');
-  };
-
-  const downloadBackupCodes = () => {
-    const element = document.createElement("a");
-    const file = new Blob([backupCodes.join("\n")], { type: 'text/plain' });
     element.href = URL.createObjectURL(file);
-    element.download = "canafri-admin-backup-codes.txt";
+    element.download = 'canafri-admin-recovery-codes.txt';
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
   };
 
-  const handleRevokeSession = (id: string) => {
-    setSessions(prev => prev.filter(s => s.id !== id));
-    triggerToast('Session revoked successfully');
+  const copyRecoveryCodes = async (codes: string[]) => {
+    await navigator.clipboard.writeText(codes.join('\n'));
+    setRecoveryCodesCopied(true);
+    setTimeout(() => setRecoveryCodesCopied(false), 2000);
   };
 
   return (
@@ -378,209 +473,135 @@ export default function AdminSecurityPage() {
           </form>
         </div>
 
-        {/* ── SECTION 2: Two Factor Authentication ── */}
+        {/* ── SECTION 2: Authenticator App ── */}
         <div className="bg-card border border-border rounded-[16px] p-6 flex flex-col gap-5">
           <div className="flex items-center gap-2.5 pb-2 border-b border-border/40">
             <ShieldCheck className="size-4.5 text-[#8C5CFF]" />
-            <h3 className="text-[15px] font-bold text-white">Two-Factor Authentication</h3>
+            <h3 className="text-[15px] font-bold text-white">Authenticator App (TOTP)</h3>
           </div>
 
-          <div className="flex flex-col gap-4">
-            
-            {/* Primary Option: Google Authenticator (TOTP) */}
-            <div className="bg-background border border-border rounded-xl p-4 flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-start gap-3 min-w-0">
-                  <Smartphone className="size-5 text-[#06B6D4] shrink-0 mt-0.5" />
-                  <div className="flex flex-col min-w-0">
+          <div className="bg-background border border-border rounded-xl p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-start gap-3 min-w-0">
+                <Smartphone className="size-5 text-[#06B6D4] shrink-0 mt-0.5" />
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-center gap-2">
                     <span className="text-[13px] font-semibold text-foreground">Google Authenticator (TOTP)</span>
-                    <span className="text-[10px] text-muted-foreground mt-0.5">Primary recommended method. Codes generated by app.</span>
+                    <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      Active
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground mt-0.5">
+                    All logins require a 6-digit code from your authenticator app. Recovery codes were generated during setup.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleOpenTotpReconfig}
+                disabled={totpReconfigLoading}
+                className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-[#8C5CFF] hover:bg-[#7A4AEE] disabled:opacity-50 text-white transition-colors shrink-0"
+              >
+                {totpReconfigLoading ? 'Loading...' : 'Change'}
+              </button>
+            </div>
+
+            {/* Re-configure panel */}
+            {totpSetupOpen && (
+              <div className="border-t border-border/40 pt-4 flex flex-col gap-3.5 mt-2 animate-in fade-in duration-200">
+                <div className="flex items-start gap-2 bg-amber-500/8 border border-amber-500/20 rounded-lg px-3 py-2.5">
+                  <AlertCircle className="size-3.5 text-amber-400 shrink-0 mt-0.5" />
+                  <span className="text-[11px] text-amber-400 leading-relaxed">
+                    This will generate a new TOTP secret. Your old authenticator app entry will stop working immediately and new recovery codes will be issued.
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 bg-[#121212] p-3 rounded-lg border border-border">
+                  {/* Real QR code from qrcode.react */}
+                  <div className="shrink-0 bg-white rounded p-1.5">
+                    <QRCodeSVG
+                      value={totpUri}
+                      size={80}
+                      bgColor="#ffffff"
+                      fgColor="#000000"
+                      level="M"
+                    />
+                  </div>
+                  <div className="flex flex-col min-w-0 gap-1">
+                    <span className="text-[11.5px] font-semibold text-foreground">Scan with your authenticator app</span>
+                    <span className="text-[10px] text-muted-foreground">Google Authenticator · Authy · 1Password</span>
+                    <span className="text-[10px] text-muted-foreground mt-1">Or enter the secret key manually:</span>
+                    <span className="text-[11px] font-mono text-[#8C5CFF] font-semibold tracking-wider">{totpSetupKey.replace(/(.{4})/g, '$1 ').trim()}</span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (totpEnabled) {
-                      setTotpEnabled(false);
-                      triggerToast('TOTP disabled');
-                    } else {
-                      setTotpSetupOpen(true);
-                    }
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors shrink-0 ${
-                    totpEnabled ? 'bg-red-400/10 text-red-400 border border-red-400/20 hover:bg-red-400/20' : 'bg-[#8C5CFF] hover:bg-[#7A4AEE] text-white'
-                  }`}
-                >
-                  {totpEnabled ? 'Disable' : 'Configure'}
-                </button>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={totpCode}
+                    onChange={e => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                    className="flex-1 bg-[#121212] border border-border rounded-lg px-3 py-2 text-[12.5px] font-mono text-center tracking-widest text-white focus:border-[#8C5CFF] focus:outline-none"
+                    placeholder="Enter 6-digit code from your app"
+                  />
+                  <button
+                    type="button"
+                    disabled={totpCode.length !== 6 || totpReconfigLoading}
+                    onClick={handleTotpReconfigVerify}
+                    className="px-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white rounded-lg text-[11px] font-semibold transition-colors"
+                  >
+                    {totpReconfigLoading ? 'Verifying...' : 'Verify & Save'}
+                  </button>
+                </div>
               </div>
+            )}
 
-              {/* TOTP Mock Setup UI */}
-              {totpSetupOpen && (
-                <div className="border-t border-border/40 pt-4 flex flex-col gap-3.5 mt-2 animate-in fade-in duration-200">
-                  <div className="flex items-center gap-4 bg-[#121212] p-3 rounded-lg border border-border">
-                    {/* Simulated QR Code */}
-                    <div className="size-16 bg-white flex items-center justify-center shrink-0 rounded p-1">
-                      <div className="size-full bg-repeating-linear bg-cover bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjMDAwIi8+CjxyZWN0IHg9IjQiIHk9IjQiIHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiMwMDAiLz4KPC9zdmc+')] bg-[size:10px_10px] opacity-70" />
+            {/* Recovery codes — shown once after re-configuration */}
+            {recoveryCodesVisible && recoveryCodes.length > 0 && (
+              <div className="border border-amber-500/30 bg-amber-500/5 rounded-xl p-4 flex flex-col gap-3 animate-in fade-in duration-300">
+                <div className="flex items-start gap-2">
+                  <Key className="size-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[12px] font-bold text-amber-400">Save your new recovery codes</span>
+                    <span className="text-[10.5px] text-amber-400/80 leading-relaxed">
+                      These 8 one-time codes let you regain access if you ever lose your phone. Each code can only be used once.{' '}
+                      <strong>They will not be shown again.</strong>
+                    </span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 p-3 bg-[#0f0f0f] border border-amber-500/20 rounded-lg font-mono text-[12px] text-white">
+                  {recoveryCodes.map((code, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className="text-amber-500/60 text-[10px] w-4">{idx + 1}.</span>
+                      <span className="tracking-wider">{code}</span>
                     </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-[11.5px] font-semibold text-foreground">Scan this QR code</span>
-                      <span className="text-[10px] text-muted-foreground mt-0.5">Or enter secret key manually:</span>
-                      <span className="text-[11px] font-mono text-[#8C5CFF] font-semibold mt-1 tracking-wider">{totpSetupKey}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      maxLength={6}
-                      value={totpCode}
-                      onChange={e => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                      className="flex-1 bg-[#121212] border border-border rounded-lg px-3 py-2 text-[12.5px] font-mono text-center tracking-widest text-white focus:border-[#8C5CFF] focus:outline-none"
-                      placeholder="Enter 6-digit code"
-                    />
-                    <button
-                      type="button"
-                      disabled={totpCode.length !== 6}
-                      onClick={() => {
-                        setTotpEnabled(true);
-                        setTotpSetupOpen(false);
-                        setTotpCode('');
-                        triggerToast('Google Authenticator activated');
-                      }}
-                      className="px-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white rounded-lg text-[11px] font-semibold transition-colors"
-                    >
-                      Verify & Activate
-                    </button>
-                  </div>
+                  ))}
                 </div>
-              )}
-            </div>
-
-            {/* Backup Option: SMS OTP */}
-            <div className="bg-background border border-border rounded-xl p-4 flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-start gap-3 min-w-0">
-                  <Smartphone className="size-5 text-[#10B981] shrink-0 mt-0.5" />
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-[13px] font-semibold text-foreground">SMS OTP</span>
-                    <span className="text-[10px] text-muted-foreground mt-0.5">Backup option. Code sent to verified phone number.</span>
-                  </div>
+                <div className="flex items-center gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => copyRecoveryCodes(recoveryCodes)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#121212] hover:bg-border/30 text-white rounded-lg text-[11px] font-semibold border border-border transition-colors"
+                  >
+                    <Copy className="size-3.5" />
+                    {recoveryCodesCopied ? 'Copied!' : 'Copy All'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadRecoveryCodes(recoveryCodes)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-black rounded-lg text-[11px] font-bold transition-colors"
+                  >
+                    <Download className="size-3.5" />
+                    Download TXT
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRecoveryCodesVisible(false)}
+                    className="px-3 py-1.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 rounded-lg text-[11px] font-semibold transition-colors"
+                  >
+                    I've saved these ✓
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (smsEnabled) {
-                      setSmsEnabled(false);
-                      triggerToast('SMS OTP disabled');
-                    } else {
-                      setSmsSetupOpen(true);
-                    }
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors shrink-0 ${
-                    smsEnabled ? 'bg-red-400/10 text-red-400 border border-red-400/20 hover:bg-red-400/20' : 'bg-[#8C5CFF] hover:bg-[#7A4AEE] text-white'
-                  }`}
-                >
-                  {smsEnabled ? 'Disable' : 'Configure'}
-                </button>
               </div>
-
-              {/* SMS Mock Setup UI */}
-              {smsSetupOpen && (
-                <div className="border-t border-border/40 pt-4 flex flex-col gap-3 mt-2 animate-in fade-in duration-200">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] font-semibold text-muted-foreground">Phone Number</label>
-                    <input
-                      type="text"
-                      value={phoneNumber}
-                      onChange={e => setPhoneNumber(e.target.value)}
-                      className="w-full bg-[#121212] border border-border rounded-lg px-3 py-2 text-[12.5px] text-white focus:border-[#8C5CFF] focus:outline-none"
-                      placeholder="+234 80 1234 5678"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      maxLength={6}
-                      value={smsCode}
-                      onChange={e => setSmsCode(e.target.value.replace(/\D/g, ''))}
-                      className="flex-1 bg-[#121212] border border-border rounded-lg px-3 py-2 text-[12.5px] font-mono text-center tracking-widest text-white focus:border-[#8C5CFF] focus:outline-none"
-                      placeholder="Enter SMS OTP"
-                    />
-                    <button
-                      type="button"
-                      disabled={!phoneNumber.trim()}
-                      onClick={() => {
-                        setSmsEnabled(true);
-                        setSmsSetupOpen(false);
-                        setSmsCode('');
-                        setPhoneNumber('');
-                        triggerToast('SMS backup option enabled');
-                      }}
-                      className="px-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white rounded-lg text-[11px] font-semibold transition-colors"
-                    >
-                      Verify & Enable
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Emergency Option: Backup Codes */}
-            <div className="bg-background border border-border rounded-xl p-4 flex flex-col gap-3.5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0">
-                  <Key className="size-5 text-[#F59E0B] shrink-0 mt-0.5" />
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-[13px] font-semibold text-foreground">Backup Codes</span>
-                    <span className="text-[10px] text-muted-foreground mt-0.5">Emergency access. Save these codes in a secure location.</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={generateBackup}
-                  className="px-3 py-1.5 bg-background border border-border hover:bg-border/40 text-foreground/80 rounded-lg text-[11px] font-semibold transition-colors shrink-0"
-                >
-                  {backupCodesGenerated ? 'Regenerate' : 'Generate'}
-                </button>
-              </div>
-
-              {/* Generated Backup Codes */}
-              {backupCodesGenerated && backupCodes.length > 0 && (
-                <div className="border-t border-border/40 pt-4 flex flex-col gap-4 mt-1 animate-in fade-in duration-200">
-                  <div className="grid grid-cols-2 gap-3 bg-[#121212] border border-border rounded-lg p-4 font-mono text-[12px] text-white font-semibold">
-                    {backupCodes.map((c, i) => (
-                      <div key={i} className="flex gap-2 items-center">
-                        <span className="text-[10px] text-muted-foreground w-4">{i + 1}.</span>
-                        <span>{c}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(backupCodes.join("\n"));
-                        triggerToast('Backup codes copied to clipboard');
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[#121212] hover:bg-border/30 text-white rounded-lg text-[11px] font-semibold border border-border transition-colors"
-                    >
-                      <Copy className="size-3.5" />
-                      Copy Codes
-                    </button>
-                    <button
-                      type="button"
-                      onClick={downloadBackupCodes}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[#8C5CFF] hover:bg-[#7A4AEE] text-white rounded-lg text-[11px] font-semibold transition-colors"
-                    >
-                      <Download className="size-3.5" />
-                      Download TXT
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
+            )}
           </div>
         </div>
       </div>
@@ -603,39 +624,43 @@ export default function AdminSecurityPage() {
           </div>
 
           {/* Table Rows */}
-          {sessions.map(s => (
-            <div key={s.id} className="flex items-center px-6 h-[72px] border-b border-border/40 last:border-0 bg-card hover:bg-background/20 transition-colors">
-              <div className="flex-1 min-w-0 flex items-center gap-3">
-                <div className="size-8 rounded-lg bg-[#8C5CFF]/10 flex items-center justify-center text-[#8C5CFF] shrink-0 border border-[#8C5CFF]/20">
-                  <Monitor className="size-4" />
+          {sessions.length > 0 ? (
+            sessions.map(s => (
+              <div key={s.id} className="flex items-center px-6 h-[72px] border-b border-border/40 last:border-0 bg-card hover:bg-background/20 transition-colors">
+                <div className="flex-1 min-w-0 flex items-center gap-3">
+                  <div className="size-8 rounded-lg bg-[#8C5CFF]/10 flex items-center justify-center text-[#8C5CFF] shrink-0 border border-[#8C5CFF]/20">
+                    <Monitor className="size-4" />
+                  </div>
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-[13.5px] font-medium text-foreground truncate">{s.device}</span>
+                    {s.isCurrent && (
+                      <span className="text-[9px] bg-[#8C5CFF]/20 text-[#8C5CFF] border border-[#8C5CFF]/30 px-1.5 py-0.5 rounded-full font-semibold max-w-fit">
+                        Current Session
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="text-[13.5px] font-medium text-foreground truncate">{s.device}</span>
-                  {s.isCurrent && (
-                    <span className="text-[9px] bg-[#8C5CFF]/20 text-[#8C5CFF] border border-[#8C5CFF]/30 px-1.5 py-0.5 rounded-full font-semibold max-w-fit">
-                      Current Session
-                    </span>
+                <div className="w-[150px] shrink-0 text-[13px] font-mono text-muted-foreground">{s.ip}</div>
+                <div className="flex-1 min-w-0 text-[13px] text-muted-foreground truncate">{s.location}</div>
+                <div className="w-[120px] shrink-0 text-[13px] text-muted-foreground">{s.lastSeen}</div>
+                <div className="w-[150px] shrink-0 text-right">
+                  {s.isCurrent ? (
+                    <span className="text-[11px] text-muted-foreground italic px-3">—</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setSessionToRevoke(s)}
+                      className="px-3 py-1.5 text-[12px] font-semibold text-red-400 bg-red-400/5 hover:bg-red-400/10 border border-red-400/20 rounded-[8px] transition-colors"
+                    >
+                      Revoke Access
+                    </button>
                   )}
                 </div>
               </div>
-              <div className="w-[150px] shrink-0 text-[13px] font-mono text-muted-foreground">{s.ip}</div>
-              <div className="flex-1 min-w-0 text-[13px] text-muted-foreground truncate">{s.location}</div>
-              <div className="w-[120px] shrink-0 text-[13px] text-muted-foreground">{s.lastSeen}</div>
-              <div className="w-[150px] shrink-0 text-right">
-                {s.isCurrent ? (
-                  <span className="text-[11px] text-muted-foreground italic px-3">—</span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setSessionToRevoke(s)}
-                    className="px-3 py-1.5 text-[12px] font-semibold text-red-400 bg-red-400/5 hover:bg-red-400/10 border border-red-400/20 rounded-[8px] transition-colors"
-                  >
-                    Revoke Access
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            ))
+          ) : (
+            <div className="p-8 text-center text-sm text-muted-foreground">No active sessions found.</div>
+          )}
         </div>
       </div>
 
@@ -657,20 +682,24 @@ export default function AdminSecurityPage() {
 
           {/* Table Rows (Last 20) */}
           <div className="max-h-[480px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {INITIAL_LOGIN_HISTORY.map(h => (
-              <div key={h.id} className="flex items-center px-6 h-[54px] border-b border-border/40 last:border-0 bg-card hover:bg-background/20 transition-colors">
-                <div className="flex-1 min-w-0 text-[13px] text-foreground/90 font-medium truncate">{h.timestamp}</div>
-                <div className="w-[150px] shrink-0 text-[13px] font-mono text-muted-foreground">{h.ip}</div>
-                <div className="flex-1 min-w-0 text-[13px] text-muted-foreground truncate">{h.device}</div>
-                <div className="w-[120px] shrink-0 text-right">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                    h.status === 'Success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
-                  }`}>
-                    {h.status}
-                  </span>
+            {loginHistory.length > 0 ? (
+              loginHistory.map(h => (
+                <div key={h.id} className="flex items-center px-6 h-[54px] border-b border-border/40 last:border-0 bg-card hover:bg-background/20 transition-colors">
+                  <div className="flex-1 min-w-0 text-[13px] text-foreground/90 font-medium truncate">{h.timestamp}</div>
+                  <div className="w-[150px] shrink-0 text-[13px] font-mono text-muted-foreground">{h.ip}</div>
+                  <div className="flex-1 min-w-0 text-[13px] text-muted-foreground truncate">{h.device}</div>
+                  <div className="w-[120px] shrink-0 text-right">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                      h.status === 'Success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                    }`}>
+                      {h.status}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <div className="p-8 text-center text-sm text-muted-foreground">No recent security login history recorded.</div>
+            )}
           </div>
         </div>
       </div>
@@ -759,10 +788,7 @@ export default function AdminSecurityPage() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  handleRevokeSession(sessionToRevoke.id);
-                  setSessionToRevoke(null);
-                }}
+                onClick={confirmRevokeSession}
                 className="flex-1 px-4 py-2.5 text-[13px] font-semibold text-white bg-red-400 hover:bg-red-500 rounded-[10px] transition-colors"
               >
                 Revoke

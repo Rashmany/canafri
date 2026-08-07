@@ -13,7 +13,12 @@ import { TrustEngine } from '../services/trust-engine.js';
 import { NotificationService } from '../services/notification.js';
 import { getPlatformConfig, getFullPlatformConfig, updatePlatformConfig } from '../services/platform-config.js';
 import { ADMIN_PORTAL_ROLES } from '../lib/roles.js';
-import { sendAdminReplyEmail } from '../services/email.js';
+import { passwordChangeRateLimit } from '../middleware/rateLimiter.js';
+import { sendAdminReplyEmail, sendAdminPasswordChangedEmail } from '../services/email.js';
+import { AdminAnalyticsService } from '../services/admin-analytics.service.js';
+import { AdminUserService } from '../services/admin-user.service.js';
+import { generateSecret, verify as verifyTotp, generateURI } from 'otplib';
+import QRCode from 'qrcode';
 
 const SuspendUserSchema = z.object({
   status: z.enum(['ACTIVE', 'SUSPENDED', 'BANNED']),
@@ -43,7 +48,7 @@ const WarnUserSchema = z.object({
 
 const InviteCreateSchema = z.object({
   email: z.string().email().toLowerCase().trim(),
-  role: z.enum(['ADMIN', 'SUPER_ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN']),
+  role: z.enum(['ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN']),
 });
 
 const AcceptInviteSchema = z.object({
@@ -53,7 +58,7 @@ const AcceptInviteSchema = z.object({
 });
 
 const RoleUpdateSchema = z.object({
-  role: z.enum(['ADMIN', 'SUPER_ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN']),
+  role: z.enum(['ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN']),
 });
 
 const RevokeAdminSchema = z.object({
@@ -469,49 +474,65 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /admin/sellers â€” List all sellers and calculate sellers overview statistics
-  fastify.get('/sellers', async (request: FastifyRequest, reply: FastifyReply) => {
+  // ────────────────────────────────────────────────────────────────────────────
+  // BUYERS ENDPOINTS (Paginated list + Cached stats)
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.get('/buyers/stats', async (_request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const sellers = await prisma.user.findMany({
-        where: { role: 'MEMBER', isSeller: true },
-        include: {
-          creatorStake: true,
-          freelanceJobs: {
-            select: { id: true, status: true, amountCC: true }
-          },
-          riskFlags: {
-            orderBy: { createdAt: 'desc' }
-          }
-        },
-        orderBy: { createdAt: 'desc' }
-      });
-
-      const totalSellers    = sellers.length;
-      const activeSellers   = sellers.filter(s => s.status === 'ACTIVE').length;
-      const verifiedSellers = sellers.filter(s => s.sellerApproved).length;
-      let totalSalesCC = 0;
-      for (const s of sellers) {
-        for (const j of s.freelanceJobs) {
-          if (j.status === 'COMPLETED') totalSalesCC += j.amountCC ?? 0;
-        }
-      }
-
-      return reply.send({
-        success: true,
-        sellers,
-        stats: {
-          totalSellers,
-          activeSellers,
-          verifiedSellers,
-          totalSalesCC,
-        }
-      });
+      const stats = await AdminAnalyticsService.getBuyerStats();
+      return reply.send({ success: true, stats });
     } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
   });
 
-  // PATCH /admin/sellers/:id/status â€” Suspend, verify, or update seller status
+  fastify.get('/buyers', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { page, limit, search, status, sort, order } = request.query as any;
+      const result = await AdminUserService.getPaginatedBuyers({
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 20,
+        search,
+        status,
+        sort,
+        order,
+      });
+      return reply.send({ success: true, ...result });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // SELLERS ENDPOINTS (Paginated list + Cached stats)
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.get('/sellers/stats', async (_request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const stats = await AdminAnalyticsService.getSellerStats();
+      return reply.send({ success: true, stats });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  fastify.get('/sellers', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { page, limit, search, status, sort, order } = request.query as any;
+      const result = await AdminUserService.getPaginatedSellers({
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 20,
+        search,
+        status,
+        sort,
+        order,
+      });
+      return reply.send({ success: true, ...result });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // PATCH /admin/sellers/:id/status — Suspend, verify, or update seller status
   fastify.patch('/sellers/:id/status', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
@@ -541,6 +562,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
         device: request.headers['user-agent'] ?? undefined,
       });
 
+      // Invalidate analytics stats cache immediately so summary cards refresh
+      await AdminAnalyticsService.invalidate('all');
+
       return reply.send({ success: true, seller: updatedUser });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -550,7 +574,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /admin/seller-applications â€” List only users who submitted the seller application form
+  // GET /admin/seller-applications — List only users who submitted the seller application form
   fastify.get('/seller-applications', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const applicants = await prisma.user.findMany({
@@ -603,7 +627,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /admin/seller-applications/:id/approve â€” Approve or reject seller application
+  // POST /admin/seller-applications/:id/approve — Approve or reject seller application
   fastify.post('/seller-applications/:id/approve', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };
@@ -622,6 +646,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
           sellerApplied: approved ? true : false,
         },
       });
+
+      // Invalidate analytics stats cache immediately so summary cards refresh
+      await AdminAnalyticsService.invalidate('all');
 
       await AuditService.log({
         adminId: (request.user as any)?.userId ?? (request.user as any)?.sub ?? 'admin',
@@ -712,6 +739,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
         }
         await prisma.session.deleteMany({ where: { userId: id } });
       }
+
+      // Invalidate analytics stats cache immediately so summary cards refresh
+      await AdminAnalyticsService.invalidate('all');
 
       return reply.send({ success: true, user: updatedUser });
     } catch (error: any) {
@@ -2030,9 +2060,29 @@ export async function adminRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: 'Not Found', message: 'Invite not found.' });
       }
 
+      const callerId = (request.user as any).userId ?? (request.user as any).sub;
       await prisma.adminInvite.delete({ where: { id } });
 
-      return reply.send({ success: true, message: 'Invite revoked.' });
+      try {
+        await redis.publish('admin_security_events', JSON.stringify({
+          type: 'ADMIN_INVITE_CANCELLED',
+          inviteId: id,
+          email: invite.email,
+          timestamp: Date.now(),
+        }));
+      } catch {
+        /* non-fatal */
+      }
+
+      await AuditService.log({
+        userId: callerId,
+        action: 'ADMIN_INVITE_CANCELLED',
+        target: invite.email,
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, message: 'Pending invite cancelled successfully.' });
     } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
@@ -2063,6 +2113,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: 'Not Found', message: 'Admin user not found.' });
       }
 
+      if (target.role === 'SUPER_ADMIN') {
+        return reply.status(403).send({ error: 'Forbidden', message: 'The root SUPER_ADMIN account cannot be revoked.' });
+      }
+
       // Soft-revoke: update status and save revocation log details
       await prisma.user.update({
         where: { id },
@@ -2074,12 +2128,22 @@ export async function adminRoutes(fastify: FastifyInstance) {
         },
       });
 
-      // Flush all active sessions for this user
+      // Flush all active sessions & permission caches for this user
       const sessions = await prisma.session.findMany({ where: { userId: id } });
       for (const s of sessions) {
         await redis.del(`session:${s.id}`);
       }
       await prisma.session.deleteMany({ where: { userId: id } });
+      await redis.del(`user_permissions:${id}`);
+      await redis.del(`admin_menu:${id}`);
+      await redis.del(`user_live:${id}`);
+
+      // Broadcast real-time revocation event over Redis Pub/Sub
+      try {
+        await redis.publish('admin_security_events', JSON.stringify({ type: 'ADMIN_REVOKED', userId: id, timestamp: Date.now() }));
+      } catch {
+        /* non-fatal */
+      }
 
       await AuditService.log({
         adminId: callerId,
@@ -2174,14 +2238,32 @@ export async function adminRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: 'Not Found', message: 'Admin user not found.' });
       }
 
+      if (target.role === 'SUPER_ADMIN') {
+        return reply.status(403).send({ error: 'Forbidden', message: 'The root SUPER_ADMIN role cannot be modified.' });
+      }
+
+      if ((newRole as string) === 'SUPER_ADMIN') {
+        return reply.status(403).send({ error: 'Forbidden', message: 'Only the original root account may hold the SUPER_ADMIN role.' });
+      }
+
       await prisma.user.update({ where: { id }, data: { role: newRole } });
 
-      // Flush sessions so the new role takes effect on next login
+      // Flush all active sessions & permission caches so the new role takes effect immediately
       const sessions = await prisma.session.findMany({ where: { userId: id } });
       for (const s of sessions) {
         await redis.del(`session:${s.id}`);
       }
       await prisma.session.deleteMany({ where: { userId: id } });
+      await redis.del(`user_permissions:${id}`);
+      await redis.del(`admin_menu:${id}`);
+      await redis.del(`user_live:${id}`);
+
+      // Broadcast real-time role update event over Redis Pub/Sub
+      try {
+        await redis.publish('admin_security_events', JSON.stringify({ type: 'ADMIN_ROLE_UPDATED', userId: id, newRole, timestamp: Date.now() }));
+      } catch {
+        /* non-fatal */
+      }
 
       await AuditService.log({
         userId: callerId,
@@ -2555,8 +2637,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // POST /admin/change-password - Change admin password with re-verification & session revocation
-  fastify.post('/change-password', async (request: FastifyRequest, reply: FastifyReply) => {
+  // POST /admin/change-password - Change admin password with rate limiting, re-verification, session revocation & security email
+  fastify.post('/change-password', { preValidation: [passwordChangeRateLimit] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { userId } = (request.user as any) || {};
       if (!userId) {
@@ -2596,39 +2678,66 @@ export async function adminRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'Bad Request', message: 'New password cannot be identical to your current password.' });
       }
 
-      // 3. Hash and store new password
+      // 3. Hash and store new password (bcrypt with cost factor 12)
       const newHash = await HashService.hashPassword(body.newPassword);
       await prisma.user.update({
         where: { id: userId },
         data: { passwordHash: newHash },
       });
 
-      // 4. Revoke other sessions if requested
+      // 4. Revoke other sessions (DB + Redis) if requested
       if (body.revokeOtherSessions) {
         try {
           const currentToken = (request.headers.authorization || '').replace('Bearer ', '').trim();
+          
+          // Delete DB sessions
           await prisma.session.deleteMany({
             where: {
               userId,
               token: { not: currentToken },
             },
           });
-        } catch {
-          /* session cleanup non-fatal */
+
+          // Invalidate Redis session keys for this user
+          const keys = await redis.keys(`canafri_session:${userId}:*`);
+          if (keys.length > 0) {
+            await Promise.all(keys.map(k => redis.del(k)));
+          }
+        } catch (err) {
+          request.log.error(err, '[AdminRoutes] Session revocation error');
         }
       }
+
+      const userAgent = (request.headers['user-agent'] || 'Unknown Agent').slice(0, 200);
 
       // 5. Audit Log
       await AuditService.log({
         userId,
         action: 'ADMIN_PASSWORD_CHANGED',
         target: userId,
-        after: { revokeOtherSessions: body.revokeOtherSessions, ip: request.ip },
+        after: {
+          revokeOtherSessions: body.revokeOtherSessions,
+          ip: request.ip,
+          userAgent,
+        },
       });
+
+      // 6. Security email alert
+      if (user.email) {
+        sendAdminPasswordChangedEmail(user.email, {
+          ip: request.ip,
+          userAgent,
+          timestamp: new Date(),
+        }).catch(err => {
+          request.log.error(err, '[AdminRoutes] Background password change alert email error');
+        });
+      }
 
       return reply.send({
         success: true,
-        message: 'Administrator password updated successfully.',
+        message: body.revokeOtherSessions
+          ? 'Administrator password updated successfully. Other active sessions have been signed out.'
+          : 'Administrator password updated successfully.',
       });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -2637,16 +2746,229 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
   });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // POST /admin/security/totp-reconfig
+  // Initiates a TOTP reconfiguration for an already-authenticated admin.
+  // Returns a fresh QR code and secret stored under a one-time reconfig key.
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.post('/security/totp-reconfig', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId } = (request.user as any) || {};
+      if (!userId) {
+        return reply.status(401).send({ error: 'Unauthorized', message: 'You must be signed in.' });
+      }
+
+      const admin = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, status: true },
+      });
+      if (!admin || admin.status !== 'ACTIVE') {
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Your administrator access has been revoked. Please contact the platform owner.' });
+      }
+
+      // Generate a fresh TOTP secret
+      const secret = generateSecret();
+      const otpauthUrl = generateURI({ label: admin.email ?? 'admin', issuer: 'CanaFri Admin', secret });
+      const qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
+
+      // Store the pending secret under a short-lived reconfig key (10 minutes)
+      const reconfigKey = `admin_totp_reconfig:${userId}`;
+      await redis.set(reconfigKey, JSON.stringify({ secret }), { EX: 600 });
+
+      return reply.send({ success: true, secret, qrCodeUrl });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // POST /admin/security/totp-reconfig/verify
+  // Verifies the 6-digit code, commits the new TOTP secret, issues 10 new
+  // recovery codes, and returns the plaintext codes once.
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.post('/security/totp-reconfig/verify', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId } = (request.user as any) || {};
+      if (!userId) {
+        return reply.status(401).send({ error: 'Unauthorized', message: 'You must be signed in.' });
+      }
+
+      const { code } = z.object({ code: z.string().length(6).regex(/^\d{6}$/) }).parse(request.body);
+
+      const reconfigKey = `admin_totp_reconfig:${userId}`;
+      const raw = await redis.get(reconfigKey);
+      if (!raw) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Re-configuration session has expired. Please start again.' });
+      }
+      const { secret } = JSON.parse(raw);
+
+      const { valid } = await verifyTotp({ token: code, secret, epochTolerance: 120 });
+      if (!valid) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Invalid verification code. Please check your authenticator app and try again.' });
+      }
+
+      // Generate 10 fresh one-time recovery codes
+      const plainRecoveryCodes: string[] = [];
+      const recoveryHashes: string[] = [];
+      for (let i = 0; i < 10; i++) {
+        const rc = `${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`;
+        plainRecoveryCodes.push(rc);
+        const hash = await HashService.hashPassword(rc.replace('-', '').trim());
+        recoveryHashes.push(hash);
+      }
+
+      // Commit new TOTP secret and recovery codes to DB
+      await prisma.user.update({
+        where: { id: userId },
+        data: { totpSecret: secret, totpEnabled: true, totpRecoveryHashes: recoveryHashes },
+      });
+
+      // Consume the reconfig key
+      await redis.del(reconfigKey);
+
+      await AuditService.log({
+        userId,
+        action: 'ADMIN_TOTP_RECONFIGURED',
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, recoveryCodes: plainRecoveryCodes });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: error.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // Helper to parse raw User-Agent headers into clean, human-readable Browser (OS) names
+  const formatUserAgent = (ua?: string | null): string => {
+    if (!ua || ua.length < 5) return 'Web Browser';
+    let browser = 'Web Browser';
+    let os = '';
+
+    if (ua.includes('Edg/')) browser = 'Microsoft Edge';
+    else if (ua.includes('Chrome/')) browser = 'Google Chrome';
+    else if (ua.includes('Firefox/')) browser = 'Mozilla Firefox';
+    else if (ua.includes('Safari/') && !ua.includes('Chrome/')) browser = 'Apple Safari';
+
+    if (ua.includes('Windows NT 10')) os = 'Windows 11/10';
+    else if (ua.includes('Windows')) os = 'Windows';
+    else if (ua.includes('Macintosh') || ua.includes('Mac OS')) os = 'macOS';
+    else if (ua.includes('iPhone')) os = 'iPhone (iOS)';
+    else if (ua.includes('iPad')) os = 'iPad (iOS)';
+    else if (ua.includes('Android')) os = 'Android';
+    else if (ua.includes('Linux')) os = 'Linux';
+
+    return os ? `${browser} on ${os}` : browser;
+  };
+
+  // GET /admin/security/sessions - Fetch real active sessions for current admin
+  fastify.get('/security/sessions', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId, sessionId } = (request.user as any) || {};
+      if (!userId) {
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User unauthenticated.' });
+      }
+
+      const activeSessions = await prisma.session.findMany({
+        where: { userId, expiresAt: { gt: new Date() } },
+        orderBy: { lastActivityAt: 'desc' },
+      });
+
+      const sessions = activeSessions.map(s => {
+        const isCurrent = s.id === sessionId;
+        const rawUA = s.userAgent || (isCurrent ? (request.headers['user-agent'] as string) : null);
+        return {
+          id: s.id,
+          device: formatUserAgent(rawUA),
+          ip: s.ipAddress || request.ip || '127.0.0.1',
+          location: 'Verified Administrator IP',
+          lastSeen: isCurrent ? 'Active now' : new Date(s.lastActivityAt || s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isCurrent,
+        };
+      });
+
+      return reply.send({ success: true, sessions });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // DELETE /admin/security/sessions/:id - Revoke specific session
+  fastify.delete('/security/sessions/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId } = (request.user as any) || {};
+      const { id } = request.params as { id: string };
+
+      if (!userId) {
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User unauthenticated.' });
+      }
+
+      await prisma.session.deleteMany({
+        where: { id, userId },
+      });
+
+      try {
+        await redis.del(`session:${id}`);
+      } catch {
+        /* non-fatal */
+      }
+
+      await AuditService.log({
+        userId,
+        action: 'ADMIN_SESSION_REVOKED',
+        target: id,
+        after: { revokedSessionId: id, ip: request.ip },
+      });
+
+      return reply.send({ success: true, message: 'Session revoked successfully.' });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // GET /admin/security/login-history - Fetch real login history for current admin
+  fastify.get('/security/login-history', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId } = (request.user as any) || {};
+      if (!userId) {
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User unauthenticated.' });
+      }
+
+      const logs = await prisma.auditLog.findMany({
+        where: {
+          userId,
+          action: { in: ['LOGIN_SUCCESS', 'LOGIN_FAILED', 'ADMIN_LOGIN', 'ADMIN_PASSWORD_CHANGED', 'MFA_VERIFIED', 'MFA_FAILED'] },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      });
+
+      const history = logs.map(l => {
+        const d = new Date(l.createdAt);
+        const formattedDate = `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}`;
+        const rawUA = l.device || (l.after as any)?.userAgent;
+        return {
+          id: l.id,
+          timestamp: formattedDate,
+          ip: l.ipAddress || (l.after as any)?.ip || request.ip || '127.0.0.1',
+          device: formatUserAgent(rawUA),
+          status: (l.action.includes('FAILED') ? 'Failed' : 'Success') as 'Success' | 'Failed',
+        };
+      });
+
+      return reply.send({ success: true, history });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
 } // end adminRoutes
 
-
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Public invite-acceptance routes (no auth guard)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 export async function publicInviteRoutes(fastify: FastifyInstance) {
-
-  // GET /auth/admin/invites/:token â€” Validate invite token
+  // GET /auth/admin/invites/:token — Validate invite token
   fastify.get('/admin/invites/:token', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { token } = request.params as { token: string };
@@ -2690,7 +3012,7 @@ export async function publicInviteRoutes(fastify: FastifyInstance) {
 
       const passwordHash = await HashService.hashPassword(password);
 
-      await prisma.user.create({
+      const newAdminUser = await prisma.user.create({
         data: {
           displayName: fullName,
           username,
@@ -2703,15 +3025,102 @@ export async function publicInviteRoutes(fastify: FastifyInstance) {
         },
       });
 
-      // Consume the invite
+      // Consume the invite immediately
+      await prisma.adminInvite.delete({ where: { id: invite.id } }).catch(() => {/* non-fatal */});
+
+      // Broadcast real-time event so Super Admin team dashboard updates status immediately
+      try {
+        await redis.publish('admin_security_events', JSON.stringify({
+          type: 'ADMIN_INVITE_ACCEPTED',
+          email: invite.email,
+          userId: newAdminUser.id,
+          role: invite.role,
+          timestamp: Date.now(),
+        }));
+      } catch {
+        /* non-fatal */
+      }
+
+      await AuditService.log({
+        userId: newAdminUser.id,
+        action: 'ADMIN_INVITE_ACCEPTED',
+        target: invite.email,
+        after: { role: invite.role },
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
       return reply.status(201).send({
         success: true,
-        message: 'Account created. You can now sign in and complete your MFA setup.',
+        message: 'Account created successfully. You can now sign in with your credentials.',
       });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Validation Error', details: error.errors });
       }
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // POST /admin/team/:id/reset-totp (Super-Admin Assisted 2FA Reset for Sub-Admins)
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.post('/team/:id/reset-totp', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const caller = (request.user as any) || {};
+      const { id: targetUserId } = request.params as { id: string };
+
+      if (caller.role !== 'SUPER_ADMIN') {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: 'Only the SUPER_ADMIN can execute 2FA resets for team members.',
+        });
+      }
+
+      const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+      if (!targetUser) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Target administrator account not found.' });
+      }
+
+      // Root SUPER_ADMIN policy protection: SUPER_ADMIN 2FA cannot be reset via API
+      if (targetUser.role === 'SUPER_ADMIN') {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: 'The root SUPER_ADMIN 2FA cannot be reset via API. Use the offline emergency CLI maintenance procedure.',
+        });
+      }
+
+      // Reset TOTP status and burn all recovery codes for this team member
+      await prisma.user.update({
+        where: { id: targetUserId },
+        data: {
+          totpEnabled: false,
+          totpSecret: null,
+          totpRecoveryHashes: [],
+        },
+      });
+
+      // Revoke all active sessions for this target user across DB & Redis
+      await prisma.session.deleteMany({ where: { userId: targetUserId } });
+      try {
+        await redis.del(`session:${targetUserId}`);
+      } catch {
+        /* non-fatal */
+      }
+
+      // Write immutable audit log
+      await AuditService.log({
+        userId: caller.userId || caller.sub,
+        action: 'SUPER_ADMIN_RESET_USER_TOTP',
+        target: targetUserId,
+        after: { targetEmail: targetUser.email, targetRole: targetUser.role, ip: request.ip },
+      });
+
+      return reply.send({
+        success: true,
+        message: `2FA reset successfully for ${targetUser.email}. The team member will be prompted to scan a new QR code on their next login.`,
+      });
+    } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
   });

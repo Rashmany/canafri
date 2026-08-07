@@ -109,7 +109,7 @@ const CreateAdminSchema = z.object({
   username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/, 'Username may only contain letters, numbers, and underscores').trim(),
   email: z.string().email().toLowerCase().trim(),
   password: z.string().min(8),
-  role: z.enum(['ADMIN', 'SUPER_ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN']),
+  role: z.enum(['ADMIN', 'CONTENT_ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN']),
 });
 
 // ── Legacy phone-OTP schemas (preserved unchanged) ───────────────────────────
@@ -452,7 +452,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 
         return reply.status(429).send({
           error: 'Too Many Requests',
-          message: 'Maximum OTP verification attempts reached. Registration cancelled. Please register again.',
+          message: 'Too many incorrect attempts. Please start the registration process again.',
         });
       }
 
@@ -610,7 +610,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       // Account lockout check (uses identifier)
       if (await isLockedOut(identifier)) {
-        return reply.status(429).send({ error: 'Too Many Requests', message: 'Account temporarily locked. Try again in 15 minutes.' });
+        return reply.status(429).send({ error: 'Too Many Requests', message: 'Your account has been temporarily locked due to multiple failed attempts. Please try again in 15 minutes.' });
       }
 
       // Lookup by email or username
@@ -945,7 +945,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       const failCount = parseInt(await redis.get(failKey) ?? '0', 10);
       if (failCount >= 3) {
-        return reply.status(429).send({ error: 'Too Many Requests', message: 'Too many incorrect attempts. Please request a new code.' });
+        return reply.status(429).send({ error: 'Too Many Requests', message: 'Too many incorrect attempts. Please request a new verification code.' });
       }
 
       if (!HashService.safeCompareTokens(HashService.hashToken(otp), stored)) {
@@ -981,7 +981,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       const failCount = parseInt(await redis.get(failKey) ?? '0', 10);
       if (failCount >= 3) {
-        return reply.status(429).send({ error: 'Too Many Requests', message: 'Too many incorrect attempts. Request a new code.' });
+        return reply.status(429).send({ error: 'Too Many Requests', message: 'Too many incorrect attempts. Please request a new verification code.' });
       }
 
       if (!HashService.safeCompareTokens(HashService.hashToken(otp), stored)) {
@@ -1057,7 +1057,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       const regCount = await redis.incr(regIpKey);
       if (regCount === 1) await redis.expire(regIpKey, 3600);
       if (regCount > 5) {
-        return reply.status(429).send({ error: 'Too Many Requests', message: 'Registration limit exceeded for this IP.' });
+        return reply.status(429).send({ error: 'Too Many Requests', message: 'We are unable to process your request at this time. Please try again later.' });
       }
 
       const otpResult = await OTPService.sendOTP(phoneHash);
@@ -1315,12 +1315,23 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.status(401).send({ error: 'Unauthorized', message: 'Account is inactive or has been revoked.' });
       }
 
+      // Generate 10 one-time recovery codes (formatted as XXXX-XXXX)
+      const plainRecoveryCodes: string[] = [];
+      const recoveryHashes: string[] = [];
+      for (let i = 0; i < 10; i++) {
+        const code = `${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`;
+        plainRecoveryCodes.push(code);
+        const hash = await HashService.hashPassword(code.replace('-', '').trim());
+        recoveryHashes.push(hash);
+      }
+
       // Update User record in database
       const user = await prisma.user.update({
         where: { id: sessionData.userId },
         data: {
           totpSecret: tempSecret,
           totpEnabled: true,
+          totpRecoveryHashes: recoveryHashes,
         },
       });
 
@@ -1362,6 +1373,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.send({
         success: true,
         accessToken,
+        recoveryCodes: plainRecoveryCodes,
         user: {
           id: user.id,
           username: user.username,
@@ -1378,13 +1390,20 @@ export async function authRoutes(fastify: FastifyInstance) {
   });
 
   // ────────────────────────────────────────────────────────────────────────────
-  // POST /auth/admin/mfa-login
+  // POST /auth/admin/mfa-login (Supports 6-digit TOTP OR 8-digit Recovery Code)
   // ────────────────────────────────────────────────────────────────────────────
   fastify.post('/admin/mfa-login', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const { preAuthId, code } = AdminTotpVerifySchema.parse(request.body);
-      const preAuthKey = `admin_pre_auth:${preAuthId}`;
+      const body = (request.body as any) || {};
+      const preAuthId = String(body.preAuthId || '');
+      const codeRaw = String(body.code || '').trim();
+      const normalizedCode = codeRaw.replace('-', '').trim();
 
+      if (!preAuthId || !codeRaw) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Pre-authentication ID and verification code are required.' });
+      }
+
+      const preAuthKey = `admin_pre_auth:${preAuthId}`;
       const sessionDataRaw = await redis.get(preAuthKey);
       if (!sessionDataRaw) {
         return reply.status(400).send({ error: 'Bad Request', message: 'Pre-authentication session has expired or is invalid.' });
@@ -1404,9 +1423,49 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.status(401).send({ error: 'Unauthorized', message: 'Account is inactive or has been revoked.' });
       }
 
-      const { valid: verified } = await verify({ token: code, secret: user.totpSecret, epochTolerance: 120 });
-      if (!verified) {
-        return reply.status(400).send({ error: 'Bad Request', message: 'Invalid verification code.' });
+      let isVerified = false;
+      let usedRecoveryCode = false;
+
+      // 1. First try TOTP verification (if code is 6 digits)
+      if (normalizedCode.length === 6 && /^\d{6}$/.test(normalizedCode)) {
+        const { valid } = await verify({ token: normalizedCode, secret: user.totpSecret, epochTolerance: 120 });
+        isVerified = valid;
+      }
+
+      // 2. If TOTP failed or code is an 8-character recovery code, test against stored bcrypt recovery hashes
+      if (!isVerified && user.totpRecoveryHashes && user.totpRecoveryHashes.length > 0) {
+        let matchedIndex = -1;
+        for (let i = 0; i < user.totpRecoveryHashes.length; i++) {
+          const match = await HashService.verifyPassword(normalizedCode, user.totpRecoveryHashes[i]);
+          if (match) {
+            matchedIndex = i;
+            break;
+          }
+        }
+
+        if (matchedIndex !== -1) {
+          isVerified = true;
+          usedRecoveryCode = true;
+
+          // Burn the used recovery code (remove from array)
+          const updatedHashes = [...user.totpRecoveryHashes];
+          updatedHashes.splice(matchedIndex, 1);
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { totpRecoveryHashes: updatedHashes },
+          });
+
+          await AuditService.log({
+            userId: user.id,
+            action: 'ADMIN_MFA_RECOVERY_CODE_USED',
+            ipAddress: request.ip,
+            device: request.headers['user-agent'] ?? undefined,
+          });
+        }
+      }
+
+      if (!isVerified) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Invalid verification code or recovery code.' });
       }
 
       // Clear preAuth state
@@ -1447,6 +1506,8 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.send({
         success: true,
         accessToken,
+        usedRecoveryCode,
+        remainingRecoveryCodes: usedRecoveryCode ? (user.totpRecoveryHashes.length - 1) : user.totpRecoveryHashes.length,
         user: {
           id: user.id,
           username: user.username,
@@ -1459,6 +1520,146 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'Validation Error', details: err.errors });
       }
       return reply.status(500).send({ error: 'Internal Server Error', message: 'MFA login failed.' });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // POST /auth/admin/forgot-password (Dedicated Admin Password Reset Request)
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.post('/admin/forgot-password', { preValidation: [forgotPasswordRateLimit] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { email } = ForgotPasswordSchema.parse(request.body);
+      const normalizedEmail = email.toLowerCase().trim();
+
+      const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+      if (user && canAccessAdminPortal(user.role) && user.status === 'ACTIVE') {
+        const otp = HashService.generateOTP(6);
+        const otpKey = `admin_pwd_reset_otp:${normalizedEmail}`;
+
+        // Cache hashed OTP in Redis with 15 minute TTL
+        await redis.set(otpKey, HashService.hashToken(otp), { EX: 900 });
+
+        await AuditService.log({
+          userId: user.id,
+          action: 'ADMIN_FORGOT_PASSWORD_REQUESTED',
+          ipAddress: request.ip,
+          device: request.headers['user-agent'] ?? undefined,
+        });
+
+        console.log(`\n=============================================================`);
+        console.log(`🔑 [ADMIN SECURITY RESET OTP]`);
+        console.log(`   Email: ${normalizedEmail}`);
+        console.log(`   OTP Code: ${otp}`);
+        console.log(`   Expires in: 15 minutes`);
+        console.log(`=============================================================\n`);
+      } else {
+        console.log(`\n=============================================================`);
+        console.log(`⚠️  [ADMIN SECURITY RESET REQUEST FAILED - ACCOUNT MISMATCH]`);
+        console.log(`   Requested Email: "${normalizedEmail}"`);
+        if (!user) {
+          console.log(`   Reason: No user found with this email address.`);
+        } else if (!canAccessAdminPortal(user.role)) {
+          console.log(`   Reason: User role "${user.role}" is not an admin role.`);
+        } else if (user.status !== 'ACTIVE') {
+          console.log(`   Reason: Admin user status is "${user.status}" (must be ACTIVE).`);
+        }
+        console.log(`=============================================================\n`);
+      }
+
+      // Always return generic response to prevent email enumeration
+      return reply.send({
+        success: true,
+        message: 'If an active administrator account exists for this email address, password reset instructions have been sent.',
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: err.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to process forgot password request.' });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // POST /auth/admin/reset-password (Dedicated Admin Password Reset Verification)
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.post('/admin/reset-password', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const body = (request.body as any) || {};
+      const email = String(body.email || '').toLowerCase().trim();
+      const otp = String(body.otp || '').trim();
+      const newPassword = String(body.newPassword || '');
+      const confirmPassword = String(body.confirmPassword || '');
+
+      if (!email || !otp || !newPassword || !confirmPassword) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'All fields are required.' });
+      }
+
+      if (newPassword !== confirmPassword) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Passwords do not match.' });
+      }
+
+      if (newPassword.length < 12 || !/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
+        return reply.status(400).send({
+          error: 'Validation Error',
+          message: 'Password must be at least 12 characters and contain uppercase, number, and special character.',
+        });
+      }
+
+      const otpKey = `admin_pwd_reset_otp:${email}`;
+      const hashedOtpInRedis = await redis.get(otpKey);
+      if (!hashedOtpInRedis) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Invalid or expired OTP code.' });
+      }
+
+      const match = HashService.safeCompareTokens(HashService.hashToken(otp), hashedOtpInRedis);
+      if (!match) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Invalid OTP code.' });
+      }
+
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user || !canAccessAdminPortal(user.role)) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Invalid admin account.' });
+      }
+
+      // Check password reuse
+      if (user.passwordHash) {
+        const isReuse = await HashService.verifyPassword(newPassword, user.passwordHash);
+        if (isReuse) {
+          return reply.status(400).send({ error: 'Bad Request', message: 'New password cannot be the same as your current password.' });
+        }
+      }
+
+      // Update password (KEEP TOTP SECRET AND RECOVERY HASHES INTACT!)
+      const newHash = await HashService.hashPassword(newPassword);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash: newHash },
+      });
+
+      // Revoke all active sessions for this user across DB & Redis
+      await prisma.session.deleteMany({ where: { userId: user.id } });
+      try {
+        await redis.del(`session:${user.id}`);
+      } catch {
+        /* non-fatal */
+      }
+
+      // Clear OTP
+      await redis.del(otpKey);
+
+      await AuditService.log({
+        userId: user.id,
+        action: 'ADMIN_PASSWORD_RESET_COMPLETED',
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({
+        success: true,
+        message: 'Administrator password reset successfully. All active sessions have been terminated. MFA remains active.',
+      });
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to reset password.' });
     }
   });
 

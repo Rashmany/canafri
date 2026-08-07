@@ -223,7 +223,7 @@ export async function messageRoutes(fastify: FastifyInstance) {
       if (floodCount > 5) {
         return reply.status(429).send({
           error: 'Too Many Requests',
-          message: 'Anti-flood protection: Maximum 5 messages allowed within 10 seconds. Please wait before sending again.',
+          message: 'You are sending messages too quickly. Please wait a moment before sending again.',
         });
       }
 
@@ -236,7 +236,7 @@ export async function messageRoutes(fastify: FastifyInstance) {
       if (msgCount > 20) {
         return reply.status(429).send({
           error: 'Too Many Requests',
-          message: 'Message rate limit exceeded. Maximum 20 messages per minute allowed.',
+          message: 'You have sent too many messages. Please wait a moment before continuing.',
         });
       }
 
