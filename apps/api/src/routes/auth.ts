@@ -56,6 +56,7 @@ const RegisterSchema = z.object({
 const LoginSchema = z.object({
   identifier: z.string().min(1).toLowerCase().trim(),
   password: z.string().min(1),
+  totpCode: z.string().optional(),
 });
 
 const ForgotPasswordSchema = z.object({
@@ -647,8 +648,17 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.status(401).send(GENERIC_AUTH_ERROR);
       }
 
+      if (user.status === 'PENDING_DELETION') {
+        return reply.status(403).send({
+          error: 'Account Deletion Pending',
+          code: 'ACCOUNT_PENDING_DELETION',
+          message: `Your account is currently scheduled for permanent deletion on ${user.deletionScheduledFor ? new Date(user.deletionScheduledFor).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'soon'}. Click below if you wish to restore your account.`,
+          deletionScheduledFor: user.deletionScheduledFor,
+        });
+      }
+
       if (user.status !== 'ACTIVE') {
-        return reply.status(403).send({ error: 'Forbidden', message: 'Account is suspended or banned.' });
+        return reply.status(403).send({ error: 'Forbidden', message: 'Account is suspended, banned, or deleted.' });
       }
 
       // Block login until email has been verified
@@ -670,6 +680,34 @@ export async function authRoutes(fastify: FastifyInstance) {
           message: 'This account cannot sign in through the user portal. Please use the Admin Login.',
           code: 'ADMIN_PORTAL_REQUIRED',
         });
+      }
+
+      // Enforce 2FA check if enabled for this user account
+      if (user.totpEnabled) {
+        const { totpCode } = LoginSchema.parse(request.body);
+        if (!totpCode || totpCode.trim().length === 0) {
+          return reply.status(401).send({
+            error: '2FA Required',
+            message: 'Two-factor authentication code is required.',
+            code: 'TOTP_REQUIRED',
+          });
+        }
+
+        const normalizedCode = totpCode.trim().replace('-', '');
+        let isVerified = false;
+
+        if (normalizedCode.length === 6 && user.totpSecret) {
+          const { valid } = await verify({ token: normalizedCode, secret: user.totpSecret, epochTolerance: 120 });
+          isVerified = valid;
+        }
+
+        if (!isVerified) {
+          return reply.status(401).send({
+            error: 'Unauthorized',
+            message: 'Invalid 2FA verification code. Please check your authenticator app and try again.',
+            code: 'INVALID_2FA',
+          });
+        }
       }
 
       // Clear any previous failure counter
@@ -895,8 +933,630 @@ export async function authRoutes(fastify: FastifyInstance) {
   });
 
   // ────────────────────────────────────────────────────────────────────────────
+  // POST /auth/change-password  — Authenticated user changes their own password
+  //   Requires: current password (to verify identity) + new password
+  //   User-only route — admin password changes use a separate admin flow
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.post('/change-password', { preValidation: [authGuard, passwordChangeRateLimit] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId } = request.user as any;
+
+      const ChangePasswordSchema = z.object({
+        currentPassword: z.string().min(1, 'Current password is required'),
+        newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+        confirmPassword: z.string(),
+      }).refine(d => d.newPassword === d.confirmPassword, {
+        message: 'Passwords do not match.',
+        path: ['confirmPassword'],
+      }).refine(d => /[A-Z]/.test(d.newPassword), {
+        message: 'Password must contain at least one uppercase letter.',
+        path: ['newPassword'],
+      }).refine(d => /[0-9]/.test(d.newPassword), {
+        message: 'Password must contain at least one number.',
+        path: ['newPassword'],
+      }).refine(d => /[^A-Za-z0-9]/.test(d.newPassword), {
+        message: 'Password must contain at least one special character.',
+        path: ['newPassword'],
+      });
+
+      const { currentPassword, newPassword } = ChangePasswordSchema.parse(request.body);
+
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user || !user.passwordHash) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Cannot change password for this account.' });
+      }
+
+      // Verify the current password is correct
+      const isCurrentCorrect = await HashService.verifyPassword(currentPassword, user.passwordHash);
+      if (!isCurrentCorrect) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Current password is incorrect.' });
+      }
+
+      // ── Zero-tolerance password reuse check ──────────────────────────────
+      // Check new password against current hash AND every previously used hash
+      const allHashes = [user.passwordHash, ...(user.passwordHistory ?? [])];
+      for (const oldHash of allHashes) {
+        const isReused = await HashService.verifyPassword(newPassword, oldHash);
+        if (isReused) {
+          return reply.status(400).send({
+            error: 'Bad Request',
+            message: 'You have used this password before. Please choose a password you have never used on this account.',
+          });
+        }
+      }
+
+      // Hash new password and push current hash into history
+      const passwordHash = await HashService.hashPassword(newPassword);
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash,
+          passwordHistory: { set: [user.passwordHash, ...(user.passwordHistory ?? [])] },
+        },
+      });
+
+      // Automatically revoke all OTHER active sessions when password is changed
+      const currentSessionId = (request.user as any).sessionId;
+      const otherSessions = await prisma.session.findMany({
+        where: {
+          userId,
+          ...(currentSessionId ? { id: { not: currentSessionId } } : {}),
+        },
+      });
+      for (const s of otherSessions) {
+        await redis.del(`session:${s.id}`);
+      }
+      await prisma.session.deleteMany({
+        where: {
+          userId,
+          ...(currentSessionId ? { id: { not: currentSessionId } } : {}),
+        },
+      });
+
+      await AuditService.log({
+        userId,
+        action: 'PASSWORD_CHANGED',
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, message: 'Password changed successfully.' });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        const first = err.errors[0];
+        return reply.status(400).send({ error: 'Validation Error', message: first?.message ?? 'Invalid input.' });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Password change failed.' });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // USER 2FA / TOTP PREFERENCES (User-only — isolated from Admin)
+  // ────────────────────────────────────────────────────────────────────────────
+
+  // GET /auth/2fa/status — Check if 2FA is currently enabled for logged-in user
+  fastify.get('/2fa/status', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = (request.user as any).userId ?? request.user.sub;
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { totpEnabled: true },
+      });
+      return reply.send({ success: true, totpEnabled: !!user?.totpEnabled });
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to fetch 2FA status.' });
+    }
+  });
+
+  // POST /auth/2fa/setup — Initiate 2FA setup (returns secret & real QR code Data URL)
+  fastify.post('/2fa/setup', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = (request.user as any).userId ?? request.user.sub;
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, username: true, totpEnabled: true },
+      });
+
+      if (!user) {
+        return reply.status(404).send({ error: 'Not Found', message: 'User not found.' });
+      }
+
+      if (user.totpEnabled) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Two-factor authentication is already active on your account.' });
+      }
+
+      // Generate a fresh TOTP secret
+      const secret = generateSecret();
+      const accountLabel = user.email || user.username;
+      const otpauthUrl = generateURI({ label: accountLabel, issuer: 'CanaFri', secret });
+      const qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
+
+      // Store temporary pending secret in Redis for 10 minutes
+      const setupKey = `user_totp_setup:${userId}`;
+      await redis.set(setupKey, JSON.stringify({ secret }), { EX: 600 });
+
+      return reply.send({ success: true, secret, qrCodeUrl });
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: '2FA setup failed.' });
+    }
+  });
+
+  // POST /auth/2fa/verify — Verify 6-digit code & activate 2FA
+  fastify.post('/2fa/verify', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = (request.user as any).userId ?? request.user.sub;
+      const { code } = z.object({ code: z.string().length(6).regex(/^\d{6}$/) }).parse(request.body);
+
+      const setupKey = `user_totp_setup:${userId}`;
+      const raw = await redis.get(setupKey);
+      if (!raw) {
+        return reply.status(400).send({ error: 'Bad Request', message: '2FA setup session expired. Please start setup again.' });
+      }
+      const { secret } = JSON.parse(raw);
+
+      const { valid } = await verify({ token: code, secret, epochTolerance: 120 });
+      if (!valid) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Invalid 6-digit code. Please check your authenticator app and try again.' });
+      }
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          totpSecret: secret,
+          totpEnabled: true,
+        },
+      });
+
+      await redis.del(setupKey);
+
+      await AuditService.log({
+        userId,
+        action: 'USER_2FA_ENABLED',
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({
+        success: true,
+        message: 'Two-factor authentication enabled successfully.',
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', message: 'Code must be a 6-digit number.' });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: '2FA verification failed.' });
+    }
+  });
+
+  // POST /auth/2fa/disable — Disable 2FA for logged-in user
+  fastify.post('/2fa/disable', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = (request.user as any).userId ?? request.user.sub;
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+
+      if (!user) {
+        return reply.status(404).send({ error: 'Not Found', message: 'User not found.' });
+      }
+
+      if (!user.totpEnabled) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Two-factor authentication is not currently enabled.' });
+      }
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          totpSecret: null,
+          totpEnabled: false,
+          totpRecoveryHashes: [],
+        },
+      });
+
+      await AuditService.log({
+        userId,
+        action: 'USER_2FA_DISABLED',
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, message: 'Two-factor authentication disabled successfully.' });
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to disable 2FA.' });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // USER ACTIVE SESSIONS MANAGEMENT (User-only — isolated from Admin)
+  // ────────────────────────────────────────────────────────────────────────────
+
+  // UserAgent Helper to build human-readable device names
+  function parseUserAgent(ua: string | null): string {
+    if (!ua) return 'Unknown Device';
+    let os = 'Desktop / Mobile';
+    if (ua.includes('Windows')) os = 'Windows PC';
+    else if (ua.includes('Mac OS') || ua.includes('Macintosh')) os = 'Mac';
+    else if (ua.includes('iPhone')) os = 'iPhone';
+    else if (ua.includes('iPad')) os = 'iPad';
+    else if (ua.includes('Android')) os = 'Android Device';
+    else if (ua.includes('Linux')) os = 'Linux';
+
+    let browser = 'Browser';
+    if (ua.includes('Chrome') && !ua.includes('Edg') && !ua.includes('OPR')) browser = 'Chrome';
+    else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari';
+    else if (ua.includes('Firefox')) browser = 'Firefox';
+    else if (ua.includes('Edg')) browser = 'Edge';
+    else if (ua.includes('Brave')) browser = 'Brave';
+    else if (ua.includes('OPR') || ua.includes('Opera')) browser = 'Opera';
+
+    return `${os} • ${browser}`;
+  }
+
+  // Helper to format IP and Location cleanly (handles localhost ::1 vs production GeoIP)
+  function parseLocationAndIp(rawIp: string | null, rawCountry: string | null) {
+    const ip = rawIp || '127.0.0.1';
+    const isLocal = ip === '::1' || ip === '127.0.0.1' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip === '::ffff:127.0.0.1';
+
+    let location = rawCountry;
+    if (!location) {
+      location = isLocal ? 'Localhost' : 'Online';
+    }
+
+    const cleanIp = isLocal ? '127.0.0.1' : ip;
+
+    return { location, ip: cleanIp };
+  }
+
+  // GET /auth/sessions — Retrieve active sessions for current user
+  fastify.get('/sessions', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = (request.user as any).userId ?? request.user.sub;
+      const currentSessionId = (request.user as any).sessionId;
+
+      const sessions = await prisma.session.findMany({
+        where: {
+          userId,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
+
+      const formattedSessions = sessions.map((s) => {
+        const isCurrent = s.id === currentSessionId;
+        const deviceName = s.deviceName || parseUserAgent(s.userAgent);
+        const { location, ip } = parseLocationAndIp(s.ipAddress || s.lastIp, s.lastCountry);
+
+        return {
+          id: s.id,
+          device: deviceName,
+          location,
+          ip,
+          isCurrent,
+          lastActiveAt: s.updatedAt || s.createdAt,
+          createdAt: s.createdAt,
+        };
+      });
+
+      const currentSession = formattedSessions.find((s) => s.isCurrent) || formattedSessions[0] || null;
+      const otherSessions = formattedSessions.filter((s) => s.id !== currentSession?.id);
+
+      return reply.send({
+        success: true,
+        currentSession,
+        otherSessions,
+      });
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to fetch active sessions.' });
+    }
+  });
+
+  // DELETE /auth/sessions/:id — Revoke a specific session
+  fastify.delete('/sessions/:id', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = (request.user as any).userId ?? request.user.sub;
+      const currentSessionId = (request.user as any).sessionId;
+      const { id } = request.params as { id: string };
+
+      if (id === currentSessionId) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: 'To sign out of your current active session, please use the Logout button.',
+        });
+      }
+
+      const targetSession = await prisma.session.findFirst({
+        where: { id, userId },
+      });
+
+      if (!targetSession) {
+        return reply.status(404).send({ error: 'Not Found', message: 'Session not found or already revoked.' });
+      }
+
+      await redis.del(`session:${id}`);
+      await prisma.session.delete({ where: { id } });
+
+      await AuditService.log({
+        userId,
+        action: 'SESSION_REVOKED',
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, message: 'Session revoked successfully.' });
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to revoke session.' });
+    }
+  });
+
+  // POST /auth/sessions/revoke-others — Revoke all sessions except current
+  fastify.post('/sessions/revoke-others', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = (request.user as any).userId ?? request.user.sub;
+      const currentSessionId = (request.user as any).sessionId;
+
+      const otherSessions = await prisma.session.findMany({
+        where: {
+          userId,
+          ...(currentSessionId ? { id: { not: currentSessionId } } : {}),
+        },
+      });
+
+      for (const s of otherSessions) {
+        await redis.del(`session:${s.id}`);
+      }
+
+      await prisma.session.deleteMany({
+        where: {
+          userId,
+          ...(currentSessionId ? { id: { not: currentSessionId } } : {}),
+        },
+      });
+
+      await AuditService.log({
+        userId,
+        action: 'LOGOUT_ALL_OTHER_SESSIONS',
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({ success: true, message: 'All other active sessions have been revoked successfully.' });
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to revoke other sessions.' });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // ACCOUNT DELETION MANAGEMENT (GDPR / App Store / Compliance Standard)
+  // ────────────────────────────────────────────────────────────────────────────
+
+  // POST /auth/account-deletion/request — Initiate 7-day deletion grace period
+  fastify.post('/account-deletion/request', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = (request.user as any).userId ?? request.user.sub;
+      const { password, totpCode, reason } = z.object({
+        password: z.string().min(1, 'Current password is required to request account deletion'),
+        totpCode: z.string().optional(),
+        reason: z.string().max(500).optional(),
+      }).parse(request.body);
+
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user || !user.passwordHash) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Account deletion is not supported for this account.' });
+      }
+
+      // 1. Verify Current Password
+      const isPasswordCorrect = await HashService.verifyPassword(password, user.passwordHash);
+      if (!isPasswordCorrect) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Incorrect current password. Cannot confirm account deletion.' });
+      }
+
+      // 2. Verify 2FA if enabled
+      if (user.totpEnabled) {
+        if (!totpCode || totpCode.trim().length !== 6) {
+          return reply.status(401).send({ error: 'Unauthorized', message: '6-digit 2FA authenticator code is required.' });
+        }
+        const normalizedCode = totpCode.trim();
+        const { valid } = await verify({ token: normalizedCode, secret: user.totpSecret!, epochTolerance: 120 });
+        if (!valid) {
+          return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid 2FA code. Account deletion request denied.' });
+        }
+      }
+
+      // 3. Check Unresolved Financial / Platform Obligations
+      const obligations: string[] = [];
+
+      // Check active jobs
+      const activeJobs = await prisma.job.findMany({
+        where: {
+          OR: [{ clientId: userId }, { freelancerId: userId }],
+          status: { in: ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'DELIVERED', 'DISPUTED'] },
+        },
+        select: { id: true, title: true, status: true },
+      });
+      if (activeJobs.length > 0) {
+        obligations.push(`${activeJobs.length} active job(s) in progress or escrow.`);
+      }
+
+      // Check active disputes
+      const activeDisputes = await prisma.dispute.findMany({
+        where: {
+          OR: [{ raisedById: userId }, { respondentId: userId }],
+          status: { in: ['OPEN', 'UNDER_REVIEW'] },
+        },
+      });
+      if (activeDisputes.length > 0) {
+        obligations.push(`${activeDisputes.length} active open dispute(s) under review.`);
+      }
+
+      // Check locked creator stake
+      const lockedStake = await prisma.creatorStake.findFirst({
+        where: { userId, status: 'LOCKED' },
+      });
+      if (lockedStake) {
+        obligations.push(`Locked Creator Stake of ${lockedStake.amountCC} CC.`);
+      }
+
+      // Check active article read stake
+      const activeReadStake = await prisma.readStake.findFirst({
+        where: { userId, status: 'STAKED' },
+      });
+      if (activeReadStake) {
+        obligations.push(`Active Read Stake timer in progress.`);
+      }
+
+      // Check active subscription
+      const activeSub = await prisma.subscription.findFirst({
+        where: { userId, status: 'ACTIVE' },
+      });
+      if (activeSub) {
+        obligations.push(`Active Creator Pro subscription (please cancel subscription first).`);
+      }
+
+      if (obligations.length > 0) {
+        await AuditService.log({
+          userId,
+          action: 'ACCOUNT_DELETION_BLOCKED',
+          ipAddress: request.ip,
+          device: request.headers['user-agent'] ?? undefined,
+          metadata: { obligations },
+        });
+
+        return reply.status(400).send({
+          error: 'Bad Request',
+          code: 'DELETION_BLOCKED_OBLIGATIONS',
+          message: 'Cannot delete account while unresolved obligations exist.',
+          obligations,
+        });
+      }
+
+      // 4. Initiate 7-day Deletion Grace Period
+      const now = new Date();
+      const scheduledFor = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days grace period
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          status: 'PENDING_DELETION',
+          deletionRequestedAt: now,
+          deletionScheduledFor: scheduledFor,
+          deletionReason: reason ? reason.trim() : null,
+        },
+      });
+
+      // 5. Revoke ALL active sessions for this account across DB & Redis
+      const allSessions = await prisma.session.findMany({ where: { userId } });
+      for (const s of allSessions) {
+        await redis.del(`session:${s.id}`);
+      }
+      await prisma.session.deleteMany({ where: { userId } });
+      reply.clearCookie('refresh_token', { path: '/' });
+
+      await AuditService.log({
+        userId,
+        action: 'ACCOUNT_DELETION_REQUESTED',
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+        metadata: { deletionScheduledFor: scheduledFor.toISOString(), reason: reason || null },
+      });
+
+      return reply.send({
+        success: true,
+        message: `Account deletion requested successfully. Your account is scheduled for permanent deletion on ${scheduledFor.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}. All active sessions have been logged out.`,
+        deletionScheduledFor: scheduledFor,
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        const first = err.errors[0];
+        return reply.status(400).send({ error: 'Validation Error', message: first?.message ?? 'Invalid input.' });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to initiate account deletion.' });
+    }
+  });
+
+  // POST /auth/account-deletion/cancel — Cancel pending deletion during 7-day grace period
+  fastify.post('/account-deletion/cancel', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { email, password, totpCode } = z.object({
+        email: z.string().email().toLowerCase().trim(),
+        password: z.string().min(1, 'Password is required to restore account'),
+        totpCode: z.string().optional(),
+      }).parse(request.body);
+
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user || user.status !== 'PENDING_DELETION' || !user.passwordHash) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'No pending account deletion found for this email address.' });
+      }
+
+      // Verify Password
+      const isPasswordCorrect = await HashService.verifyPassword(password, user.passwordHash);
+      if (!isPasswordCorrect) {
+        return reply.status(400).send({ error: 'Bad Request', message: 'Incorrect password. Cannot restore account.' });
+      }
+
+      // Verify 2FA if enabled
+      if (user.totpEnabled) {
+        if (!totpCode || totpCode.trim().length !== 6) {
+          return reply.status(401).send({ error: 'Unauthorized', message: '6-digit 2FA code is required to restore account.' });
+        }
+        const { valid } = await verify({ token: totpCode.trim(), secret: user.totpSecret!, epochTolerance: 120 });
+        if (!valid) {
+          return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid 2FA code.' });
+        }
+      }
+
+      // Restore Account to ACTIVE status
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          status: 'ACTIVE',
+          deletionRequestedAt: null,
+          deletionScheduledFor: null,
+          deletionReason: null,
+        },
+      });
+
+      await AuditService.log({
+        userId: user.id,
+        action: 'ACCOUNT_DELETION_CANCELLED',
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      return reply.send({
+        success: true,
+        message: 'Account deletion request cancelled successfully. Your account has been restored to active status. You may now log in.',
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        const first = err.errors[0];
+        return reply.status(400).send({ error: 'Validation Error', message: first?.message ?? 'Invalid input.' });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to cancel account deletion.' });
+    }
+  });
+
+  // GET /auth/account-deletion/status — Check account deletion status
+  fastify.get('/account-deletion/status', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = (request.user as any).userId ?? request.user.sub;
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { status: true, deletionRequestedAt: true, deletionScheduledFor: true },
+      });
+
+      return reply.send({
+        success: true,
+        isPendingDeletion: user?.status === 'PENDING_DELETION',
+        deletionRequestedAt: user?.deletionRequestedAt,
+        deletionScheduledFor: user?.deletionScheduledFor,
+      });
+    } catch (err: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to fetch deletion status.' });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
   // POST /auth/forgot-password
   // ────────────────────────────────────────────────────────────────────────────
+
   fastify.post('/forgot-password', { preValidation: [forgotPasswordRateLimit] }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { email } = ForgotPasswordSchema.parse(request.body);
@@ -1004,20 +1664,32 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'Bad Request', message: 'Invalid request.' });
       }
 
-      // Check if new password is identical to the current one
+      // ── Zero-tolerance password reuse check ──────────────────────────────
+      // Check new password against current hash AND every previously used hash
       if (user.passwordHash) {
-        const isSame = await HashService.verifyPassword(newPassword, user.passwordHash);
-        if (isSame) {
-          return reply.status(400).send({
-            error: 'Bad Request',
-            message: 'You cannot reuse your current password. Please choose a password you have not used before.',
-          });
+        const allHashes = [user.passwordHash, ...(user.passwordHistory ?? [])];
+        for (const oldHash of allHashes) {
+          const isReused = await HashService.verifyPassword(newPassword, oldHash);
+          if (isReused) {
+            return reply.status(400).send({
+              error: 'Bad Request',
+              message: 'You have used this password before. Please choose a password you have never used on this account.',
+            });
+          }
         }
       }
 
-      // Hash and save new password
+      // Hash new password and push current hash into history
       const passwordHash = await HashService.hashPassword(newPassword);
-      await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          passwordHistory: user.passwordHash
+            ? { set: [user.passwordHash, ...(user.passwordHistory ?? [])] }
+            : undefined,
+        },
+      });
 
       // Invalidate ALL refresh tokens and sessions for this user
       const allSessions = await prisma.session.findMany({ where: { userId: user.id } });

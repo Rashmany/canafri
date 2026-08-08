@@ -1,11 +1,10 @@
-'use client';
-
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import PersonalInfoModal from '@/components/ui/personal-info-modal';
 import { ChangeEmailModal, ChangePhoneModal } from '@/components/ui/contact-modals';
 import ChangePasswordModal from '@/components/ui/change-password-modal';
 import TwoFactorAuthModal from '@/components/ui/two-factor-auth-modal';
 import { useToast } from '@/components/ui/toast';
+import { apiFetch } from '@/lib/api-client';
 import Footer from '@/components/layout/footer';
 import {
   ChevronRight,
@@ -23,6 +22,11 @@ import {
   Trash2,
   File as FileIcon,
   CheckCircle2,
+  Loader2,
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  ShieldAlert,
 } from 'lucide-react';
 import FrameComponent2 from '@/components/ui/frame-component21';
 
@@ -282,6 +286,7 @@ function ContactDetailsPanel({ onBack, onChangeEmail, onChangePhone }: ContactDe
 interface SecuritySettingsPanelProps {
   onBack: () => void;
   onPasswordOpen: () => void;
+  onPasswordResetOpen: () => void;
   onTwoFactorOpen: () => void;
   onActiveSessionsOpen: () => void;
   onDeleteAccountOpen: () => void;
@@ -292,6 +297,7 @@ interface SecuritySettingsPanelProps {
 function SecuritySettingsPanel({
   onBack,
   onPasswordOpen,
+  onPasswordResetOpen,
   onTwoFactorOpen,
   onActiveSessionsOpen,
   onDeleteAccountOpen,
@@ -299,7 +305,7 @@ function SecuritySettingsPanel({
   sellerMode = false,
 }: SecuritySettingsPanelProps) {
   const securityItems = [
-    { profile: 'Password', onClick: onPasswordOpen },
+    { profile: 'Password reset', onClick: onPasswordResetOpen },
     { profile: 'Two-factor auth', onClick: onTwoFactorOpen },
     { profile: 'Active sessions', onClick: onActiveSessionsOpen },
     ...(sellerMode ? [{ profile: 'Verify your identity', onClick: onVerifyIdentityOpen }] : []),
@@ -626,26 +632,105 @@ function SettingsUploadedFileRow({ file, onRemove }: { file: SettingsUploadedFil
 
 // ─── Active Sessions Panel ───────────────────────────────────────────────────
 
+interface UserSessionItem {
+  id: string;
+  device: string;
+  location: string;
+  ip: string;
+  isCurrent: boolean;
+  lastActiveAt: string;
+  createdAt: string;
+}
+
 interface ActiveSessionsPanelProps {
   onBack: () => void;
   onSessionRevoked: (device: string) => void;
   onRevokeAll: () => void;
 }
 
-function ActiveSessionsPanel({ onBack, onSessionRevoked, onRevokeAll }: ActiveSessionsPanelProps) {
-  const [otherSessions, setOtherSessions] = useState([
-    { id: '1', device: 'iPhone 15 • Safari Mobile', location: 'London, UK', ip: '82.165.2.14', activeTime: '2 hours ago' },
-    { id: '2', device: 'MacBook Pro • Brave', location: 'New York, USA', ip: '24.120.5.82', activeTime: '3 days ago' },
-  ]);
+function formatRelativeTime(dateStr?: string | Date): string {
+  if (!dateStr) return 'Recently';
+  const date = new Date(dateStr);
+  const diffMs = Date.now() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+}
 
-  const handleRevoke = (id: string, device: string) => {
-    setOtherSessions(otherSessions.filter((s) => s.id !== id));
-    onSessionRevoked(device);
+function ActiveSessionsPanel({ onBack, onSessionRevoked, onRevokeAll }: ActiveSessionsPanelProps) {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [revokingAll, setRevokingAll] = useState(false);
+  const [currentSession, setCurrentSession] = useState<UserSessionItem | null>(null);
+  const [otherSessions, setOtherSessions] = useState<UserSessionItem[]>([]);
+
+  // Fetch real user active sessions from backend
+  const fetchSessions = async () => {
+    try {
+      const res = await apiFetch('/api/auth/sessions');
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success) {
+        setCurrentSession(data.currentSession || null);
+        setOtherSessions(data.otherSessions || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch active sessions:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleRevokeAllClick = () => {
-    setOtherSessions([]);
-    onRevokeAll();
+  useEffect(() => {
+    fetchSessions();
+  }, []);
+
+  // Revoke a specific session
+  const handleRevoke = async (id: string, device: string) => {
+    setRevokingId(id);
+    try {
+      const res = await apiFetch(`/api/auth/sessions/${id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data?.message || 'Failed to revoke session.');
+      }
+
+      setOtherSessions((prev) => prev.filter((s) => s.id !== id));
+      onSessionRevoked(device);
+    } catch (err: any) {
+      toast(err.message || 'Failed to revoke session.', 'error');
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
+  // Revoke all other sessions
+  const handleRevokeAllClick = async () => {
+    setRevokingAll(true);
+    try {
+      const res = await apiFetch('/api/auth/sessions/revoke-others', {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data?.message || 'Failed to revoke other sessions.');
+      }
+
+      setOtherSessions([]);
+      onRevokeAll();
+    } catch (err: any) {
+      toast(err.message || 'Failed to revoke other sessions.', 'error');
+    } finally {
+      setRevokingAll(false);
+    }
   };
 
   return (
@@ -668,61 +753,339 @@ function ActiveSessionsPanel({ onBack, onSessionRevoked, onRevokeAll }: ActiveSe
 
       <div className="h-px w-full bg-border shrink-0" />
 
-      {/* Current Session */}
-      <section className="flex w-full flex-col gap-3 px-4">
-        <p className="font-sans text-[13px] font-medium text-muted">Current Session</p>
-        <div className="flex flex-col rounded-xl bg-card p-4 gap-1">
-          <div className="flex items-center justify-between">
-            <p className="font-sans text-[13px] font-semibold text-foreground/90">Windows PC • Chrome Browser</p>
-            <span className="rounded-full bg-[#8C5CFF]/15 px-2.5 py-0.5 font-sans text-[10px] font-semibold text-[#AC8EF3]">
-              Active Now
-            </span>
-          </div>
-          <p className="font-sans text-[11px] text-foreground/50">Lagos, Nigeria • IP: 192.168.1.100</p>
+      {loading ? (
+        <div className="flex w-full flex-col items-center justify-center py-16 gap-3">
+          <Loader2 className="size-8 text-[#8C5CFF] animate-spin" />
+          <p className="font-sans text-[11px] text-muted">Loading active sessions…</p>
         </div>
-      </section>
-
-      {/* Other Sessions */}
-      <section className="flex w-full flex-col gap-3 px-4 flex-1 overflow-y-auto no-scrollbar">
-        <p className="font-sans text-[13px] font-medium text-muted">Other Sessions</p>
-        {otherSessions.length > 0 ? (
-          <div className="flex flex-col rounded-xl bg-card overflow-hidden">
-            {otherSessions.map((session, index) => (
-              <div key={session.id} className="flex flex-col">
-                {index > 0 && <div className="h-px w-full bg-border" />}
-                <div className="flex items-center justify-between gap-4 px-4 py-4">
-                  <div className="flex flex-col gap-0.5">
-                    <p className="font-sans text-[13px] font-semibold text-foreground/90">{session.device}</p>
-                    <p className="font-sans text-[10px] text-foreground/50">{session.location} • IP: {session.ip}</p>
-                    <p className="font-sans text-[10px] text-muted">Last active {session.activeTime}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRevoke(session.id, session.device)}
-                    className="shrink-0 rounded-lg border border-border bg-transparent px-3 py-1.5 font-sans text-[11px] font-semibold text-red-400 hover:bg-red-500/10 hover:border-red-500/25 transition-colors"
-                  >
-                    Revoke
-                  </button>
+      ) : (
+        <>
+          {/* Current Session */}
+          <section className="flex w-full flex-col gap-3 px-4">
+            <p className="font-sans text-[13px] font-medium text-muted">Current Session</p>
+            {currentSession ? (
+              <div className="flex flex-col rounded-xl bg-card p-4 gap-1 border border-border/80 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <p className="font-sans text-[13px] font-semibold text-foreground/90">{currentSession.device}</p>
+                  <span className="rounded-full bg-[#8C5CFF]/15 px-2.5 py-0.5 font-sans text-[10px] font-semibold text-[#AC8EF3]">
+                    Active Now
+                  </span>
                 </div>
+                <p className="font-sans text-[11px] text-foreground/50">
+                  {currentSession.location} • IP: {currentSession.ip}
+                </p>
               </div>
-            ))}
+            ) : (
+              <div className="flex flex-col rounded-xl bg-card p-4 gap-1 border border-border/80">
+                <p className="font-sans text-[12px] text-muted">Current session active</p>
+              </div>
+            )}
+          </section>
+
+          {/* Other Sessions */}
+          <section className="flex w-full flex-col gap-3 px-4 flex-1 overflow-y-auto no-scrollbar">
+            <p className="font-sans text-[13px] font-medium text-muted">Other Sessions</p>
+            {otherSessions.length > 0 ? (
+              <div className="flex flex-col rounded-xl bg-card border border-border/80 overflow-hidden shadow-xs">
+                {otherSessions.map((session, index) => (
+                  <div key={session.id} className="flex flex-col">
+                    {index > 0 && <div className="h-px w-full bg-border" />}
+                    <div className="flex items-center justify-between gap-4 px-4 py-4">
+                      <div className="flex flex-col gap-0.5">
+                        <p className="font-sans text-[13px] font-semibold text-foreground/90">{session.device}</p>
+                        <p className="font-sans text-[10px] text-foreground/50">{session.location} • IP: {session.ip}</p>
+                        <p className="font-sans text-[10px] text-muted">Last active {formatRelativeTime(session.lastActiveAt)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRevoke(session.id, session.device)}
+                        disabled={revokingId === session.id}
+                        className="shrink-0 rounded-lg border border-border bg-transparent px-3 py-1.5 font-sans text-[11px] font-semibold text-red-400 hover:bg-red-500/10 hover:border-red-500/25 disabled:opacity-60 transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        {revokingId === session.id ? (
+                          <>
+                            <Loader2 size={12} className="animate-spin" />
+                            <span>Revoking…</span>
+                          </>
+                        ) : (
+                          'Revoke'
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center p-8 rounded-xl border border-dashed border-border bg-card/20 text-center">
+                <p className="font-sans text-[12px] text-muted">No other active sessions detected.</p>
+              </div>
+            )}
+
+            {otherSessions.length > 0 && (
+              <button
+                type="button"
+                onClick={handleRevokeAllClick}
+                disabled={revokingAll}
+                className="w-full mt-2 rounded-xl border border-red-500/20 bg-red-500/5 py-3 font-sans text-[12px] font-semibold text-red-400 hover:bg-red-500/10 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+              >
+                {revokingAll ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Revoking all other sessions…</span>
+                  </>
+                ) : (
+                  'Log out of all other sessions'
+                )}
+              </button>
+            )}
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Delete Account Panel (GDPR & App Store Compliant) ─────────────────────────
+
+interface DeleteAccountPanelProps {
+  onBack: () => void;
+  onDeleteConfirm: () => void;
+}
+
+function DeleteAccountPanel({ onBack, onDeleteConfirm }: DeleteAccountPanelProps) {
+  const { toast } = useToast();
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
+  const [reason, setReason] = useState('');
+  const [has2FA, setHas2FA] = useState(false);
+  const [checking2FA, setChecking2FA] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [obligations, setObligations] = useState<string[]>([]);
+
+  // Check if current user has 2FA enabled
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await apiFetch('/api/auth/2fa/status');
+        const data = await res.json().catch(() => ({}));
+        if (mounted && data?.totpEnabled) {
+          setHas2FA(true);
+        }
+      } catch {
+        // Default to false
+      } finally {
+        if (mounted) setChecking2FA(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleDeleteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password) {
+      setErrorMsg('Please enter your current password to confirm deletion.');
+      return;
+    }
+    if (has2FA && totpCode.trim().length !== 6) {
+      setErrorMsg('Please enter your 6-digit 2FA code.');
+      return;
+    }
+
+    setErrorMsg('');
+    setObligations([]);
+    setSubmitting(true);
+
+    try {
+      const res = await apiFetch('/api/auth/account-deletion/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password,
+          ...(has2FA ? { totpCode: totpCode.trim() } : {}),
+          ...(reason.trim() ? { reason: reason.trim() } : {}),
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        if (data.code === 'DELETION_BLOCKED_OBLIGATIONS' && Array.isArray(data.obligations)) {
+          setObligations(data.obligations);
+          throw new Error('Account deletion is blocked due to active obligations.');
+        }
+        throw new Error(data.message || 'Failed to initiate account deletion.');
+      }
+
+      toast('Account deletion requested. Scheduled for deletion in 7 days.', 'success');
+      onDeleteConfirm();
+
+      // Clear tokens & profile and redirect to home
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('canafri_access_token');
+        localStorage.removeItem('canafri_user_profile');
+        window.location.href = '/';
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to delete account. Please check your credentials.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="relative flex h-full w-full flex-col items-start overflow-hidden bg-background py-[2.125rem] px-0 gap-6">
+      {/* Header */}
+      <div className="flex items-center gap-4 py-0 pl-4 pr-0">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex size-8 items-center justify-center rounded-full bg-card hover:bg-foreground/5 transition-colors lg:hidden"
+          aria-label="Back"
+        >
+          <ChevronLeft size={20} className="text-foreground" />
+        </button>
+        <div className="flex flex-col gap-[0.375rem]">
+          <p className="font-sans font-medium text-red-400">Delete Account</p>
+          <p className="font-sans text-[10px] text-muted">Permanent account deletion and data anonymization</p>
+        </div>
+      </div>
+
+      <div className="h-px w-full bg-border shrink-0" />
+
+      <div className="flex flex-col w-full gap-6 px-4 flex-1 overflow-y-auto no-scrollbar pb-8 max-w-xl">
+        {/* Warning Banner */}
+        <div className="flex flex-col gap-3 rounded-2xl bg-red-500/10 border border-red-500/25 p-4 text-left">
+          <div className="flex items-center gap-2 text-red-400">
+            <AlertTriangle size={18} className="shrink-0" />
+            <span className="font-sans text-[14px] font-semibold">Important Security & Legal Information</span>
           </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center p-8 rounded-xl border border-dashed border-border bg-card/20 text-center">
-            <p className="font-sans text-[12px] text-muted">No other active sessions detected.</p>
+          <ul className="flex flex-col gap-2 font-sans text-[11px] text-foreground/70 list-disc pl-4 leading-relaxed">
+            <li>
+              <strong className="text-foreground">7-Day Grace Period:</strong> Your account will enter a 7-day grace period during which all active logins will be logged out. You may cancel the request by logging in anytime within 7 days.
+            </li>
+            <li>
+              <strong className="text-foreground">Permanent Data Scrubbing:</strong> After 7 days, your personal profile (email, username, avatar, bio, credentials) will be permanently anonymized.
+            </li>
+            <li>
+              <strong className="text-foreground">Financial Audit Retention:</strong> Completed transaction ledgers and escrow logs are retained anonymously under FATF/AML regulations.
+            </li>
+          </ul>
+        </div>
+
+        {/* Obligation Blocked Alert */}
+        {obligations.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-2xl bg-amber-500/10 border border-amber-500/30 p-4 text-left">
+            <div className="flex items-center gap-2 text-amber-400">
+              <ShieldAlert size={18} className="shrink-0" />
+              <span className="font-sans text-[13px] font-semibold">Unresolved Obligations Detected</span>
+            </div>
+            <p className="font-sans text-[11px] text-amber-300/80">
+              Your account cannot be deleted until the following active items are resolved:
+            </p>
+            <ul className="flex flex-col gap-1 font-sans text-[11px] text-amber-200 list-disc pl-4">
+              {obligations.map((ob, idx) => (
+                <li key={idx}>{ob}</li>
+              ))}
+            </ul>
           </div>
         )}
 
-        {otherSessions.length > 0 && (
-          <button
-            type="button"
-            onClick={handleRevokeAllClick}
-            className="w-full mt-2 rounded-xl border border-red-500/20 bg-red-500/5 py-3 font-sans text-[12px] font-semibold text-red-400 hover:bg-red-500/10 transition-colors"
-          >
-            Log out of all other sessions
-          </button>
-        )}
-      </section>
+        {/* Deletion Request Form */}
+        <form onSubmit={handleDeleteSubmit} className="flex flex-col gap-4">
+          {/* Password Input */}
+          <div className="flex flex-col gap-1.5">
+            <label className="font-sans text-[11px] font-semibold text-muted uppercase tracking-wider">
+              Current Password <span className="text-red-400">*</span>
+            </label>
+            <div className="relative flex items-center">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter current password to verify identity"
+                className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-[13px] text-foreground placeholder:text-muted outline-none transition focus:border-red-500 focus:ring-1 focus:ring-red-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 text-muted hover:text-foreground transition-colors"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          {/* 2FA Code Input if enabled */}
+          {has2FA && (
+            <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-background border border-border">
+              <label className="font-sans text-[11px] font-semibold text-muted uppercase tracking-wider">
+                2FA Authenticator Code <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                placeholder="Enter 6-digit code"
+                className="w-full text-center tracking-[0.4em] font-mono rounded-xl border border-border bg-card px-3 py-2.5 text-[16px] text-foreground placeholder:text-muted outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
+            </div>
+          )}
+
+          {/* Optional Reason Input */}
+          <div className="flex flex-col gap-1.5">
+            <label className="font-sans text-[11px] font-semibold text-muted uppercase tracking-wider">
+              Why are you leaving? <span className="text-foreground/40 font-normal lowercase">(optional)</span>
+            </label>
+            <textarea
+              rows={3}
+              maxLength={500}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Tell us how we can improve (optional)"
+              className="w-full rounded-xl border border-border bg-background p-3 text-[12px] text-foreground placeholder:text-muted outline-none transition focus:border-[#8C5CFF] resize-none"
+            />
+          </div>
+
+          {errorMsg && (
+            <p className="font-sans text-[11px] text-red-400 text-center">{errorMsg}</p>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex-1 rounded-xl border border-border bg-transparent py-3 font-sans text-[13px] font-semibold text-foreground/70 hover:bg-foreground/5 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || checking2FA || !password}
+              className="flex-1 rounded-xl bg-red-600 py-3 font-sans text-[13px] font-semibold text-white hover:bg-red-500 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Processing…</span>
+                </>
+              ) : (
+                <>
+                  <span className="sm:hidden">Confirm Deletion</span>
+                  <span className="hidden sm:inline">Confirm Account Deletion</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -859,68 +1222,6 @@ function NotificationSettingsPanel({ onBack, onSettingChange }: NotificationSett
   );
 }
 
-
-// ─── Delete Account Panel ────────────────────────────────────────────────────
-
-interface DeleteAccountPanelProps {
-  onBack: () => void;
-  onDeleteConfirm: () => void;
-}
-
-function DeleteAccountPanel({ onBack, onDeleteConfirm }: DeleteAccountPanelProps) {
-  return (
-    <div className="relative flex h-full w-full flex-col items-start overflow-hidden bg-background py-[2.125rem] px-0 gap-8">
-      {/* Header */}
-      <div className="flex items-center gap-4 py-0 pl-4 pr-0">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex size-8 items-center justify-center rounded-full bg-card hover:bg-foreground/5 transition-colors lg:hidden"
-          aria-label="Back"
-        >
-          <ChevronLeft size={20} className="text-foreground" />
-        </button>
-        <div className="flex flex-col gap-[0.375rem]">
-          <p className="font-sans font-medium text-foreground/85">Delete Account</p>
-          <p className="font-sans text-[10px] text-muted">Permanently remove your CanaFri account</p>
-        </div>
-      </div>
-
-      <div className="h-px w-full bg-border shrink-0" />
-
-      <section className="flex w-full flex-col gap-6 px-4 flex-1 overflow-y-auto no-scrollbar pb-8">
-        <p className="font-sans text-[13px] font-medium text-muted">Before you delete</p>
-        
-        <div className="flex flex-col rounded-xl bg-red-500/5 border border-red-500/10 p-6 gap-4">
-          <div className="flex flex-col gap-2">
-            <p className="font-sans text-[13px] font-semibold text-red-400">Important Warning</p>
-            <p className="font-sans text-[11px] text-foreground/60 leading-relaxed">
-              Deleting your account is permanent and cannot be undone. All your publications, job done histories, job posts, reads, and accumulated Canton Coin balance will be permanently erased.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-1.5 border-t border-red-500/10 pt-4">
-            <p className="font-sans text-[11px] font-semibold text-foreground/70">What you will lose:</p>
-            <ul className="list-disc pl-4 font-sans text-[10px] text-foreground/50 space-y-1">
-              <li>Permanent loss of access to your username and handle.</li>
-              <li>Deletion of all published blogs and articles.</li>
-              <li>Removal of all active and completed job contract listings.</li>
-              <li>Forfeiture of any wallet contents linked to this profile.</li>
-            </ul>
-          </div>
-
-          <button
-            type="button"
-            onClick={onDeleteConfirm}
-            className="w-full mt-2 rounded-xl bg-red-600 hover:bg-red-700 py-3 font-sans text-[13px] font-semibold text-white transition-colors"
-          >
-            Delete my account
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
 
 // ─── Language & Region Settings Panel ─────────────────────────────────────────
 
@@ -1593,7 +1894,18 @@ export default function SettingsPage({ onBack, sellerMode = false }: PageProps) 
   const [changeEmailOpen, setChangeEmailOpen] = useState(false);
   const [changePhoneOpen, setChangePhoneOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [passwordModalMode, setPasswordModalMode] = useState<'change' | 'reset'>('change');
   const [twoFactorOpen, setTwoFactorOpen] = useState(false);
+
+  // Read the real logged-in user's email from the stored profile
+  const userEmail = (() => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('canafri_user_profile') : null;
+      return raw ? (JSON.parse(raw)?.email ?? '') : '';
+    } catch {
+      return '';
+    }
+  })();
 
   const handleSelect = (key: string) => {
     setSelected(key);
@@ -1645,7 +1957,8 @@ export default function SettingsPage({ onBack, sellerMode = false }: PageProps) 
       return (
         <SecuritySettingsPanel
           onBack={handleBack}
-          onPasswordOpen={() => setChangePasswordOpen(true)}
+          onPasswordOpen={() => { setPasswordModalMode('change'); setChangePasswordOpen(true); }}
+          onPasswordResetOpen={() => { setPasswordModalMode('reset'); setChangePasswordOpen(true); }}
           onTwoFactorOpen={() => setTwoFactorOpen(true)}
           onActiveSessionsOpen={() => setActiveSessionsSelected(true)}
           onDeleteAccountOpen={() => setDeleteAccountSelected(true)}
@@ -1797,12 +2110,19 @@ export default function SettingsPage({ onBack, sellerMode = false }: PageProps) 
         />
       )}
 
-      {/* ── Change Password modal ── */}
+      {/* ── Change / Reset Password modal ── */}
       {changePasswordOpen && (
         <ChangePasswordModal
+          initialMode={passwordModalMode}
+          userEmail={userEmail}
           onClose={() => setChangePasswordOpen(false)}
           onSave={() => {
-            toast('Password changed successfully', 'success');
+            toast(
+              passwordModalMode === 'reset'
+                ? 'Password reset successfully'
+                : 'Password changed successfully',
+              'success'
+            );
           }}
         />
       )}
