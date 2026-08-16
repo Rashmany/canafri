@@ -59,6 +59,10 @@ model User {
   deletionScheduledFor DateTime?
   deletionReason        String?
 
+  // Identity edit cooldown tracking
+  displayNameLastEditedAt DateTime?  // can change displayName once every 60 days
+  usernameLastEditedAt    DateTime?  // can change username once every 30 days
+
   subscription        Subscription?
   creatorStake        CreatorStake?
   sentMessages        Message[]         @relation("SentMessages")

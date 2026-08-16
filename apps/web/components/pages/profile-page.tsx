@@ -21,7 +21,9 @@ import {
   Heart,
   Bookmark,
   ThumbsDown,
+  BarChart2,
 } from 'lucide-react';
+import PersonalInfoModal from '@/components/ui/personal-info-modal';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
 import { Post, PostCard, PostDetail, CommentItem } from './dashboard-page';
@@ -87,9 +89,12 @@ interface ProfilePageProps {
   /** Pass false when a buyer is viewing someone else's freelancer profile */
   isOwner?: boolean;
   onOpenChat?: (user: { id: string; name: string; username?: string; avatarUrl?: string }) => void;
+  onNavigate?: (page: string) => void;
 }
 
-export default function ProfilePage({ onBack, sellerMode = false, isOwner = true, onOpenChat }: ProfilePageProps) {
+export default function ProfilePage({ onBack, sellerMode = false, isOwner = true, onOpenChat, onNavigate }: ProfilePageProps) {
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showStickyTitle, setShowStickyTitle] = useState(false);
   const [profile, setProfile] = useState<any>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('canafri_user_profile');
@@ -395,7 +400,7 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
             <div className="relative shrink-0">
               <div className="size-[90px] rounded-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 shadow-md text-primary overflow-hidden font-bold text-[24px]">
                 {profile.avatarUrl ? (
-                  <img src={profile.avatarUrl} alt={profile.fullName} className="h-full w-full object-cover" />
+                  <img src={profile.avatarUrl} alt={profile.fullName} className="h-full w-full object-cover object-center" />
                 ) : (
                   <span>{userInitials}</span>
                 )}
@@ -767,36 +772,134 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
 
   // --- BUYER MODE (NORMAL PROFILE) LAYOUT ---
   return (
-    <div className="flex flex-col overflow-y-auto no-scrollbar bg-background min-h-full animate-in fade-in duration-200">
+    <div
+      onScroll={(e) => {
+        const scrollTop = e.currentTarget.scrollTop;
+        if (scrollTop > 50) {
+          setShowStickyTitle(true);
+        } else {
+          setShowStickyTitle(false);
+        }
+      }}
+      className="flex flex-col overflow-y-auto no-scrollbar bg-background min-h-full animate-in fade-in duration-200"
+    >
 
-      {/* Top Bar */}
-      <div className="flex shrink-0 items-center justify-between px-4 py-4">
-        <button type="button" onClick={onBack} className="text-foreground opacity-80 hover:opacity-100 transition-opacity" aria-label="Go back">
-          <ArrowLeft size={22} />
-        </button>
-        <div className="flex items-center gap-[15px]">
-          <button type="button" className="text-foreground opacity-80 hover:opacity-100 transition-opacity" aria-label="Edit profile">
-            <Pencil size={18} />
+      {/* Sticky Header with Back Arrow & Display Name visible on scroll */}
+      <div className="sticky top-0 z-30 flex shrink-0 items-center justify-between px-4 py-3 bg-background/95 backdrop-blur-md border-b border-border/40">
+        <div className="flex items-center gap-3 min-w-0">
+          <button type="button" onClick={onBack} className="text-foreground opacity-80 hover:opacity-100 transition-opacity p-1 -ml-1 rounded-full hover:bg-card cursor-pointer" aria-label="Go back">
+            <ArrowLeft size={20} />
           </button>
-          <div className="size-6 flex items-center justify-center rounded-full bg-card border border-border/20">
-            <Share2 size={13} className="text-foreground opacity-80" />
+          <span className={`font-sans text-[15px] font-bold text-foreground truncate transition-opacity duration-200 ${
+            showStickyTitle ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}>
+            {profile.fullName}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleShare}
+            className="size-8 flex items-center justify-center rounded-full bg-card border border-border/40 text-foreground opacity-80 hover:opacity-100 transition-all hover:bg-border/30 cursor-pointer"
+            title="Share Profile"
+          >
+            <Share2 size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Main Profile Header Section */}
+      <div className="flex flex-col px-4 pt-4 pb-5 gap-3 shrink-0">
+        {/* Top Info Row: Name & Tag on Left, Right-Aligned Avatar */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col min-w-0 flex-1">
+            <h1 className="font-sans text-[26px] font-bold leading-[32px] tracking-tight text-foreground/90 truncate">
+              {profile.fullName}
+            </h1>
+            <p className="font-sans text-[13px] font-semibold text-muted/90 mt-0.5">
+              {profile.username}
+            </p>
+            <p className="font-sans text-[11px] text-muted/70 mt-1">
+              member since {profile.memberSince}
+            </p>
+          </div>
+
+          {/* Profile Picture Aligned to Right */}
+          <div className="size-[82px] shrink-0 rounded-full flex items-center justify-center bg-gradient-to-br from-[#291D46] to-[#1D1929] border border-[rgba(140,92,255,0.3)] shadow-lg text-[#AC8EF3] overflow-hidden select-none">
+            {profile.avatarUrl && profile.avatarUrl.trim() && !profile.avatarUrl.includes('default-avatar') ? (
+              <img src={profile.avatarUrl} alt={profile.fullName} className="h-full w-full object-cover object-center" />
+            ) : (
+              <span className="font-sans font-bold text-[24px] tracking-wider select-none">{userInitials}</span>
+            )}
           </div>
         </div>
+
+        {/* Action Buttons: Edit Profile & Analytics */}
+        {isOwner && (
+          <div className="flex items-center gap-2.5 mt-1">
+            <button
+              type="button"
+              onClick={() => setShowEditModal(true)}
+              className="flex-1 h-[36px] px-4 rounded-xl border border-border bg-card hover:bg-border/40 flex items-center justify-center gap-2 font-sans text-[13px] font-semibold text-foreground transition-colors cursor-pointer shadow-sm"
+            >
+              <Pencil size={14} />
+              <span>Edit Profile</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (onNavigate) {
+                  onNavigate('Analysis');
+                } else {
+                  toast('Opening profile analytics...', 'success');
+                }
+              }}
+              className="flex-1 h-[36px] px-4 rounded-xl border border-border bg-card hover:bg-border/40 flex items-center justify-center gap-2 font-sans text-[13px] font-semibold text-foreground transition-colors cursor-pointer shadow-sm"
+            >
+              <BarChart2 size={14} className="text-[#8C5CFF]" />
+              <span>Analytics</span>
+            </button>
+          </div>
+        )}
+
+        {/* Bio Text (Background Removed, Clean Text) */}
+        {profile.bio ? (
+          <div className="mt-1">
+            <p className="font-sans text-[13.5px] font-normal leading-[20px] text-foreground/90 whitespace-pre-wrap break-words">
+              {profile.bio}
+            </p>
+          </div>
+        ) : (
+          isOwner && (
+            <div className="mt-1">
+              <p className="font-sans text-[12px] text-muted/60 italic">
+                No personal bio added yet. Click "Edit Profile" to add one.
+              </p>
+            </div>
+          )
+        )}
       </div>
 
-      {/* Avatar + Name */}
-      <div className="flex flex-col items-center pt-2 pb-6 shrink-0 gap-4">
-        <div className="size-[130px] rounded-full flex items-center justify-center bg-gradient-to-br from-[#291D46] to-[#1D1929] border border-[rgba(140,92,255,0.3)] shadow-xl text-[#AC8EF3]">
-          <User size={56} strokeWidth={1.2} />
-        </div>
-        <div className="flex flex-col items-center gap-[5px] w-[270px]">
-          <h1 className="font-sans text-[36px] font-bold leading-[42px] tracking-[-0.18px] text-foreground/80 text-center w-full">
-            {profile.fullName}
-          </h1>
-          <p className="font-sans text-[11px] text-muted leading-[16px] text-center">{profile.username}</p>
-          <p className="font-sans text-[11px] text-muted leading-[16px] text-center">member since {profile.memberSince}</p>
-        </div>
-      </div>
+      {/* Edit Personal Info Modal */}
+      {showEditModal && (
+        <PersonalInfoModal
+          user={{
+            name: profile.fullName || profile.displayName || '',
+            username: profile.username || '',
+            memberSince: profile.memberSince,
+          }}
+          isSellerMode={false}
+          onClose={() => setShowEditModal(false)}
+          onSave={(updated) => {
+            setProfile((prev: any) => ({
+              ...prev,
+              fullName: updated.name,
+              username: updated.username,
+              bio: updated.bio,
+            }));
+          }}
+        />
+      )}
 
       {/* Card body */}
       <div className="flex flex-col bg-card rounded-tl-[10px] rounded-tr-[10px] pt-4">

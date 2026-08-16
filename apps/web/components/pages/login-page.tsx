@@ -5,6 +5,7 @@ import { Eye, EyeOff, User, Lock, ArrowLeft, Mail, RefreshCw, ShieldAlert, X } f
 import { updateSocketToken } from '@/lib/socket';
 import { getOrCreateDeviceId } from '@/lib/api-client';
 import { usePlatformConfig } from '@/lib/platform-config-context';
+import AuthSplitLayout from '@/components/auth-split-layout';
 
 interface LoginPageProps {
   onRegisterClick?: () => void;
@@ -304,40 +305,26 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
 
   return (
     <>
-      <div className="flex flex-col items-center justify-center min-h-screen w-full bg-[#080808] text-white relative font-sans">
-        {/* Background Ambient Glows */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 size-[500px] bg-primary/10 rounded-full blur-[140px] pointer-events-none" />
-        <div className="absolute bottom-10 left-1/3 size-[300px] bg-purple-900/10 rounded-full blur-[120px] pointer-events-none" />
+      <AuthSplitLayout>
+        <div className="flex flex-col items-center justify-center w-full min-h-screen md:min-h-0 px-6 py-10 md:py-12">
 
-        {/* Top Navigation Back Button */}
-        {onBackClick && (
-          <button
-            onClick={onBackClick}
-            className="hidden md:flex fixed left-8 top-8 text-[#a0a0a0] hover:text-white transition-colors cursor-pointer items-center gap-2 text-sm z-20"
-          >
-            <ArrowLeft size={16} />
-            <span>Back</span>
-          </button>
-        )}
+          {/* Mobile Back Button */}
+          {onBackClick && (
+            <button
+              type="button"
+              onClick={onBackClick}
+              className="md:hidden h-[36px] px-4 rounded-[10px] text-[13px] font-semibold text-[#a0a0a0] hover:text-white border border-[#1b1b1b] hover:border-[#2a2a2a] transition-all flex items-center justify-center cursor-pointer self-start mb-6"
+            >
+              Back
+            </button>
+          )}
 
-        {/* Content Container */}
-        <div className="relative flex flex-col items-center justify-center w-full py-8 z-10 px-4">
-          {/* Card Component */}
-          <div className="relative flex flex-col items-center w-full bg-[#0b0b0b] border-t md:border border-[#181818] md:rounded-[24px] p-6 md:p-10 shadow-2xl max-w-[400px]">
-            {/* Mobile Header Bar with Back Button */}
-            {onBackClick && (
-              <button
-                onClick={onBackClick}
-                className="md:hidden flex items-center justify-center size-9 rounded-full bg-[#121212] text-[#a0a0a0] hover:text-white transition-colors cursor-pointer self-start mb-4"
-              >
-                <ArrowLeft size={18} />
-              </button>
-            )}
-
+          {/* Form container — transparent background matching platform */}
+          <div className="relative flex flex-col items-center w-full bg-transparent pt-0 px-0 pb-10 max-w-[400px]">
             <div className="flex flex-col gap-6 w-full flex-1">
               {/* Heading */}
               <div className="flex flex-col items-center gap-1 mb-6 text-center w-full">
-                <h1 className="text-[20px] font-semibold leading-[28px] text-white">
+                <h1 className="text-[28px] md:text-[32px] font-bold leading-[34px] md:leading-[38px] tracking-[-0.18px] text-white/95">
                   Log In
                 </h1>
                 <p className="text-[13px] font-normal leading-[20px] text-[#a0a0a0]">
@@ -468,12 +455,7 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
                 </button>
               </form>
 
-              {/* Divider */}
-              <div className="flex items-center gap-2.5 w-full mt-2">
-                <div className="flex-1 h-px bg-[#242424]" />
-                <span className="text-[12px] font-normal text-[#a0a0a0]/80 leading-[18px] shrink-0">Continue With</span>
-                <div className="flex-1 h-px bg-[#242424]" />
-              </div>
+
 
               {/* Footer text */}
               <p className="text-center text-[12px] text-[#a0a0a0] leading-[18px]">
@@ -488,7 +470,7 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
             </div>
           </div>
         </div>
-      </div>
+      </AuthSplitLayout>
 
       {/* ── 2FA Pop-up Modal ── */}
       {requiresTotp && (

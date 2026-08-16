@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import PersonalInfoModal from '@/components/ui/personal-info-modal';
 import { ChangeEmailModal, ChangePhoneModal } from '@/components/ui/contact-modals';
 import ChangePasswordModal from '@/components/ui/change-password-modal';
@@ -221,6 +221,39 @@ interface ContactDetailsPanelProps {
 }
 
 function ContactDetailsPanel({ onBack, onChangeEmail, onChangePhone }: ContactDetailsPanelProps) {
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [phoneVerified, setPhoneVerified] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await apiFetch('/api/users/me');
+        const data = await res.json().catch(() => ({}));
+        if (mounted && res.ok && data?.user) {
+          setEmail(data.user.email || '');
+          if (data.user.phoneHash) {
+            setPhone(data.user.phonePrefix ? `${data.user.phonePrefix} ***` : 'Phone Verified');
+            setPhoneVerified(data.user.phoneVerified);
+          }
+        }
+      } catch {
+        // Fallback to localStorage
+        try {
+          const stored = localStorage.getItem('canafri_user_profile');
+          if (stored && mounted) {
+            const p = JSON.parse(stored);
+            setEmail(p.email || '');
+          }
+        } catch {}
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <div className="relative flex h-full w-full flex-col items-start overflow-hidden bg-background py-[2.125rem] px-0 gap-8">
       {/* Header */}
@@ -243,36 +276,45 @@ function ContactDetailsPanel({ onBack, onChangeEmail, onChangePhone }: ContactDe
 
       <section className="flex w-full flex-col gap-0 px-4">
         <p className="mb-4 font-sans text-[13px] font-medium text-muted">Contact</p>
-        <div className="flex flex-col rounded-xl bg-card">
+        <div className="flex flex-col rounded-xl bg-card border border-border">
           {/* Email */}
           <div className="flex items-center justify-between gap-4 px-4 py-5">
             <div className="flex flex-col gap-[0.062rem]">
               <p className="font-sans text-[13px] font-medium text-foreground/85">Email address</p>
-              <p className="font-sans text-[10px] text-muted">Used for login and alerts</p>
-              <p className="mt-1 font-sans text-[10px] text-muted">janedoe@gmail.com</p>
+              <p className="font-sans text-[10px] text-muted">Used for login and security alerts</p>
+              <p className="mt-1 font-sans text-[11px] font-semibold text-foreground/90">{email || 'Not configured'}</p>
             </div>
             <button
               type="button"
               onClick={onChangeEmail}
-              className="shrink-0 rounded-lg border border-border bg-transparent px-4 py-2 font-sans text-[13px] font-semibold text-foreground/85 hover:bg-foreground/5 hover:text-foreground transition-colors"
+              className="shrink-0 rounded-lg border border-border bg-transparent px-4 py-2 font-sans text-[13px] font-semibold text-foreground/85 hover:bg-foreground/5 hover:text-foreground transition-colors cursor-pointer"
             >
               Change
             </button>
           </div>
+
           <div className="h-px w-full bg-border" />
+
           {/* Phone */}
           <div className="flex items-center justify-between gap-4 px-4 py-5">
             <div className="flex flex-col gap-[0.062rem]">
-              <p className="font-sans text-[13px] font-medium text-foreground/85">Phone number</p>
-              <p className="font-sans text-[10px] text-muted">OTP verification</p>
-              <p className="mt-1 font-sans text-[10px] text-muted">+234 *** 5678</p>
+              <div className="flex items-center gap-2">
+                <p className="font-sans text-[13px] font-medium text-foreground/85">Phone number</p>
+                {phoneVerified && (
+                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 font-sans text-[9px] font-semibold text-emerald-400">
+                    Verified
+                  </span>
+                )}
+              </div>
+              <p className="font-sans text-[10px] text-muted">OTP verification and freelancer security</p>
+              <p className="mt-1 font-sans text-[11px] font-semibold text-foreground/90">{phone || 'No phone number linked'}</p>
             </div>
             <button
               type="button"
               onClick={onChangePhone}
-              className="shrink-0 rounded-lg border border-border bg-transparent px-4 py-2 font-sans text-[13px] font-semibold text-foreground/85 hover:bg-foreground/5 hover:text-foreground transition-colors"
+              className="shrink-0 rounded-lg border border-border bg-transparent px-4 py-2 font-sans text-[13px] font-semibold text-foreground/85 hover:bg-foreground/5 hover:text-foreground transition-colors cursor-pointer"
             >
-              Change
+              {phone ? 'Change' : 'Add Phone'}
             </button>
           </div>
         </div>
@@ -1896,9 +1938,28 @@ export default function SettingsPage({ onBack, sellerMode = false }: PageProps) 
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [passwordModalMode, setPasswordModalMode] = useState<'change' | 'reset'>('change');
   const [twoFactorOpen, setTwoFactorOpen] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
 
-  // Read the real logged-in user's email from the stored profile
-  const userEmail = (() => {
+  // Fetch real profile from API
+  const fetchProfile = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/users/me');
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.user) {
+        setUserProfile(data.user);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('canafri_user_profile', JSON.stringify(data.user));
+        }
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
+
+  // Read the real logged-in user's email from stored profile or state
+  const userEmail = userProfile?.email || (() => {
     try {
       const raw = typeof window !== 'undefined' ? localStorage.getItem('canafri_user_profile') : null;
       return raw ? (JSON.parse(raw)?.email ?? '') : '';
@@ -2077,11 +2138,17 @@ export default function SettingsPage({ onBack, sellerMode = false }: PageProps) 
       {/* ── Personal Info overlay modal ── */}
       {personalInfoOpen && (
         <PersonalInfoModal
-          user={{ name: 'John Trek', username: '@johntrek', memberSince: 'April 2026' }}
+          user={{
+            name: userProfile?.displayName || userProfile?.name || '',
+            username: userProfile?.username ? `@${userProfile.username.replace('@', '')}` : '',
+            avatarSrc: userProfile?.avatarUrl,
+            memberSince: userProfile?.createdAt ? new Date(userProfile.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'April 2026',
+            bio: sellerMode ? (userProfile?.sellerAppData?.headline || userProfile?.bio || '') : (userProfile?.bio || ''),
+          }}
+          isSellerMode={sellerMode}
           onClose={() => setPersonalInfoOpen(false)}
-          onSave={(data) => {
-            console.log('Saved personal info:', data);
-            toast('Personal info updated successfully', 'success');
+          onSave={() => {
+            fetchProfile();
           }}
         />
       )}
@@ -2089,11 +2156,11 @@ export default function SettingsPage({ onBack, sellerMode = false }: PageProps) 
       {/* ── Change Email modal ── */}
       {changeEmailOpen && (
         <ChangeEmailModal
-          current="janedoe@gmail.com"
+          current={userProfile?.email || userEmail}
           onClose={() => setChangeEmailOpen(false)}
           onSave={(email) => {
-            console.log('New email:', email);
-            toast('Email address updated successfully', 'success');
+            fetchProfile();
+            toast(`Email address updated successfully to ${email}`, 'success');
           }}
         />
       )}
@@ -2101,11 +2168,11 @@ export default function SettingsPage({ onBack, sellerMode = false }: PageProps) 
       {/* ── Change Phone modal ── */}
       {changePhoneOpen && (
         <ChangePhoneModal
-          current="+234 *** 5678"
+          current={userProfile?.phonePrefix ? `${userProfile.phonePrefix} ***` : ''}
           onClose={() => setChangePhoneOpen(false)}
           onSave={(phone) => {
-            console.log('New phone:', phone);
-            toast('Phone number updated successfully', 'success');
+            fetchProfile();
+            toast(`Phone number updated successfully to ${phone}`, 'success');
           }}
         />
       )}

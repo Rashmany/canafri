@@ -21,16 +21,40 @@ export function getOrCreateDeviceId(): string {
   return deviceId;
 }
 
+export const GUEST_PAGES = [
+  'MobileSplash',
+  'MobileSplash2',
+  'Login',
+  'Register',
+  'OtpVerification',
+  'ForgotPassword',
+  'ForgotPasswordOtp',
+  'ResetPassword',
+  'PasswordUpdated',
+];
+
+/**
+ * Clears local storage credentials and disconnects socket state.
+ */
+export function clearLocalAuthData() {
+  if (typeof window !== 'undefined') {
+    disconnectSocket();
+    localStorage.removeItem('canafri_access_token');
+    localStorage.removeItem('canafri_user_profile');
+    const currentPage = localStorage.getItem('canafri_active_page');
+    if (currentPage && !GUEST_PAGES.includes(currentPage)) {
+      localStorage.removeItem('canafri_active_page');
+    }
+  }
+}
+
 /**
  * Clears local credentials and dispatches session-expired event.
  * Deduplicated to ensure only a single toast/event fires during session expiration.
  */
 export function handleSessionExpired() {
   if (typeof window !== 'undefined') {
-    disconnectSocket();
-    localStorage.removeItem('canafri_access_token');
-    localStorage.removeItem('canafri_user_profile');
-    localStorage.removeItem('canafri_active_page');
+    clearLocalAuthData();
     if (!hasHandledSessionExpired) {
       hasHandledSessionExpired = true;
       window.dispatchEvent(new CustomEvent('canafri:session-expired'));
@@ -182,5 +206,5 @@ export async function performLogout() {
       // Ignore network errors during logout
     }
   }
-  handleSessionExpired();
+  clearLocalAuthData();
 }

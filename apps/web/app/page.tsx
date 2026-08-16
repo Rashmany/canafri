@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { LogOut, X } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { initSocket, getSocket, disconnectSocket } from '@/lib/socket';
-import { apiFetch, verifyStartupSession, performLogout } from '@/lib/api-client';
+import { apiFetch, verifyStartupSession, performLogout, GUEST_PAGES } from '@/lib/api-client';
 import { usePlatformConfig } from '@/lib/platform-config-context';
 import { FeatureGate } from '@/components/ui/feature-gate';
 import Sidebar from '@/components/layout/sidebar';
@@ -124,7 +124,7 @@ export default function Home() {
 
       // Fetch live authoritative profile from backend /users/me using centralized apiFetch
       const token = localStorage.getItem('canafri_access_token');
-      if (token) {
+      if (token && !GUEST_PAGES.includes(activePage)) {
         apiFetch('/api/users/me')
           .then(r => r.ok ? r.json() : null)
           .then(data => {
@@ -228,26 +228,47 @@ export default function Home() {
         avatarSrc: '/images/default-avatar.png',
         isSeller: false,
       });
-      setActivePage('Login');
-      toast('Session expired. Please log in again.', 'error');
+      const currentPage = typeof window !== 'undefined' ? localStorage.getItem('canafri_active_page') : activePage;
+      const isGuest = GUEST_PAGES.includes(currentPage || activePage);
+      if (!isGuest) {
+        setActivePage('Login');
+        toast('Session expired. Please log in again.', 'error');
+      }
     };
 
     window.addEventListener('canafri:session-expired', handleExpired);
     return () => {
       window.removeEventListener('canafri:session-expired', handleExpired);
     };
-  }, [toast]);
+  }, [activePage, toast]);
 
   // App Startup authentication verification
   useEffect(() => {
     async function initAuth() {
       if (typeof window === 'undefined') return;
 
-      const saved = localStorage.getItem('canafri_active_page');
-      const token = localStorage.getItem('canafri_access_token');
+      // Handle Google OAuth callback redirect parameters
+      const urlParams = new URLSearchParams(window.location.search);
+      const googleToken = urlParams.get('google_access_token');
+      const authError = urlParams.get('auth_error');
 
-      if (!token && !saved) {
-        setActivePage('MobileSplash');
+      if (authError) {
+        toast(decodeURIComponent(authError), 'error');
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
+      if (googleToken) {
+        localStorage.setItem('canafri_access_token', googleToken);
+        localStorage.setItem('canafri_active_page', 'Dashboard');
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
+      const saved = localStorage.getItem('canafri_active_page') || 'MobileSplash';
+      const token = localStorage.getItem('canafri_access_token');
+      const isSavedGuest = GUEST_PAGES.includes(saved);
+
+      if (!token && isSavedGuest) {
+        setActivePage(saved);
         setIsInitialized(true);
         return;
       }
@@ -267,15 +288,19 @@ export default function Home() {
         // Initialize Socket.IO connection ONLY AFTER startup verification completes with a valid token
         initSocket();
 
-        if (saved && saved !== 'MobileSplash' && saved !== 'MobileSplash2' && saved !== 'Login') {
-          setActivePage(saved);
-        } else {
+        if (googleToken || isSavedGuest) {
           setActivePage('Dashboard');
+        } else {
+          setActivePage(saved);
         }
       } else {
         // Token invalid or expired and could not be refreshed
         disconnectSocket();
-        setActivePage('Login');
+        if (isSavedGuest) {
+          setActivePage(saved);
+        } else {
+          setActivePage('Login');
+        }
       }
 
       setIsInitialized(true);
@@ -445,14 +470,24 @@ export default function Home() {
 
       {/* ── Main Layout Column ── */}
       <div className="flex h-full min-w-0 flex-1 flex-col">
-        {/* Top Navbar */}
-        <TopNav
-          user={userProfile}
-          activePage={activePage}
-          onMenuOpen={() => setMobileSidebarOpen(true)}
-          onSearchNavigate={handleSearchNavigate}
-          onNavigate={handleNavigate}
-        />
+        {/* Top Navbar - hidden on Profile, and on mobile for Search and active Messages chat */}
+        {activePage !== 'Profile' && (
+          <div
+            className={
+              activePage === 'Search' || (activePage === 'Messages' && hideBottomNav)
+                ? 'hidden md:block'
+                : ''
+            }
+          >
+            <TopNav
+              user={userProfile}
+              activePage={activePage}
+              onMenuOpen={() => setMobileSidebarOpen(true)}
+              onSearchNavigate={handleSearchNavigate}
+              onNavigate={handleNavigate}
+            />
+          </div>
+        )}
 
         {/* Main Content Area */}
         <main className="flex-1 min-h-0 overflow-y-auto pb-16 md:pb-0 flex flex-col">
@@ -461,7 +496,7 @@ export default function Home() {
           ) : activePage === 'Settings' ? (
             <SettingsPage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Profile' ? (
-            <ProfilePage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} onOpenChat={handleOpenChatWithUser} />
+            <ProfilePage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} onOpenChat={handleOpenChatWithUser} onNavigate={handleNavigate} />
           ) : activePage === 'Search' ? (
             <SearchPage query={searchQuery} onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Wallet' ? (

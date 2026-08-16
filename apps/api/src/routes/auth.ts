@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { generateSecret, verify, generateURI } from 'otplib';
@@ -6,6 +7,7 @@ import { prisma } from '../lib/prisma.js';
 import { redis } from '../lib/redis.js';
 import { HashService } from '../lib/hash.js';
 import { AuditService } from '../services/audit.js';
+import { sendOtpEmail } from '../services/email.js';
 import { OTPService } from '../services/otp.js';
 import { RiskService } from '../middleware/riskCheck.js';
 import { RiskEngine } from '../services/risk-engine.js';
@@ -395,7 +397,8 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       await redis.set(pendingKey, JSON.stringify(pendingPayload), { EX: 900 });
 
-      // Mock or send email OTP
+      // Send email OTP (via SMTP / SES / mock console fallback)
+      await sendOtpEmail(sanitizedEmail, otp, 'registration');
       console.log(`[MOCK EMAIL] Verification OTP for ${sanitizedEmail}: ${otp}`);
 
       return reply.status(201).send({
@@ -591,7 +594,8 @@ export async function authRoutes(fastify: FastifyInstance) {
       // 5. Set 60-second cooldown
       await redis.set(cooldownKey, '1', { EX: 60 });
 
-      // Mock/Log email OTP
+      // Send email OTP (via SMTP / SES / mock console fallback)
+      await sendOtpEmail(sanitizedEmail, newOtp, 'verification');
       console.log(`[MOCK EMAIL] Resent Verification OTP for ${sanitizedEmail}: ${newOtp}`);
 
       return reply.send({
@@ -1571,7 +1575,8 @@ export async function authRoutes(fastify: FastifyInstance) {
       const otpKey = `forgot_otp:${email}`;
       await redis.set(otpKey, HashService.hashToken(otp), { EX: 600 }); // 10 minutes
 
-      // TODO: Deliver OTP via email provider
+      // Send OTP via email (SMTP / SES / mock fallback)
+      await sendOtpEmail(email, otp, 'forgot_password');
       console.log(`[MOCK EMAIL] Password reset OTP for ${email}: ${otp}`);
 
       await AuditService.log({
@@ -2501,6 +2506,159 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
     } catch (err: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: 'Verification failed. Please try again.' });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // GET /auth/google  — Google OAuth authorization redirect
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.get('/google', async (_request: FastifyRequest, reply: FastifyReply) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+    if (!clientId) {
+      return reply.redirect(`${baseUrl}/?auth_error=${encodeURIComponent('Google Sign-In is not configured yet. Please add GOOGLE_CLIENT_ID to .env.')}`);
+    }
+    const redirectUri = encodeURIComponent(`${baseUrl}/api/auth/google/callback`);
+    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid%20email%20profile`;
+    return reply.redirect(googleAuthUrl);
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // GET /auth/google/callback — Google OAuth callback handler
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.get('/google/callback', async (request: FastifyRequest, reply: FastifyReply) => {
+    const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+    try {
+      const query = (request.query as any) || {};
+      const code = query.code;
+      if (!code) {
+        return reply.redirect(`${baseUrl}/?auth_error=${encodeURIComponent('No authorization code returned from Google.')}`);
+      }
+
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+      if (!clientId || !clientSecret) {
+        return reply.redirect(`${baseUrl}/?auth_error=${encodeURIComponent('Google Sign-In is missing credentials in .env.')}`);
+      }
+
+      // Live Google OAuth 2.0 exchange
+      const redirectUri = `${baseUrl}/api/auth/google/callback`;
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+        }),
+      });
+
+      if (!tokenRes.ok) {
+        const errText = await tokenRes.text();
+        console.error('Google token exchange error:', errText);
+        return reply.redirect(`${baseUrl}/?auth_error=${encodeURIComponent('Failed to exchange authorization code with Google.')}`);
+      }
+
+      const tokenData = (await tokenRes.json()) as any;
+      const googleAccessToken = tokenData.access_token;
+
+      const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: { Authorization: `Bearer ${googleAccessToken}` },
+      });
+
+      if (!userInfoRes.ok) {
+        return reply.redirect(`${baseUrl}/?auth_error=${encodeURIComponent('Failed to fetch user profile from Google.')}`);
+      }
+
+      const userInfo = (await userInfoRes.json()) as any;
+      const googleUser = {
+        email: userInfo.email,
+        name: userInfo.name || userInfo.given_name || 'Google User',
+        picture: userInfo.picture,
+        id: userInfo.id,
+      };
+
+      if (!googleUser.email) {
+        return reply.redirect(`${baseUrl}/?auth_error=${encodeURIComponent('No email address associated with this Google account.')}`);
+      }
+
+      const emailClean = googleUser.email.toLowerCase();
+
+      // Look up existing user or create a new user
+      let user = await prisma.user.findFirst({
+        where: { email: emailClean },
+      });
+
+      if (!user) {
+        let baseUsername = (googleUser.name || emailClean.split('@')[0] || 'user')
+          .toLowerCase()
+          .replace(/[^a-z0-9_]/g, '')
+          .slice(0, 15);
+        if (baseUsername.length < 3) baseUsername = `user_${baseUsername}`;
+
+        let uniqueUsername = baseUsername;
+        let suffix = 1;
+        while (await prisma.user.findUnique({ where: { username: uniqueUsername } })) {
+          uniqueUsername = `${baseUsername}${suffix}`;
+          suffix++;
+        }
+
+        const dummyPasswordHash = await HashService.hashPassword(crypto.randomUUID());
+
+        user = await prisma.user.create({
+          data: {
+            email: emailClean,
+            displayName: googleUser.name || 'Google User',
+            username: uniqueUsername,
+            avatarUrl: googleUser.picture || '/images/default-avatar.png',
+            emailVerified: true,
+            passwordHash: dummyPasswordHash,
+            role: 'MEMBER',
+          },
+        });
+      }
+
+      // Create session
+      const sessionExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const sessionToken = HashService.generateToken();
+      const session = await prisma.session.create({
+        data: {
+          userId: user.id,
+          token: sessionToken,
+          deviceInfo: request.headers['user-agent'] ?? 'unknown',
+          userAgent: request.headers['user-agent'] ?? null,
+          ipAddress: request.ip,
+          expiresAt: sessionExpiry,
+        },
+      });
+
+      // Cache session in Redis
+      await redis.set(`session:${session.id}`, JSON.stringify({ userId: user.id, role: user.role }), {
+        EX: 30 * 24 * 60 * 60,
+      });
+
+      // Issue tokens
+      const { accessToken, refreshToken } = await issueTokens(fastify, user, session.id);
+      await storeHashedRefreshToken(session.id, refreshToken);
+
+      // Set refresh token cookie
+      reply.setCookie('refresh_token', refreshToken, COOKIE_OPTIONS);
+
+      await AuditService.log({
+        userId: user.id,
+        action: 'LOGIN',
+        ipAddress: request.ip,
+        device: request.headers['user-agent'] ?? undefined,
+      });
+
+      // Redirect back to frontend root page with access token
+      return reply.redirect(`${baseUrl}/?google_access_token=${accessToken}`);
+    } catch (err: any) {
+      console.error('Google OAuth Callback error:', err);
+      return reply.redirect(`${baseUrl}/?auth_error=${encodeURIComponent(err.message || 'Google Sign-in failed.')}`);
     }
   });
 }
