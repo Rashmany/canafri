@@ -308,22 +308,13 @@ export default function LoginPage({ onRegisterClick, onLoginSuccess, onForgotPas
       <AuthSplitLayout>
         <div className="flex flex-col items-center justify-center w-full min-h-screen md:min-h-0 px-6 py-10 md:py-12">
 
-          {/* Mobile Back Button */}
-          {onBackClick && (
-            <button
-              type="button"
-              onClick={onBackClick}
-              className="md:hidden h-[36px] px-4 rounded-[10px] text-[13px] font-semibold text-[#a0a0a0] hover:text-white border border-[#1b1b1b] hover:border-[#2a2a2a] transition-all flex items-center justify-center cursor-pointer self-start mb-6"
-            >
-              Back
-            </button>
-          )}
+
 
           {/* Form container — transparent background matching platform */}
           <div className="relative flex flex-col items-center w-full bg-transparent pt-0 px-0 pb-10 max-w-[400px]">
             <div className="flex flex-col gap-6 w-full flex-1">
               {/* Heading */}
-              <div className="flex flex-col items-center gap-1 mb-6 text-center w-full">
+              <div className="flex flex-col items-start md:items-center gap-1 mb-6 text-left md:text-center w-full">
                 <h1 className="text-[28px] md:text-[32px] font-bold leading-[34px] md:leading-[38px] tracking-[-0.18px] text-white/95">
                   Log In
                 </h1>

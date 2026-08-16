@@ -171,9 +171,9 @@ export default function MobileSplashPage({ onRegisterClick, onLoginClick }: Mobi
 
         {/* Content Container (Header + Buttons) */}
         <div className="flex flex-col items-center md:items-start w-full max-w-[340px] md:max-w-[380px] mx-auto mb-[4vh] md:mb-0">
-          
+
           {/* Header */}
-          <div className="flex flex-col items-center md:items-start gap-1.5 mb-8 text-center md:text-left w-full">
+          <div className="flex flex-col items-start md:items-start gap-1.5 mb-8 text-center md:text-left w-full">
             <h1 className="text-[28px] md:text-[32px] font-bold leading-[34px] md:leading-[38px] tracking-[-0.18px] text-white/95">
               Welcome to CanaFri
             </h1>

@@ -143,7 +143,7 @@ export default function RegisterPage({
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
 
-  // ── Multi-step state ──────────────────────────────────────────────────────
+  //  Multi-step state 
   const [step, setStep] = useState<1 | 2>(1);
 
   // Error States & Real-Time Validation States
@@ -385,12 +385,12 @@ export default function RegisterPage({
 
           <div className="flex flex-col gap-6 w-full flex-1">
             {/* Header */}
-            <div className="flex flex-col items-center gap-1.5 text-center w-full">
+            <div className="flex flex-col items-start md:items-center gap-1.5 text-left md:text-center w-full">
               <h1 className="text-[32px] font-bold leading-[38px] tracking-[-0.18px] text-white/95">
                 {step === 1 ? 'Create an account' : 'Email/Password'}
               </h1>
               <p className="text-[13px] font-normal leading-[20px] text-[#a0a0a0]">
-                {step === 1 ? 'Step 1 of 2 — Identity & Information' : 'Step 2 of 2 — Email & Password'}
+                {step === 1 ? 'Step 1 of 2  Your Information' : 'Step 2 of 2  Email & Password'}
               </p>
             </div>
 
@@ -405,7 +405,7 @@ export default function RegisterPage({
             {/* Form Fields */}
             <form onSubmit={handleSubmit} className="flex flex-col gap-4 w-full">
 
-              {/* ── Step 1: Identity (Full Name, Username, Date of Birth, Terms) ──────── */}
+              {/* Step 1: Identity (Full Name, Username, Date of Birth, Terms) */}
               {step === 1 && (
                 <div className="flex flex-col gap-4 w-full">
                   <InputField
@@ -507,7 +507,7 @@ export default function RegisterPage({
                 </div>
               )}
 
-              {/* ── Step 2: Email & Password ────────────────────────────── */}
+              {/* Step 2: Email & Password */}
               {step === 2 && (
                 <div className="flex flex-col gap-4 w-full">
                   <div>
