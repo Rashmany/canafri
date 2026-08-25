@@ -1,60 +1,58 @@
-/**
- * CanaFri brand wordmark — gradient logo.
- *
- * The SVG path data from the Figma export will be wired up here once those
- * paths are extracted. Until then the component renders a styled text mark
- * using the exact brand gradients.
- *
- * Import path: `@/components/ui/logo`
- */
+'use client';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+import React from 'react';
 
-interface LogoProps {
+export interface LogoProps {
   /**
-   * When true (collapsed tablet sidebar) render only the "C" monogram
-   * instead of the full "CanaFri" wordmark.
+   * When true (e.g. collapsed sidebar), renders compact monogram/icon version.
    */
   collapsed?: boolean;
   className?: string;
+  width?: number | string;
+  height?: number | string;
 }
 
-// ─── Gradient style (matches Figma radialGradient spec exactly) ───────────────
-
-const WORDMARK_GRADIENT: React.CSSProperties = {
-  backgroundImage: 'radial-gradient(ellipse at 50% 45%, #AC8EF3 0%, #3E1A94 100%)',
-  WebkitBackgroundClip: 'text',
-  WebkitTextFillColor: 'transparent',
-  backgroundClip: 'text',
-};
-
-const MONOGRAM_GRADIENT: React.CSSProperties = {
-  backgroundImage: 'radial-gradient(circle, #AC8EF3 0%, #3E1A94 100%)',
-  WebkitBackgroundClip: 'text',
-  WebkitTextFillColor: 'transparent',
-  backgroundClip: 'text',
-};
-
-// ─── Component ────────────────────────────────────────────────────────────────
-
-export function Logo({ collapsed = false, className = '' }: LogoProps) {
+/**
+ * Global CanaFri Logo Component.
+ * Reusable across top-nav, sidebar, auth split layout, headers, and footer.
+ * Source SVG: /images/canafri-logo.svg
+ */
+export function Logo({
+  collapsed = false,
+  className = '',
+  width,
+  height,
+}: LogoProps) {
   if (collapsed) {
     return (
-      <span
-        className={`select-none font-bold text-lg leading-none ${className}`}
-        style={MONOGRAM_GRADIENT}
-      >
-        C
-      </span>
+      <div className={`inline-flex items-center justify-center select-none ${className}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/canafri-logo.svg"
+          alt="CanaFri"
+          width={width || 28}
+          height={height || 28}
+          className="size-7 object-contain transition-transform"
+        />
+      </div>
     );
   }
 
   return (
-    <span
-      className={`select-none font-bold text-[1.25rem] leading-none tracking-tight ${className}`}
-      style={WORDMARK_GRADIENT}
-    >
-      CanaFri
-    </span>
+    <div className={`inline-flex items-center gap-2.5 select-none ${className}`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/images/canafri-logo.svg"
+        alt="CanaFri Logo"
+        width={width || 30}
+        height={height || 30}
+        className="size-[30px] object-contain shrink-0"
+      />
+      <span className="font-sans font-bold text-[1.25rem] leading-none tracking-tight text-white/95">
+        canafri
+      </span>
+    </div>
   );
 }
+
+export default Logo;

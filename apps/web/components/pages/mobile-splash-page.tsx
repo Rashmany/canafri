@@ -6,153 +6,44 @@
  * ANIMATION SYSTEM (v4)
  * ─────────────────────
  * Background elements (SVGs + circles) are absolutely positioned inside the
- * FULL-SCREEN root container so they roam the entire viewport at every size.
- * Home positions are set with vw/vh units so they always spread across the
- * whole screen rather than bunching in the top-left corner.
- *
- * The onboarding card (logo, rotating text, buttons) is a flex overlay that
- * always fits the visible area with no overflow / clipping.
- *
- * Each element follows a Lissajous orbit (parametric sin / cos).
- * Soft-repulsion collision detection runs every RAF frame.
- *
- * RotatingText state-machine: fade-in 600 ms → hold 3 400 ms → fade-out 600 ms
- * Fixed-height container (100 px) → zero layout shift.
- * prefers-reduced-motion: RAF loop never starts; elements are static.
+ * root container and roam the viewport on mobile devices.
+ * Animations are disabled on tablet and desktop screens.
+ * prefers-reduced-motion: RAF loop never starts; elements remain static.
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { ChevronRight, Mail } from 'lucide-react';
+import AuthSplitLayout from '@/components/auth-split-layout';
+import { Logo } from '@/components/ui/logo';
+
+function GoogleLogo({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path
+        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+        fill="#4285F4"
+      />
+      <path
+        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.15C3.26 21.3 7.31 24 12 24z"
+        fill="#34A853"
+      />
+      <path
+        d="M5.28 14.24c-.25-.72-.38-1.49-.38-2.24s.13-1.52.38-2.24V6.61H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.39l3.99-3.15z"
+        fill="#FBBC05"
+      />
+      <path
+        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.61l3.99 3.15c.95-2.85 3.6-4.96 6.72-4.96z"
+        fill="#EA4335"
+      />
+    </svg>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TWO_PI = Math.PI * 2;
-const period = (ms: number) => TWO_PI / ms;
-
-const FADE_MS = 600;
-const HOLD_MS = 3_400;
-const TICK_MS = 50;
-
-const SPLASH_TEXTS = [
-  'Find jobs, hire experts, and build meaningful connections in one powerful platform.',
-  'Earn, stake, and transact securely while growing your reputation and opportunities.',
-];
-
-const TEXT_GRADIENT: React.CSSProperties = {
-  backgroundImage:
-    'linear-gradient(106.36deg, rgba(255,255,255,0.95) 36.43%, rgba(140,92,255,1) 103.17%)',
-  WebkitBackgroundClip: 'text',
-  WebkitTextFillColor: 'transparent',
-  backgroundClip: 'text',
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  RotatingText
-// ─────────────────────────────────────────────────────────────────────────────
-
-function RotatingText({ texts }: { texts: string[] }) {
-  const [index,   setIndex]   = useState(0);
-  const [opacity, setOpacity] = useState(0);
-  const reducedMotion = useRef(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    reducedMotion.current = mq.matches;
-    if (mq.matches) setOpacity(1);
-  }, []);
-
-  useEffect(() => {
-    if (reducedMotion.current) return;
-    let cancelled = false;
-    const t1 = window.setTimeout(() => { if (!cancelled) setOpacity(1); }, TICK_MS);
-    const t2 = window.setTimeout(() => { if (!cancelled) setOpacity(0); }, TICK_MS + HOLD_MS);
-    const t3 = window.setTimeout(() => {
-      if (!cancelled) { setOpacity(0); setIndex(i => (i + 1) % texts.length); }
-    }, TICK_MS + HOLD_MS + FADE_MS);
-    return () => { cancelled = true; clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index]);
-
-  return (
-    <div
-      aria-live="polite"
-      aria-atomic="true"
-      style={{ position: 'relative', width: '100%', height: '100px' }}
-    >
-      <p
-        className="absolute inset-0 text-center font-sans text-[16px] leading-[24px] font-bold"
-        style={{
-          ...TEXT_GRADIENT,
-          opacity,
-          transition: reducedMotion.current ? undefined : `opacity ${FADE_MS}ms ease-in-out`,
-          margin: 0,
-        }}
-      >
-        {texts[index]}
-      </p>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Background element descriptor — viewport-relative home positions
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * homeXPct / homeYPct — home centre as fraction of viewport (0‒1).
- * axPct / ayPct       — Lissajous amplitude as fraction of viewport.
- * wPx / hPx           — base element size in px.
- * wScale / hScale     — size multiplier applied on larger screens.
- */
-interface ElemDesc {
-  homeXPct: number; homeYPct: number;
-  wPx: number;      hPx: number;
-  wScale: number;   hScale: number;
-  axPct: number;    ayPct: number;
-  wx: number;       wy: number;
-  phx: number;      phy: number;
-  initRot: number;  rotSpeed: number;
-}
-
-const ELEMS: ElemDesc[] = [
-  /* 0 ── Decorative Circle 1 — top-left quadrant */
-  {
-    homeXPct: 0.12,  homeYPct: 0.15,
-    wPx: 100, hPx: 100, wScale: 0.9, hScale: 0.9,
-    axPct: 0.20, ayPct: 0.16,
-    wx: period(83_000), wy: period(67_000),
-    phx: 0,            phy: Math.PI / 3,
-    initRot: 0,        rotSpeed: period(180_000),
-  },
-  /* 1 ── Decorative Circle 2 — right-centre */
-  {
-    homeXPct: 0.85,  homeYPct: 0.58,
-    wPx: 100, hPx: 100, wScale: 0.9, hScale: 0.9,
-    axPct: 0.16, ayPct: 0.18,
-    wx: period(71_000), wy: period(94_000),
-    phx: Math.PI / 2, phy: Math.PI,
-    initRot: 0,        rotSpeed: -period(165_000),
-  },
-  /* 2 ── Reading SVG — upper-right area */
-  {
-    homeXPct: 0.72,  homeYPct: 0.28,
-    wPx: 203, hPx: 174, wScale: 1.0, hScale: 1.0,
-    axPct: 0.14, ayPct: 0.13,
-    wx: period(79_000), wy: period(58_000),
-    phx: Math.PI / 4,      phy: (3 * Math.PI) / 4,
-    initRot:  7.6  * (Math.PI / 180), rotSpeed: period(210_000),
-  },
-  /* 3 ── Content Creator SVG — lower-left area */
-  {
-    homeXPct: 0.18,  homeYPct: 0.72,
-    wPx: 213, hPx: 188, wScale: 1.0, hScale: 1.0,
-    axPct: 0.16, ayPct: 0.13,
-    wx: period(64_000), wy: period(89_000),
-    phx: (2 * Math.PI) / 3, phy: Math.PI / 6,
-    initRot: -18.26 * (Math.PI / 180), rotSpeed: -period(195_000),
-  },
-];
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Splash Page
@@ -160,69 +51,54 @@ const ELEMS: ElemDesc[] = [
 
 interface MobileSplashPageProps {
   onRegisterClick?: () => void;
-  onLoginClick?:    () => void;
+  onLoginClick?: () => void;
 }
 
 export default function MobileSplashPage({ onRegisterClick, onLoginClick }: MobileSplashPageProps) {
-  const c1Ref    = useRef<HTMLDivElement>(null);
-  const c2Ref    = useRef<HTMLDivElement>(null);
-  const readRef  = useRef<HTMLImageElement>(null);
-  const creatRef = useRef<HTMLImageElement>(null);
+  const c1Ref = useRef<HTMLDivElement>(null);
+  const c2Ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    const nodes: (HTMLElement | null)[] = [
-      c1Ref.current,
-      c2Ref.current,
-      readRef.current,
-      creatRef.current,
-    ];
+    const isDesktopOrTablet = window.innerWidth >= 768;
+    if (reduced || isDesktopOrTablet) return;
 
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const isLarge = vw >= 768;
-    // Scale factor: grows smoothly with viewport width on larger screens
-    const sizeMult = isLarge ? Math.max(1.4, Math.min(2.2, vw / 600)) : 1;
 
-    // Resolve each element's pixel values from viewport-relative descriptors
-    const resolved = ELEMS.map(el => {
-      const wFactor = isLarge ? el.wScale * (sizeMult / 1.5) : 1;
-      const hFactor = isLarge ? el.hScale * (sizeMult / 1.5) : 1;
-      const w  = el.wPx * wFactor;
-      const h  = el.hPx * hFactor;
-      // Centre element on its home percentage; left/top = centre minus half-size
-      const homeLeft = vw * el.homeXPct - w  * 0.5;
-      const homeTop  = vh * el.homeYPct - h  * 0.5;
-      const ax = vw * el.axPct;
-      const ay = vh * el.ayPct;
-      return { w, h, homeLeft, homeTop, ax, ay,
-               wx: el.wx, wy: el.wy, phx: el.phx, phy: el.phy,
-               initRot: el.initRot, rotSpeed: el.rotSpeed };
-    });
+    const ORBITS = [
+      {
+        cx: vw * 0.50, cy: vh * 0.42,
+        rx: vw * 0.38, ry: vh * 0.30,
+        orbitPeriod: 28_000,
+        phase0: Math.PI * 1.05,
+        selfRotPeriod: 12_000,
+        selfRotDir: 1,
+        size: 110,
+      },
+      {
+        cx: vw * 0.50, cy: vh * 0.55,
+        rx: vw * 0.34, ry: vh * 0.28,
+        orbitPeriod: 20_000,
+        phase0: Math.PI * 0.1,
+        selfRotPeriod: 9_000,
+        selfRotDir: -1,
+        size: 82,
+      },
+    ];
 
-    // Apply initial sizes & positions immediately (overrides CSS vw/vh values
-    // so the RAF physics loop starts from the correct pixel positions)
-    nodes.forEach((node, i) => {
+    [c1Ref.current, c2Ref.current].forEach((node, i) => {
       if (!node) return;
-      const r = resolved[i];
-      node.style.width  = `${r.w}px`;
-      node.style.height = `${r.h}px`;
-      node.style.left   = `${r.homeLeft}px`;
-      node.style.top    = `${r.homeTop}px`;
+      const o = ORBITS[i];
+      node.style.width = `${o.size}px`;
+      node.style.height = `${o.size}px`;
+      const x = o.cx + o.rx * Math.cos(o.phase0) - o.size / 2;
+      const y = o.cy + o.ry * Math.sin(o.phase0) - o.size / 2;
+      node.style.left = `${x}px`;
+      node.style.top = `${y}px`;
     });
 
-    if (reduced) {
-      nodes.forEach((node, i) => {
-        if (node) node.style.transform = `rotate(${resolved[i].initRot}rad)`;
-      });
-      return; // skip RAF
-    }
-
-    // Per-element bounce velocity accumulator (collision impulse + friction)
-    const bv = resolved.map(() => ({ x: 0, y: 0 }));
-    const FRICTION = 0.88;
-    const IMPULSE  = 2.6;
+    if (reduced) return;
 
     let rafId: number;
     const t0 = performance.now();
@@ -230,48 +106,16 @@ export default function MobileSplashPage({ onRegisterClick, onLoginClick }: Mobi
     const frame = (now: number) => {
       const t = now - t0;
 
-      // 1. Lissajous orbital position
-      const pos = resolved.map((el, i) => {
-        const ox  = el.ax * Math.sin(el.wx * t + el.phx);
-        const oy  = el.ay * Math.sin(el.wy * t + el.phy);
-        const rot = el.initRot + el.rotSpeed * t;
-        const cx  = el.homeLeft + el.w * 0.5 + ox + bv[i].x;
-        const cy  = el.homeTop  + el.h * 0.5 + oy + bv[i].y;
-        return { ox, oy, rot, cx, cy };
-      });
-
-      // 2. Pairwise soft-collision detection & impulse
-      for (let i = 0; i < resolved.length; i++) {
-        for (let j = i + 1; j < resolved.length; j++) {
-          const dx   = pos[j].cx - pos[i].cx;
-          const dy   = pos[j].cy - pos[i].cy;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const ri   = Math.min(resolved[i].w, resolved[i].h) * 0.44;
-          const rj   = Math.min(resolved[j].w, resolved[j].h) * 0.44;
-          const minD = ri + rj;
-
-          if (dist < minD && dist > 0.5) {
-            const penetration = (minD - dist) / minD;
-            const nx = dx / dist;
-            const ny = dy / dist;
-            const f  = penetration * IMPULSE;
-            bv[i].x -= nx * f;
-            bv[i].y -= ny * f;
-            bv[j].x += nx * f;
-            bv[j].y += ny * f;
-          }
-        }
-      }
-
-      // 3. Decay bounce velocity; write GPU transform
-      nodes.forEach((node, i) => {
-        bv[i].x *= FRICTION;
-        bv[i].y *= FRICTION;
-        const tx = pos[i].ox + bv[i].x;
-        const ty = pos[i].oy + bv[i].y;
-        if (node) {
-          node.style.transform = `translate3d(${tx}px,${ty}px,0) rotate(${pos[i].rot}rad)`;
-        }
+      [c1Ref.current, c2Ref.current].forEach((node, i) => {
+        if (!node) return;
+        const o = ORBITS[i];
+        const orbitAngle = o.phase0 + (TWO_PI * t) / o.orbitPeriod;
+        const x = o.cx + o.rx * Math.cos(orbitAngle) - o.size / 2;
+        const y = o.cy + o.ry * Math.sin(orbitAngle) - o.size / 2;
+        const selfRot = o.selfRotDir * (TWO_PI * t) / o.selfRotPeriod;
+        node.style.left = `${x}px`;
+        node.style.top = `${y}px`;
+        node.style.transform = `rotate(${selfRot}rad)`;
       });
 
       rafId = requestAnimationFrame(frame);
@@ -281,137 +125,121 @@ export default function MobileSplashPage({ onRegisterClick, onLoginClick }: Mobi
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  // ─── Render ────────────────────────────────────────────────────────────────
-
   return (
-    /* Root — always fills the full viewport; no scroll, no clip */
-    <div
-      className="fixed inset-0 w-full h-full overflow-hidden"
-      style={{ backgroundColor: '#080808' }}
-    >
+    <AuthSplitLayout>
+      {/* ── Mobile Background Floating Orbits (hidden on md+) ── */}
+      <div className="md:hidden">
+        <div
+          ref={c1Ref}
+          className="absolute pointer-events-none select-none"
+          aria-hidden="true"
+          style={{
+            left: '12vw', top: '15vh',
+            width: '110px', height: '110px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle at 35% 32%, rgba(180,145,255,0.22) 0%, rgba(100,58,200,0.38) 40%, rgba(36,12,90,0.55) 75%, rgba(10,3,28,0.70) 100%)',
+            boxShadow: '0 8px 36px 4px rgba(140,92,255,0.12), inset 0 -6px 18px rgba(0,0,0,0.45), inset 0 4px 12px rgba(180,150,255,0.07)',
+            opacity: 0.55,
+            willChange: 'transform, left, top',
+            transformOrigin: 'center center',
+          }}
+        />
+        <div
+          ref={c2Ref}
+          className="absolute pointer-events-none select-none"
+          aria-hidden="true"
+          style={{
+            left: '85vw', top: '58vh',
+            width: '82px', height: '82px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle at 38% 30%, rgba(165,125,255,0.20) 0%, rgba(80,40,170,0.35) 42%, rgba(28,8,72,0.52) 76%, rgba(8,2,22,0.68) 100%)',
+            boxShadow: '0 6px 28px 3px rgba(140,92,255,0.09), inset 0 -5px 14px rgba(0,0,0,0.42), inset 0 3px 10px rgba(180,150,255,0.06)',
+            opacity: 0.50,
+            willChange: 'transform, left, top',
+            transformOrigin: 'center center',
+          }}
+        />
+      </div>
 
-      {/* ── Background layer: elements roam the full viewport ──────────────── */}
+      {/* ── Main Content Container ── */}
+      <div className="flex flex-col items-center justify-between md:justify-center min-h-screen md:min-h-0 w-full px-6 py-12 z-10">
 
-      {/* Circle 1 — initial position via vw/vh so it's visually distributed */}
-      <div
-        ref={c1Ref}
-        className="absolute pointer-events-none select-none"
-        aria-hidden="true"
-        style={{
-          left: '12vw', top: '15vh',
-          width: '100px', height: '100px',
-          borderRadius: '50%',
-          backgroundColor: '#8C5CFF',
-          opacity: 0.10,
-          willChange: 'transform',
-          transformOrigin: 'center center',
-        }}
-      />
-
-      {/* Circle 2 */}
-      <div
-        ref={c2Ref}
-        className="absolute pointer-events-none select-none"
-        aria-hidden="true"
-        style={{
-          left: '85vw', top: '58vh',
-          width: '100px', height: '100px',
-          borderRadius: '50%',
-          backgroundColor: '#8C5CFF',
-          opacity: 0.10,
-          willChange: 'transform',
-          transformOrigin: 'center center',
-        }}
-      />
-
-      {/* Reading SVG — upper-right */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        ref={readRef}
-        src="/images/splash-reading.svg"
-        alt="" aria-hidden="true" draggable={false}
-        className="absolute pointer-events-none select-none"
-        style={{
-          left: '72vw', top: '28vh',
-          width: '203px', height: '174px',
-          transformOrigin: 'center center',
-          willChange: 'transform',
-          opacity: 0.10,
-        }}
-      />
-
-      {/* Creator SVG — lower-left */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        ref={creatRef}
-        src="/images/splash-creator.svg"
-        alt="" aria-hidden="true" draggable={false}
-        className="absolute pointer-events-none select-none"
-        style={{
-          left: '18vw', top: '72vh',
-          width: '213px', height: '188px',
-          transformOrigin: 'center center',
-          willChange: 'transform',
-          opacity: 0.10,
-        }}
-      />
-
-      {/* ── Content layer — centered flex, always fits viewport ─────────────── */}
-      <div className="absolute inset-0 flex flex-col items-center z-10 px-6">
-
-        {/* Logo — mobile only; hidden on md+ */}
-        <div className="flex justify-center w-full mt-[12vh] md:hidden">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/images/splash-logo.svg"
-            alt="CanaFri"
-            style={{ width: '101px', height: '23px', objectFit: 'contain' }}
-          />
+        {/* Mobile-only top logo */}
+        <div className="flex justify-center w-full mt-[6vh] md:hidden">
+          <Logo />
         </div>
 
-        {/* Top spacer — larger so text lands nearer the vertical centre */}
-        <div className="flex-[3]" />
+        {/* Content Container (Header + Buttons) */}
+        <div className="flex flex-col items-center md:items-start w-full max-w-[340px] md:max-w-[380px] mx-auto mb-[4vh] md:mb-0">
 
-        {/* Rotating description text */}
-        <div className="w-full max-w-[310px] mx-auto">
-          <RotatingText texts={SPLASH_TEXTS} />
-        </div>
+          {/* Header */}
+          <div className="flex flex-col items-start md:items-start gap-1.5 mb-8 text-center md:text-left w-full">
+            <h1 className="text-[28px] md:text-[32px] font-bold leading-[34px] md:leading-[38px] tracking-[-0.18px] text-white/95">
+              Welcome to CanaFri
+            </h1>
+            <p className="text-[13px] font-normal leading-[20px] text-[#a0a0a0]">
+              Find jobs. Hire experts. Learn from creators.
+            </p>
+          </div>
 
-        {/* Bottom spacer — keeps buttons off the very bottom edge */}
-        <div className="flex-[2]" />
+          {/* Action Buttons */}
+          <div className="flex flex-col items-center gap-3.5 w-full">
+            {/* Button 1: Continue with Google */}
+            <button
+              id="splash-google-btn"
+              type="button"
+              onClick={() => {
+                window.location.href = '/api/auth/google';
+              }}
+              className="w-full h-[48px] px-4 rounded-[12px] bg-[#141418] hover:bg-[#1e1e24] border border-[#2a2a34] text-white text-[13px] font-semibold transition-all active:scale-[0.98] flex items-center justify-between cursor-pointer shadow-lg group hover:border-[#8C5CFF]/50"
+            >
+              <div className="flex items-center gap-3">
+                <GoogleLogo size={20} />
+                <span className="font-sans text-white/95 group-hover:text-white">
+                  Continue with Google
+                </span>
+              </div>
+              <ChevronRight size={18} className="text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+            </button>
 
-        {/* Buttons */}
-        <div className="flex flex-col items-center gap-5 w-full max-w-[310px] mx-auto mt-2 mb-[8vh]">
-          {/* Create Account */}
-          <button
-            id="splash-create-account-btn"
-            type="button"
-            onClick={onRegisterClick}
-            className="w-full bg-primary hover:bg-primary-hover text-white rounded-[12px] text-[13px] font-semibold leading-[18px] active:scale-[0.98] transition-all flex items-center justify-center cursor-pointer"
-            style={{ height: '46px' }}
-          >
-            Create Account
-          </button>
+            {/* Button 2: Login with Email */}
+            <button
+              id="splash-email-login-btn"
+              type="button"
+              onClick={onLoginClick}
+              className="w-full h-[48px] px-4 rounded-[12px] bg-[#141418] hover:bg-[#1e1e24] border border-[#2a2a34] text-white text-[13px] font-semibold transition-all active:scale-[0.98] flex items-center justify-between cursor-pointer shadow-lg group hover:border-[#8C5CFF]/50"
+            >
+              <div className="flex items-center gap-3">
+                <Mail size={20} strokeWidth={1.5} className="text-white/80 group-hover:text-white transition-colors" />
+                <span className="font-sans text-white/95 group-hover:text-white">
+                  Login with Email
+                </span>
+              </div>
+              <ChevronRight size={18} className="text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+            </button>
 
-          {/* Sign in text button */}
-          <button
-            id="splash-sign-in-btn"
-            type="button"
-            onClick={onLoginClick}
-            className="cursor-pointer font-sans font-bold text-[15px] leading-[18px] transition-colors"
-            style={{ color: 'rgba(255,255,255,0.75)' }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,1)';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.75)';
-            }}
-          >
-            Sign in
-          </button>
+            {/* Divider: OR with two lines beside it */}
+            <div className="flex items-center w-full my-1 gap-3">
+              <div className="flex-1 h-px bg-white/15" />
+              <span className="font-sans text-[11px] font-bold text-white/45 uppercase tracking-widest">or</span>
+              <div className="flex-1 h-px bg-white/15" />
+            </div>
+
+            {/* Button 3: Create Account (Primary CTA) */}
+            <button
+              id="splash-create-account-btn"
+              type="button"
+              onClick={onRegisterClick}
+              className="w-full h-[48px] bg-[#8C5CFF] hover:bg-[#9d72ff] text-white rounded-[12px] text-[14px] font-bold active:scale-[0.98] transition-all flex items-center justify-center cursor-pointer shadow-xl shadow-[#8C5CFF]/30 tracking-wide"
+            >
+              Create Account
+            </button>
+          </div>
+
         </div>
 
       </div>
-    </div>
+    </AuthSplitLayout>
   );
 }
+

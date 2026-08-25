@@ -230,7 +230,7 @@ function SellingNavItem({ activePage, setActivePage, showLabel = true, onClose }
           'flex h-[3rem] w-full items-center gap-[0.625rem] rounded-[0.75rem]',
           'cursor-pointer transition-colors duration-300 ease-out text-left',
           showLabel ? 'px-[1.5rem]' : 'justify-center px-0',
-          isActive ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold' : 'hover:bg-foreground/10 hover:text-foreground',
+          isActive ? 'bg-foreground/10 text-foreground font-semibold' : 'hover:bg-foreground/10 hover:text-foreground',
         ].join(' ')}
       >
         <span className="relative shrink-0 opacity-80">
@@ -268,7 +268,7 @@ function SellingNavItem({ activePage, setActivePage, showLabel = true, onClose }
                 'flex h-[2.375rem] w-full items-center gap-[0.5rem] rounded-[0.5rem] px-[0.75rem]',
                 'cursor-pointer transition-colors duration-200 text-left',
                 activePage === page
-                  ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold'
+                  ? 'bg-foreground/10 text-foreground font-semibold'
                   : 'text-foreground/80 hover:bg-foreground/10 hover:text-foreground',
               ].join(' ')}
             >
@@ -290,26 +290,46 @@ interface JobsNavItemProps {
   setActivePage: (page: string) => void;
   showLabel?: boolean;
   onClose?: () => void;
+  savedJobCount?: number;
 }
 
-function JobsNavItem({ activePage, setActivePage, showLabel = true, onClose }: JobsNavItemProps) {
+function JobsNavItem({
+  activePage,
+  setActivePage,
+  showLabel = true,
+  onClose,
+  savedJobCount = 0,
+}: JobsNavItemProps) {
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const subItems = [
-    { label: 'Post a Job',    page: 'Post a Job' },
-    { label: 'My Posted Jobs', page: 'My Posted Jobs' },
-    { label: 'Find Sellers',   page: 'Find Sellers' },
+    { label: 'Find Work', page: 'Find Job' },
+    { label: 'Saved Jobs', page: 'Bookmarks:Jobs' },
+    { label: 'Proposals', page: 'Proposals' },
   ];
 
   const isActive = subItems.some(item => activePage === item.page) || activePage === 'Jobs';
 
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
   const handleNavigate = (page: string) => {
     setActivePage(page);
+    setOpen(false);
     onClose?.();
   };
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -318,7 +338,7 @@ function JobsNavItem({ activePage, setActivePage, showLabel = true, onClose }: J
           'flex h-[3rem] w-full items-center gap-[0.625rem] rounded-[0.75rem]',
           'cursor-pointer transition-colors duration-300 ease-out text-left',
           showLabel ? 'px-[1.5rem]' : 'justify-center px-0',
-          isActive ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold' : 'hover:bg-foreground/10 hover:text-foreground',
+          isActive ? 'bg-foreground/10 text-foreground font-semibold' : 'hover:bg-foreground/10 hover:text-foreground',
         ].join(' ')}
       >
         <span className="relative shrink-0 opacity-80">
@@ -356,7 +376,7 @@ function JobsNavItem({ activePage, setActivePage, showLabel = true, onClose }: J
                 'flex h-[2.375rem] w-full items-center gap-[0.5rem] rounded-[0.5rem] px-[0.75rem]',
                 'cursor-pointer transition-colors duration-200 text-left',
                 activePage === page
-                  ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold'
+                  ? 'bg-foreground/10 text-foreground font-semibold'
                   : 'text-foreground/80 hover:bg-foreground/10 hover:text-foreground',
               ].join(' ')}
             >
@@ -423,7 +443,7 @@ function MoreNavItem({ activePage, setActivePage, showLabel = true, onClose }: M
           'flex h-[3rem] w-full items-center gap-[0.625rem] rounded-[0.75rem]',
           'cursor-pointer transition-colors duration-300 ease-out text-left',
           showLabel ? 'px-[1.5rem]' : 'justify-center px-0',
-          isActive ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold' : 'hover:bg-foreground/10 hover:text-foreground',
+          isActive ? 'bg-foreground/10 text-foreground font-semibold' : 'hover:bg-foreground/10 hover:text-foreground',
         ].join(' ')}
       >
         <span className="relative shrink-0 opacity-80 flex items-center justify-center">
@@ -460,7 +480,7 @@ function MoreNavItem({ activePage, setActivePage, showLabel = true, onClose }: M
               'flex h-[2.375rem] w-full items-center gap-2.5 rounded-[0.5rem] px-3',
               'cursor-pointer text-left transition-colors duration-200',
               activePage === 'Settings'
-                ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold'
+                ? 'bg-foreground/10 text-foreground font-semibold'
                 : 'text-foreground/80 hover:bg-foreground/10 hover:text-foreground',
             ].join(' ')}
           >
@@ -498,14 +518,14 @@ function MoreNavItem({ activePage, setActivePage, showLabel = true, onClose }: M
                     }}
                     className={[
                       'flex h-[2rem] w-full items-center justify-between rounded-[0.375rem] px-2 text-[0.6875rem] font-sans transition-colors',
-                      theme === mode ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold' : 'text-foreground/75 hover:bg-foreground/10 hover:text-foreground',
+                      theme === mode ? 'bg-foreground/10 text-foreground font-semibold' : 'text-foreground/75 hover:bg-foreground/10 hover:text-foreground',
                     ].join(' ')}
                   >
                     <div className="flex items-center gap-2">
                       <Icon size={13} />
                       <span>{label}</span>
                     </div>
-                    {theme === mode && <Check size={12} className="text-[#8C5CFF]" />}
+                    {theme === mode && <Check size={12} className="text-foreground" />}
                   </button>
                 ))}
               </div>
@@ -520,7 +540,7 @@ function MoreNavItem({ activePage, setActivePage, showLabel = true, onClose }: M
               'flex h-[2.375rem] w-full items-center gap-2.5 rounded-[0.5rem] px-3',
               'cursor-pointer text-left transition-colors duration-200',
               activePage === 'Support'
-                ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold'
+                ? 'bg-foreground/10 text-foreground font-semibold'
                 : 'text-foreground/80 hover:bg-foreground/10 hover:text-foreground',
             ].join(' ')}
           >
@@ -535,13 +555,15 @@ function MoreNavItem({ activePage, setActivePage, showLabel = true, onClose }: M
   );
 }
 
+// ─── NavItem component ────────────────────────────────────────────────────────
+
 interface NavItemProps {
   label: string;
   icon: LucideIcon;
   active?: boolean;
   badge?: number;
   onClick?: () => void;
-  /** When false (collapsed tablet) render icon-only with a dot badge */
+  /** When false, hide the text label (used in collapsed tablet mode) */
   showLabel?: boolean;
 }
 
@@ -563,7 +585,7 @@ function NavItem({
         'cursor-pointer transition-colors duration-300 ease-out text-left',
         showLabel ? 'px-[1.5rem]' : 'justify-center px-0',
         active
-          ? 'bg-[#8C5CFF]/15 text-[#8C5CFF] font-semibold'
+          ? 'bg-foreground/10 text-foreground font-semibold'
           : 'hover:bg-foreground/10 hover:text-foreground',
       ].join(' ')}
     >
@@ -1098,8 +1120,11 @@ function MobileSidebar({
   setSellerMode,
   user,
   onLogout,
+  onViewProfile,
+  onViewSettings,
   isFreelancer = false,
   isSeller = false,
+  unreadMessageCount = 0,
 }: MobileSidebarProps) {
   return (
     <>
@@ -1126,17 +1151,31 @@ function MobileSidebar({
         {/* Profile header + seller toggle */}
         <div className="mb-[1.5rem] flex w-full shrink-0 flex-col gap-4 px-2">
           <div className="flex items-center gap-3">
-            <AvatarOnline src={user.avatarSrc} alt={user.name} online />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <p className="truncate font-sans text-[0.875rem] font-medium leading-5 text-foreground">{user.name}</p>
-              <p className="truncate font-sans text-[0.6875rem] leading-4 text-muted">{user.handle}</p>
+            <div
+              className="flex flex-1 items-center gap-3 cursor-pointer hover:opacity-85 transition-opacity rounded-xl p-1 -ml-1 hover:bg-card/40"
+              onClick={() => {
+                onClose();
+                if (onViewProfile) {
+                  onViewProfile();
+                } else {
+                  setActivePage('Profile');
+                }
+              }}
+              title="View Personal Profile"
+            >
+              <AvatarOnline src={user.avatarSrc} alt={user.name} online />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <p className="truncate font-sans text-[0.875rem] font-medium leading-5 text-foreground">{user.name}</p>
+                <p className="truncate font-sans text-[0.6875rem] leading-4 text-muted">{user.handle}</p>
+              </div>
             </div>
+
             {/* Close button */}
             <button
               type="button"
               aria-label="Close navigation menu"
               onClick={onClose}
-              className="ml-auto shrink-0 p-1 text-foreground/50 transition-colors hover:text-foreground"
+              className="ml-auto shrink-0 p-1 text-foreground/50 transition-colors hover:text-foreground cursor-pointer"
             >
               <svg className="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -1150,10 +1189,10 @@ function MobileSidebar({
 
         <SidebarDivider />
 
-        {/* Navigation list */}
+        {/* Navigation list according to mode */}
         <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-[1.5rem] pt-[1.5rem]">
           <nav className="flex w-full flex-col gap-[0.3125rem]">
-            {MOBILE_DRAWER_NAV.map((item) => {
+            {PRIMARY_NAV.map((item) => {
               if (item.label === 'Saved') {
                 const label = sellerMode ? 'Saved Jobs' : 'Saved';
                 const targetPage = sellerMode ? 'Bookmarks:Jobs' : 'Bookmarks';
@@ -1199,7 +1238,7 @@ function MobileSidebar({
                   key={item.label}
                   label={item.label}
                   icon={item.icon}
-                  badge={item.badge}
+                  badge={item.label === 'Messages' ? (unreadMessageCount > 0 ? unreadMessageCount : undefined) : item.badge}
                   active={activePage === item.label}
                   onClick={() => { setActivePage(item.label); onClose(); }}
                 />
@@ -1220,7 +1259,7 @@ function MobileSidebar({
             <button
               type="button"
               onClick={() => { onClose(); onLogout?.(); }}
-              className="flex w-full items-center gap-[0.625rem] rounded-[0.75rem] px-[1.5rem] py-[0.625rem] font-sans text-[0.8125rem] text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
+              className="flex w-full items-center gap-[0.625rem] rounded-[0.75rem] px-[1.5rem] py-[0.625rem] font-sans text-[0.8125rem] text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300 cursor-pointer"
             >
               <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />

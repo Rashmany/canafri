@@ -26,6 +26,8 @@ import { supportRoutes } from './routes/support.js';
 
 import { initSocketServer } from './services/socket.js';
 
+import { startAccountDeletionWorker } from './services/account-deletion-finalizer.js';
+
 // Trigger hot reload
 dotenv.config();
 
@@ -102,6 +104,9 @@ const startServer = async () => {
 
     // Initialize Socket.IO AFTER server is listening
     initSocketServer(server);
+
+    // Initialize background worker for expired account deletions (GDPR compliance)
+    startAccountDeletionWorker();
 
     console.log(`CanaFri Fastify server listening on http://${host}:${port}`);
   } catch (err) {

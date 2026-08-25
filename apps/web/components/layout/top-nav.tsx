@@ -227,9 +227,8 @@ function NotificationRow({
 
   return (
     <div
-      className={`group relative flex items-start gap-3.5 border-b border-border/50 px-4 py-3.5 transition-colors cursor-pointer hover:bg-foreground/[0.03] ${
-        !notification.read ? 'bg-primary/[0.03] dark:bg-primary/[0.05]' : ''
-      }`}
+      className={`group relative flex items-start gap-3.5 border-b border-border/50 px-4 py-3.5 transition-colors cursor-pointer hover:bg-foreground/[0.03] ${!notification.read ? 'bg-primary/[0.03] dark:bg-primary/[0.05]' : ''
+        }`}
       onClick={handleClick}
       role="button"
       tabIndex={0}
@@ -240,9 +239,8 @@ function NotificationRow({
 
       <div className="min-w-0 flex-1 pr-6">
         <div className="flex items-center justify-between gap-2">
-          <p className={`font-sans text-[0.8125rem] leading-snug truncate ${
-            !notification.read ? 'font-semibold text-foreground' : 'font-medium text-foreground/85'
-          }`}>
+          <p className={`font-sans text-[0.8125rem] leading-snug truncate ${!notification.read ? 'font-semibold text-foreground' : 'font-medium text-foreground/85'
+            }`}>
             {notification.title}
           </p>
           <span className="shrink-0 font-sans text-[0.6875rem] text-muted-foreground/70">
@@ -304,7 +302,7 @@ function NotificationPanel({
   // Refresh data every time the panel mounts (opens)
   useEffect(() => {
     refresh();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Infinite scroll: load next page when user scrolls near bottom
@@ -439,7 +437,7 @@ export default function TopNav({
         {/* Centre: logo on Dashboard, page name elsewhere */}
         <div className="flex justify-center">
           {activePage === 'Dashboard' ? (
-            <Logo />
+            <Logo collapsed={true} />
           ) : (
             <p className="truncate font-sans text-base font-medium text-foreground">
               {activePage}

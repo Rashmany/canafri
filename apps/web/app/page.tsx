@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { LogOut, X } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { initSocket, getSocket, disconnectSocket } from '@/lib/socket';
-import { apiFetch, verifyStartupSession, performLogout } from '@/lib/api-client';
+import { apiFetch, verifyStartupSession, performLogout, GUEST_PAGES } from '@/lib/api-client';
+import { NavProvider } from '@/lib/nav-context';
 import { usePlatformConfig } from '@/lib/platform-config-context';
 import { FeatureGate } from '@/components/ui/feature-gate';
 import Sidebar from '@/components/layout/sidebar';
@@ -42,6 +43,8 @@ import SearchPage from '@/components/pages/search-page';
 import AlreadySellerPage from '@/components/pages/already-seller-page';
 import SupportPage from '@/components/pages/support-page';
 import MyTicketsPage from '@/components/pages/my-tickets-page';
+import PrivacyPolicyPage from '@/components/pages/privacy-policy-page';
+import TermsPage from '@/components/pages/terms-page';
 
 /**
  * Root Client SPA Controller.
@@ -52,6 +55,7 @@ export default function Home() {
   const { config } = usePlatformConfig();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activePage, setActivePage] = useState<string>('Login');
+  const [previousPage, setPreviousPage] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [hideBottomNav, setHideBottomNav] = useState(false);
   const [userProfile, setUserProfile] = useState<{
@@ -124,7 +128,7 @@ export default function Home() {
 
       // Fetch live authoritative profile from backend /users/me using centralized apiFetch
       const token = localStorage.getItem('canafri_access_token');
-      if (token) {
+      if (token && !GUEST_PAGES.includes(activePage)) {
         apiFetch('/api/users/me')
           .then(r => r.ok ? r.json() : null)
           .then(data => {
@@ -228,26 +232,47 @@ export default function Home() {
         avatarSrc: '/images/default-avatar.png',
         isSeller: false,
       });
-      setActivePage('Login');
-      toast('Session expired. Please log in again.', 'error');
+      const currentPage = typeof window !== 'undefined' ? localStorage.getItem('canafri_active_page') : activePage;
+      const isGuest = GUEST_PAGES.includes(currentPage || activePage);
+      if (!isGuest) {
+        setActivePage('Login');
+        toast('Session expired. Please log in again.', 'error');
+      }
     };
 
     window.addEventListener('canafri:session-expired', handleExpired);
     return () => {
       window.removeEventListener('canafri:session-expired', handleExpired);
     };
-  }, [toast]);
+  }, [activePage, toast]);
 
   // App Startup authentication verification
   useEffect(() => {
     async function initAuth() {
       if (typeof window === 'undefined') return;
 
-      const saved = localStorage.getItem('canafri_active_page');
-      const token = localStorage.getItem('canafri_access_token');
+      // Handle Google OAuth callback redirect parameters
+      const urlParams = new URLSearchParams(window.location.search);
+      const googleToken = urlParams.get('google_access_token');
+      const authError = urlParams.get('auth_error');
 
-      if (!token && !saved) {
-        setActivePage('MobileSplash');
+      if (authError) {
+        toast(decodeURIComponent(authError), 'error');
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
+      if (googleToken) {
+        localStorage.setItem('canafri_access_token', googleToken);
+        localStorage.setItem('canafri_active_page', 'Dashboard');
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
+      const saved = localStorage.getItem('canafri_active_page') || 'MobileSplash';
+      const token = localStorage.getItem('canafri_access_token');
+      const isSavedGuest = GUEST_PAGES.includes(saved);
+
+      if (!token && isSavedGuest) {
+        setActivePage(saved);
         setIsInitialized(true);
         return;
       }
@@ -267,15 +292,19 @@ export default function Home() {
         // Initialize Socket.IO connection ONLY AFTER startup verification completes with a valid token
         initSocket();
 
-        if (saved && saved !== 'MobileSplash' && saved !== 'MobileSplash2' && saved !== 'Login') {
-          setActivePage(saved);
-        } else {
+        if (googleToken || isSavedGuest) {
           setActivePage('Dashboard');
+        } else {
+          setActivePage(saved);
         }
       } else {
         // Token invalid or expired and could not be refreshed
         disconnectSocket();
-        setActivePage('Login');
+        if (isSavedGuest) {
+          setActivePage(saved);
+        } else {
+          setActivePage('Login');
+        }
       }
 
       setIsInitialized(true);
@@ -306,8 +335,22 @@ export default function Home() {
     toast('Logged out successfully', 'success');
   };
 
-  // Helper helper to wrap active page transitions
+  // Helper to wrap active page transitions with authentication guard for guests
   const handleNavigate = (page: string) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+    const isPublicPage = GUEST_PAGES.includes(page) || page === 'Support';
+
+    if (!token && !isPublicPage) {
+      toast('Please sign in to access this feature', 'info');
+      setActivePage('Login');
+      setHideBottomNav(false);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('canafri_active_page', 'Login');
+      }
+      return;
+    }
+
+    setPreviousPage(activePage);
     setActivePage(page);
     setHideBottomNav(false); // Reset bottom nav state when switching pages
     if (typeof window !== 'undefined') {
@@ -351,9 +394,11 @@ export default function Home() {
           handleNavigate('OtpVerification');
         }}
         onBackClick={() => handleNavigate('MobileSplash')}
+        onNavigate={handleNavigate}
       />
     );
   }
+
 
   if (activePage === 'OtpVerification') {
     return (
@@ -416,7 +461,48 @@ export default function Home() {
     );
   }
 
+  if (activePage === 'Privacy Policy') {
+    return (
+      <NavProvider value={handleNavigate}>
+        <PrivacyPolicyPage
+          onBack={() => {
+            const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+            if (previousPage && previousPage !== 'Privacy Policy' && previousPage !== 'Terms of Service') {
+              handleNavigate(previousPage);
+            } else if (token) {
+              handleNavigate('Dashboard');
+            } else {
+              handleNavigate('Register');
+            }
+          }}
+          onNavigate={handleNavigate}
+        />
+      </NavProvider>
+    );
+  }
+
+  if (activePage === 'Terms of Service') {
+    return (
+      <NavProvider value={handleNavigate}>
+        <TermsPage
+          onBack={() => {
+            const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+            if (previousPage && previousPage !== 'Privacy Policy' && previousPage !== 'Terms of Service') {
+              handleNavigate(previousPage);
+            } else if (token) {
+              handleNavigate('Dashboard');
+            } else {
+              handleNavigate('Register');
+            }
+          }}
+          onNavigate={handleNavigate}
+        />
+      </NavProvider>
+    );
+  }
+
   return (
+    <NavProvider value={handleNavigate}>
     <div className="flex h-screen w-screen overflow-hidden bg-background">
       {/* ── Sidebar (Desktop: static, Tablet: rail, Mobile: drawer) ── */}
       <Sidebar
@@ -445,23 +531,33 @@ export default function Home() {
 
       {/* ── Main Layout Column ── */}
       <div className="flex h-full min-w-0 flex-1 flex-col">
-        {/* Top Navbar */}
-        <TopNav
-          user={userProfile}
-          activePage={activePage}
-          onMenuOpen={() => setMobileSidebarOpen(true)}
-          onSearchNavigate={handleSearchNavigate}
-          onNavigate={handleNavigate}
-        />
+        {/* Top Navbar - hidden on Profile, and on mobile for Search and active Messages chat */}
+        {activePage !== 'Profile' && (
+          <div
+            className={
+              activePage === 'Search' || (activePage === 'Messages' && hideBottomNav)
+                ? 'hidden md:block'
+                : ''
+            }
+          >
+            <TopNav
+              user={userProfile}
+              activePage={activePage}
+              onMenuOpen={() => setMobileSidebarOpen(true)}
+              onSearchNavigate={handleSearchNavigate}
+              onNavigate={handleNavigate}
+            />
+          </div>
+        )}
 
         {/* Main Content Area */}
         <main className="flex-1 min-h-0 overflow-y-auto pb-16 md:pb-0 flex flex-col">
           {activePage === 'Analysis' ? (
             <AnalysisPage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Settings' ? (
-            <SettingsPage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} />
+            <SettingsPage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} onNavigate={handleNavigate} />
           ) : activePage === 'Profile' ? (
-            <ProfilePage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} onOpenChat={handleOpenChatWithUser} />
+            <ProfilePage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} onOpenChat={handleOpenChatWithUser} onNavigate={handleNavigate} />
           ) : activePage === 'Search' ? (
             <SearchPage query={searchQuery} onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Wallet' ? (
@@ -648,5 +744,6 @@ export default function Home() {
         </div>
       )}
     </div>
+    </NavProvider>
   );
 }

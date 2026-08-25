@@ -17,6 +17,7 @@ model User {
   phoneVerified       Boolean     @default(false)
   phonePrefix         String?
   passwordHash        String?
+  passwordHistory     String[]    @default([])  // All previous bcrypt hashes — zero-tolerance reuse
   email               String?     @unique
   emailVerified       Boolean     @default(false)
   walletAddress       String?     @unique
@@ -52,6 +53,15 @@ model User {
   lastViolationAt     DateTime?
   // needsReview: replaces auto-suspend. Set when riskScore >= 81.
   needsReview         Boolean     @default(false)
+
+  // Account deletion tracking
+  deletionRequestedAt   DateTime?
+  deletionScheduledFor DateTime?
+  deletionReason        String?
+
+  // Identity edit cooldown tracking
+  displayNameLastEditedAt DateTime?  // can change displayName once every 60 days
+  usernameLastEditedAt    DateTime?  // can change username once every 30 days
 
   subscription        Subscription?
   creatorStake        CreatorStake?
@@ -92,6 +102,8 @@ enum UserStatus {
   SUSPENDED
   BANNED
   REVOKED
+  PENDING_DELETION
+  DELETED
 }
 
 enum UserRole {

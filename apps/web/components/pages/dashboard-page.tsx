@@ -29,6 +29,8 @@ import {
   ChevronRight,
   MoreVertical,
   HelpCircle,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 
@@ -357,9 +359,6 @@ export function PostCard({
           </div>
 
           <div className="flex flex-wrap gap-1.5 items-center">
-            <span className="rounded-full bg-[#8C5CFF]/15 px-2.5 py-0.5 font-sans text-[10px] font-semibold text-[#AC8EF3]">
-              {post.stakeReward || '5 CC Read-Stake Required'}
-            </span>
             {post.topic && (
               <span className="rounded-full bg-[#8C5CFF]/10 px-2.5 py-0.5 font-sans text-[10px] font-semibold text-[#AC8EF3]">
                 #{post.topic}
@@ -380,11 +379,6 @@ export function PostCard({
                   : post.contentStatus === 'REJECTED'
                   ? 'Rejected'
                   : 'Live'}
-              </span>
-            )}
-            {post.publication && (
-              <span className="rounded-full bg-foreground/5 border border-border px-2 py-0.5 font-sans text-[9px] font-semibold text-foreground/75 uppercase tracking-wide">
-                {post.publication}
               </span>
             )}
           </div>
@@ -446,10 +440,6 @@ function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
   // Customization States
   const [postImages, setPostImages] = useState<string[]>([]);
   const [topic, setTopic] = useState('');
-  const [publication, setPublication] = useState('');
-  
-  // Selection overlays
-  const [showPubSelector, setShowPubSelector] = useState(false);
   const [showTopicSelector, setShowTopicSelector] = useState(false);
 
   const [charCount, setCharCount] = useState(0);
@@ -540,7 +530,7 @@ function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
     }
     if (!finalHtml.trim()) return;
     if (isOverLimit) return;
-    onPublish(finalHtml, visibility, postImages[0] || undefined, topic || undefined, publication || undefined);
+    onPublish(finalHtml, visibility, postImages[0] || undefined, topic || undefined);
     onClose();
   };
 
@@ -758,30 +748,6 @@ function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
         >
           
           {/* Selectors Inline overlays */}
-          {showPubSelector && (
-            <div className="absolute inset-0 z-30 bg-foreground/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
-              <div className="bg-background border border-border rounded-xl p-5 w-full max-w-[280px] flex flex-col gap-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Set Publication</span>
-                  <button type="button" onClick={() => setShowPubSelector(false)} className="text-muted hover:text-foreground"><X size={14} /></button>
-                </div>
-                <input
-                  type="text"
-                  placeholder="e.g. Canton Chronicles"
-                  value={publication}
-                  onChange={(e) => setPublication(e.target.value)}
-                  className="w-full bg-card border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary placeholder:text-muted/50"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPubSelector(false)}
-                  className="w-full py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary-hover transition"
-                >
-                  Done
-                </button>
-              </div>
-            </div>
-          )}
 
           {showTopicSelector && (
             <div className="absolute inset-0 z-30 bg-foreground/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
@@ -842,15 +808,13 @@ function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
                   handle: '@joshtrek',
                   date: 'Just now',
                   avatarSrc: '/images/default-avatar.png',
-                  category: 'premium',
-                  stakeReward: '5 CC Read-Stake Required',
-                  likesCount: 0,
-                  commentsCount: 0,
                   text: draftHtml || '<i>No content drafted yet.</i>',
                   fullText: draftHtml || '',
+                  category: 'premium',
+                  likesCount: 0,
+                  commentsCount: 0,
                   image: postImages[0] ?? undefined,
                   topic: topic || undefined,
-                  publication: publication || undefined,
                 }}
                 isSelected={false}
                 onClick={() => {}}
@@ -869,23 +833,6 @@ function PublishComposer({ onClose, onPublish }: PublishComposerProps) {
 
             {/* Customization Options Row */}
             <div className="w-full flex flex-col pt-4 border-t border-border gap-1">
-              
-              {/* Publication selector toggle */}
-              <button
-                type="button"
-                onClick={() => setShowPubSelector(true)}
-                className="flex items-center justify-between py-3 hover:bg-foreground/5 transition rounded-lg px-2 text-left cursor-pointer"
-              >
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-medium text-foreground">Publication</span>
-                  <span className="text-[10px] text-muted">
-                    {publication || 'No publication yet'}
-                  </span>
-                </div>
-                <ChevronRight size={14} className="text-muted" />
-              </button>
-
-              <div className="h-px bg-border w-full" />
 
               {/* Topic selector toggle */}
               <button
@@ -1071,6 +1018,8 @@ export interface PostDetailProps {
   comments: CommentItem[];
   onAddComment: (text: string) => void;
   currentUser?: { id: string; displayName: string; username: string; avatarUrl?: string } | null;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
 export function PostDetail({
@@ -1086,6 +1035,8 @@ export function PostDetail({
   comments,
   onAddComment,
   currentUser,
+  isExpanded = false,
+  onToggleExpand,
 }: PostDetailProps) {
   const [staking, setStaking] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -1168,22 +1119,56 @@ export function PostDetail({
   const postComments = comments.filter((c) => c.postId === post.id);
 
   return (
-    <div className="flex flex-col flex-1 bg-background h-full min-h-0 overflow-hidden relative">
+    <div
+      key={isExpanded ? 'expanded' : 'split'}
+      className={[
+        'flex flex-col flex-1 bg-background h-full min-h-0 overflow-hidden relative',
+        isExpanded ? 'animate-reader-expand' : '',
+      ].join(' ')}
+    >
       {/* Scrollable article + comments area */}
       <div className="flex-1 overflow-y-auto no-scrollbar py-4 lg:py-6 px-0 pb-28 flex flex-col items-center gap-6">
 
-        {/* Top back button row */}
+        {/* Top back & expand button row */}
         <div className="flex items-center justify-between w-full max-w-2xl gap-4 px-4 lg:px-6">
+          {/* Mobile Back Button (< md) */}
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-2 text-foreground/80 hover:text-foreground transition-colors duration-300 ease-out"
+            className="flex items-center gap-2 text-foreground/80 hover:text-foreground transition-colors duration-300 ease-out md:hidden cursor-pointer"
           >
             <div className="flex size-8 items-center justify-center rounded-full bg-card hover:bg-foreground/5 transition-colors">
               <ArrowLeft size={18} />
             </div>
             <span className="font-sans text-[13px] font-semibold">Back to Feed</span>
           </button>
+
+          {/* Desktop/Tablet Expand / Collapse Button (md+) */}
+          {onToggleExpand ? (
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              className="hidden md:flex items-center gap-2 text-foreground/80 hover:text-foreground transition-all duration-200 ease-out cursor-pointer group active:scale-95"
+              title={isExpanded ? 'Collapse reader to split view' : 'Expand reader to full width'}
+            >
+              <div className={[
+                'flex size-8 items-center justify-center rounded-full border border-border/50 shadow-sm',
+                'transition-all duration-300 ease-in-out',
+                'group-hover:bg-[#8C5CFF]/15 group-hover:text-[#AC8EF3] group-hover:border-[#8C5CFF]/30 group-hover:shadow-[0_0_12px_rgba(140,92,255,0.2)]',
+                isExpanded ? 'bg-[#8C5CFF]/10 text-[#AC8EF3] border-[#8C5CFF]/25' : 'bg-card text-foreground/70',
+              ].join(' ')}>
+                <span className={`transition-transform duration-300 ease-in-out flex items-center justify-center ${isExpanded ? 'rotate-180 scale-90' : 'rotate-0 scale-100'}`}>
+                  {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                </span>
+              </div>
+              <span className="font-sans text-[13px] font-semibold transition-all duration-200">
+                {isExpanded ? 'Collapse View' : 'Expand Article'}
+              </span>
+            </button>
+          ) : (
+            <div className="hidden md:block" />
+          )}
+
           <span className="font-sans text-[11px] text-muted uppercase tracking-wider font-semibold">
             Confidential Reader
           </span>
@@ -1208,19 +1193,9 @@ export function PostDetail({
                 </div>
               </div>
               <div className="flex flex-wrap gap-1.5 items-center mt-1">
-                {isPremium && (
-                  <span className="rounded-full bg-[#8C5CFF]/15 px-3 py-0.5 font-sans text-[11px] font-semibold text-[#AC8EF3]">
-                    {post.stakeReward || 'Premium Verified Content'}
-                  </span>
-                )}
                 {post.topic && (
                   <span className="rounded-full bg-[#8C5CFF]/10 px-2.5 py-0.5 font-sans text-[10px] font-semibold text-[#AC8EF3]">
                     #{post.topic}
-                  </span>
-                )}
-                {post.publication && (
-                  <span className="rounded-full bg-foreground/5 border border-border px-2 py-0.5 font-sans text-[9px] font-semibold text-foreground/75 uppercase tracking-wide">
-                    {post.publication}
                   </span>
                 )}
               </div>
@@ -1534,6 +1509,7 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
   const [apiPosts, setApiPosts] = useState<Post[]>([]);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [mobileView, setMobileView] = useState<'feed' | 'detail'>('feed');
+  const [isReaderExpanded, setIsReaderExpanded] = useState(false);
   const [publishComposerOpen, setPublishComposerOpen] = useState(false);
   const [publishedPosts, setPublishedPosts] = useState<Post[]>([]);
 
@@ -1739,6 +1715,7 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
 
   const handleBack = () => {
     setMobileView('feed');
+    setIsReaderExpanded(false);
   };
 
   const handleAddComment = async (text: string) => {
@@ -1818,151 +1795,174 @@ export default function DashboardPage({ activePage = 'Dashboard', onNavigate }: 
         {/* Left Panel: Feed List */}
         <div
           className={[
-            'flex flex-col flex-1 md:flex-none md:w-[420px] lg:w-[480px] h-auto overflow-y-auto no-scrollbar bg-background relative border-r border-border/40',
+            // Mobile: show/hide by mobileView state (no animation needed)
             mobileView === 'detail' ? 'hidden md:flex' : 'flex',
+            // Desktop: animated width + opacity collapse when reader is expanded
+            'flex-col md:flex-none h-auto overflow-hidden bg-background relative',
+            'transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[max-width,opacity,transform]',
+            isReaderExpanded
+              ? 'md:max-w-0 md:opacity-0 md:pointer-events-none md:-translate-x-8 md:border-r-0'
+              : 'md:max-w-[480px] md:opacity-100 md:translate-x-0 md:border-r md:border-border/40',
+            // Explicit base widths (only matter when NOT collapsed)
+            'flex-1 md:w-[420px] lg:w-[480px]',
           ].join(' ')}
         >
-          {/* Tab Navigation (Only Free & Premium, dynamic title when Bookmarks or Favorites is active) */}
-          <div className="border-b border-border bg-background shrink-0">
-            {activeTab === 'bookmarks' ? (
-              <div className="flex h-14 items-center justify-between px-5">
-                <div className="flex flex-col gap-0.5">
-                  <h2 className="font-sans text-[13px] font-bold text-foreground">Saved</h2>
-                  <span className="font-sans text-[10px] text-muted">Your saved articles & research</span>
-                </div>
-              </div>
-            ) : activeTab === 'favorites' ? (
-              <div className="flex h-14 items-center justify-between px-5">
-                <div className="flex flex-col gap-0.5">
-                  <h2 className="font-sans text-[13px] font-bold text-foreground">Favorite Creators</h2>
-                  <span className="font-sans text-[10px] text-muted">Latest posts from creators you favor</span>
-                </div>
-              </div>
-            ) : (
-              <div className="flex h-14 items-center justify-between px-5">
-                <div className="flex flex-col gap-0.5">
-                  <h2 className="flex items-center gap-1.5 font-sans text-[13px] font-bold text-foreground">
-                    <Sparkle size={14} className="text-[#8C5CFF]" fill="currentColor" />
-                    Premium Content
-                  </h2>
-                  <span className="font-sans text-[10px] text-muted">Exclusive research and insights unlocked via CC read-stakes</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ── Twitter-style Quick Compose Bar ── */}
+          {/* Inner Content Wrapper — fixed width prevents text squishing/wrapping during animation */}
           <div
-            className="flex items-center gap-3 px-4 py-3 border-b border-border cursor-text hover:bg-card/30 transition-colors shrink-0"
-            onClick={() => setPublishComposerOpen(true)}
+            className={[
+              'flex flex-col w-full md:w-[420px] lg:w-[480px] h-full shrink-0',
+              'transition-opacity duration-300 ease-in-out',
+              isReaderExpanded ? 'opacity-0' : 'opacity-100',
+            ].join(' ')}
           >
-            <div className="size-9 rounded-full bg-[#8C5CFF]/15 border border-[#8C5CFF]/30 flex items-center justify-center font-bold text-xs text-[#AC8EF3] shrink-0 overflow-hidden">
-              {currentUser?.avatarUrl ? (
-                <img src={currentUser.avatarUrl} alt={currentUser.displayName} className="w-full h-full object-cover" />
+            {/* Tab Navigation (Only Free & Premium, dynamic title when Bookmarks or Favorites is active) */}
+            <div className="border-b border-border bg-background shrink-0">
+              {activeTab === 'bookmarks' ? (
+                <div className="flex h-14 items-center justify-between px-5">
+                  <div className="flex flex-col gap-0.5">
+                    <h2 className="font-sans text-[13px] font-bold text-foreground">Saved</h2>
+                    <span className="font-sans text-[10px] text-muted">Your saved articles & research</span>
+                  </div>
+                </div>
+              ) : activeTab === 'favorites' ? (
+                <div className="flex h-14 items-center justify-between px-5">
+                  <div className="flex flex-col gap-0.5">
+                    <h2 className="font-sans text-[13px] font-bold text-foreground">Favorite Creators</h2>
+                    <span className="font-sans text-[10px] text-muted">Latest posts from creators you favor</span>
+                  </div>
+                </div>
               ) : (
-                (currentUser?.displayName || currentUser?.username || 'U').charAt(0).toUpperCase()
+                <div className="flex h-14 items-center justify-between px-5">
+                  <div className="flex flex-col gap-0.5">
+                    <h2 className="flex items-center gap-1.5 font-sans text-[13px] font-bold text-foreground">
+                      <Sparkle size={14} className="text-[#8C5CFF]" fill="currentColor" />
+                      Premium Content
+                    </h2>
+                    <span className="font-sans text-[10px] text-muted">Exclusive research and insights unlocked via CC read-stakes</span>
+                  </div>
+                </div>
               )}
             </div>
-            <div className="flex-1 text-left">
-            <span className="font-sans text-[13px] text-muted/60 select-none">
-                Share your expertise…
-              </span>
+
+            {/* ── Twitter-style Quick Compose Bar ── */}
+            <div
+              className="flex items-center gap-3 px-4 py-3 border-b border-border cursor-text hover:bg-card/30 transition-colors shrink-0"
+              onClick={() => setPublishComposerOpen(true)}
+            >
+              <div className="size-9 rounded-full bg-[#8C5CFF]/15 border border-[#8C5CFF]/30 flex items-center justify-center font-bold text-xs text-[#AC8EF3] shrink-0 overflow-hidden">
+                {currentUser?.avatarUrl ? (
+                  <img src={currentUser.avatarUrl} alt={currentUser.displayName} className="w-full h-full object-cover" />
+                ) : (
+                  (currentUser?.displayName || currentUser?.username || 'U').charAt(0).toUpperCase()
+                )}
+              </div>
+              <div className="flex-1 text-left">
+                <span className="font-sans text-[13px] text-muted/60 select-none">
+                  Share your expertise…
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setPublishComposerOpen(true); }}
+                className="shrink-0 size-8 rounded-full bg-[#8C5CFF] hover:bg-[#AC8EF3] flex items-center justify-center text-white transition-all active:scale-90 cursor-pointer shadow-lg shadow-[#8C5CFF]/20"
+                title="New post"
+              >
+                <PenSquare size={14} />
+              </button>
             </div>
+
+            {/* Posts Feed Scroll Area */}
+            <div className="flex flex-col overflow-y-auto no-scrollbar flex-1 pb-20 md:pb-4">
+              {filteredPosts.length > 0 ? (
+                filteredPosts.map((post) => (
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    isSelected={displayPost?.id === post.id}
+                    onClick={() => handlePostClick(post)}
+                    liked={likedPostIds.includes(post.id as any)}
+                    bookmarked={bookmarkedPostIds.includes(post.id as any)}
+                    isFavoriteCreator={favoriteCreatorHandles.includes(post.handle)}
+                    onLikeToggle={() => {
+                      if (likedPostIds.includes(post.id as any)) {
+                        setLikedPostIds(likedPostIds.filter((id) => id !== post.id));
+                      } else {
+                        setLikedPostIds([...likedPostIds, post.id]);
+                      }
+                    }}
+                    onBookmarkToggle={() => {
+                      if (bookmarkedPostIds.includes(post.id as any)) {
+                        setBookmarkedPostIds(bookmarkedPostIds.filter((id) => id !== post.id));
+                      } else {
+                        setBookmarkedPostIds([...bookmarkedPostIds, post.id]);
+                      }
+                    }}
+                    onFavoriteCreatorToggle={() => {
+                      if (favoriteCreatorHandles.includes(post.handle)) {
+                        setFavoriteCreatorHandles(favoriteCreatorHandles.filter((h) => h !== post.handle));
+                      } else {
+                        setFavoriteCreatorHandles([...favoriteCreatorHandles, post.handle]);
+                      }
+                    }}
+                    onMuteUser={() => {
+                      setMutedUserHandles([...mutedUserHandles, post.handle]);
+                    }}
+                    onBlockUser={() => {
+                      setBlockedUserHandles([...blockedUserHandles, post.handle]);
+                    }}
+                    onDislikePost={() => {
+                      setDislikedPostIds([...dislikedPostIds, post.id]);
+                    }}
+                    onShareOpen={() => setSharingPost(post)}
+                    onCommentsOpen={() => {
+                      const commentsEl = document.getElementById('replies-section');
+                      commentsEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
+                  />
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center flex-1 p-8 text-center gap-2">
+                  <p className="font-sans text-xs font-semibold text-muted">
+                    {activeTab === 'bookmarks'
+                      ? 'No bookmarked articles yet.'
+                      : activeTab === 'favorites'
+                      ? 'No articles from favorite creators yet.'
+                      : 'No articles in this feed.'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* ── Floating Action Button (FAB) — Figma: purple circle with compose icon ── */}
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); setPublishComposerOpen(true); }}
-              className="shrink-0 size-8 rounded-full bg-[#8C5CFF] hover:bg-[#AC8EF3] flex items-center justify-center text-white transition-all active:scale-90 cursor-pointer shadow-lg shadow-[#8C5CFF]/20"
-              title="New post"
+              onClick={() => setPublishComposerOpen(true)}
+              className="fixed bottom-20 right-5 z-30 size-[52px] rounded-full bg-[#8C5CFF] hover:bg-[#AC8EF3] flex items-center justify-center text-white shadow-2xl shadow-[#8C5CFF]/40 transition-all duration-200 active:scale-90 hover:scale-105 md:bottom-20 md:right-8 md:z-50 cursor-pointer"
+              title="Publish new content"
+              aria-label="Publish new post"
             >
-              <PenSquare size={14} />
+              <PenSquare size={22} strokeWidth={2} />
             </button>
           </div>
-
-          {/* Posts Feed Scroll Area */}
-          <div className="flex flex-col overflow-y-auto no-scrollbar flex-1 pb-20 md:pb-4">
-            {filteredPosts.length > 0 ? (
-              filteredPosts.map((post) => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  isSelected={displayPost?.id === post.id}
-                  onClick={() => handlePostClick(post)}
-                  liked={likedPostIds.includes(post.id as any)}
-                  bookmarked={bookmarkedPostIds.includes(post.id as any)}
-                  isFavoriteCreator={favoriteCreatorHandles.includes(post.handle)}
-                  onLikeToggle={() => {
-                    if (likedPostIds.includes(post.id as any)) {
-                      setLikedPostIds(likedPostIds.filter((id) => id !== post.id));
-                    } else {
-                      setLikedPostIds([...likedPostIds, post.id]);
-                    }
-                  }}
-                  onBookmarkToggle={() => {
-                    if (bookmarkedPostIds.includes(post.id as any)) {
-                      setBookmarkedPostIds(bookmarkedPostIds.filter((id) => id !== post.id));
-                    } else {
-                      setBookmarkedPostIds([...bookmarkedPostIds, post.id]);
-                    }
-                  }}
-                  onFavoriteCreatorToggle={() => {
-                    if (favoriteCreatorHandles.includes(post.handle)) {
-                      setFavoriteCreatorHandles(favoriteCreatorHandles.filter((h) => h !== post.handle));
-                    } else {
-                      setFavoriteCreatorHandles([...favoriteCreatorHandles, post.handle]);
-                    }
-                  }}
-                  onMuteUser={() => {
-                    setMutedUserHandles([...mutedUserHandles, post.handle]);
-                  }}
-                  onBlockUser={() => {
-                    setBlockedUserHandles([...blockedUserHandles, post.handle]);
-                  }}
-                  onDislikePost={() => {
-                    setDislikedPostIds([...dislikedPostIds, post.id]);
-                  }}
-                  onShareOpen={() => setSharingPost(post)}
-                  onCommentsOpen={() => {
-                    const commentsEl = document.getElementById('replies-section');
-                    commentsEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }}
-                />
-              ))
-            ) : (
-              <div className="flex flex-col items-center justify-center flex-1 p-8 text-center gap-2">
-                <p className="font-sans text-xs font-semibold text-muted">
-                  {activeTab === 'bookmarks'
-                    ? 'No bookmarked articles yet.'
-                    : activeTab === 'favorites'
-                    ? 'No articles from favorite creators yet.'
-                    : 'No articles in this feed.'}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* ── Floating Action Button (FAB) — Figma: purple circle with compose icon ── */}
-          <button
-            type="button"
-            onClick={() => setPublishComposerOpen(true)}
-            className="fixed bottom-20 right-5 z-30 size-[52px] rounded-full bg-[#8C5CFF] hover:bg-[#AC8EF3] flex items-center justify-center text-white shadow-2xl shadow-[#8C5CFF]/40 transition-all duration-200 active:scale-90 hover:scale-105 md:bottom-20 md:right-8 md:z-50 cursor-pointer"
-            title="Publish new content"
-            aria-label="Publish new post"
-          >
-            <PenSquare size={22} strokeWidth={2} />
-          </button>
         </div>
 
         {/* Right Panel: Detail Article Reader */}
         <div
           className={[
-            'flex flex-col flex-1 min-w-0 overflow-hidden bg-background relative',
+            'flex flex-col min-w-0 overflow-hidden bg-background relative',
+            'transition-[flex,opacity] duration-500 ease-in-out will-change-[flex,opacity]',
+            // On mobile: mirror mobileView toggle
             mobileView === 'feed' ? 'hidden md:flex' : 'flex',
+            // On desktop: always flex; grows naturally as left panel collapses
+            'flex-1',
           ].join(' ')}
         >
           {displayPost ? (
             <PostDetail
               post={displayPost}
               onBack={handleBack}
+              isExpanded={isReaderExpanded}
+              onToggleExpand={() => setIsReaderExpanded(!isReaderExpanded)}
               isUnlocked={unlockedPremiumIds.includes(displayPost.id as any)}
               onUnlock={() => setUnlockedPremiumIds([...unlockedPremiumIds, displayPost.id])}
               liked={likedPostIds.includes(displayPost.id as any)}

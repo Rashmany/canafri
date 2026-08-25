@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type AvatarSize = 'sm' | 'md' | 'lg';
@@ -29,6 +31,17 @@ const SIZE: Record<AvatarSize, { wrapper: string; dot: string; dotBorder: string
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+function getInitials(name: string): string {
+  if (!name) return 'U';
+  const clean = name.replace(/^@/, '').trim();
+  if (!clean) return 'U';
+  const parts = clean.split(/[\s._-]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return clean.slice(0, 2).toUpperCase();
+}
+
 /**
  * Circular avatar with an optional green online-presence indicator dot.
  *
@@ -45,6 +58,7 @@ export function AvatarOnline({
 }: AvatarOnlineProps) {
   const s = SIZE[size];
   const isInteractive = Boolean(onClick);
+  const [imageError, setImageError] = useState(false);
 
   const wrapperClass = [
     'relative shrink-0 rounded-full overflow-visible',
@@ -57,22 +71,31 @@ export function AvatarOnline({
     .filter(Boolean)
     .join(' ');
 
+  const hasValidCustomImage = Boolean(
+    src &&
+      src.trim() !== '' &&
+      !src.includes('default-avatar') &&
+      !imageError
+  );
+
+  const initialsText = getInitials(alt);
+
   const inner = (
     <>
-      {/* Avatar placeholder — user silhouette */}
-      <span className={`block relative rounded-full overflow-hidden bg-[#E8E4F7] dark:bg-[#1E1830] ${s.wrapper}`}>
-        <svg
-          viewBox="0 0 40 40"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="w-full h-full"
-          aria-label={alt}
-        >
-          {/* Head */}
-          <circle cx="20" cy="15" r="7" fill="#8C5CFF" fillOpacity="0.55" />
-          {/* Body */}
-          <ellipse cx="20" cy="34" rx="13" ry="10" fill="#8C5CFF" fillOpacity="0.35" />
-        </svg>
+      {/* Avatar image or text initials fallback */}
+      <span className={`block relative rounded-full overflow-hidden bg-gradient-to-br from-[#8C5CFF]/25 to-[#8C5CFF]/10 ${s.wrapper}`}>
+        {hasValidCustomImage ? (
+          <img
+            src={src}
+            alt={alt}
+            onError={() => setImageError(true)}
+            className="w-full h-full object-cover object-center"
+          />
+        ) : (
+          <span className="flex size-full items-center justify-center font-sans font-bold text-[#AC8EF3] uppercase tracking-wider select-none text-[0.7rem] sm:text-[0.75rem]">
+            {initialsText}
+          </span>
+        )}
       </span>
 
       {/* Online presence dot */}

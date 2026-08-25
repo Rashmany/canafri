@@ -57,4 +57,11 @@ export class HashService {
   static generateToken(bytes = 32): string {
     return crypto.randomBytes(bytes).toString('hex');
   }
+
+  // ── Phone hashing ──────────────────────────────────────────────────────────
+
+  static hashPhone(phone: string): string {
+    const clean = phone.replace(/[\s-()]/g, '');
+    return crypto.createHash('sha256').update(clean).digest('hex');
+  }
 }

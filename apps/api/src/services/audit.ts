@@ -23,6 +23,7 @@ interface AuditParams {
   target?: string;
   before?: object;
   after?: object;
+  metadata?: object;
   ipAddress?: string;
   device?: string;
 }
@@ -37,7 +38,7 @@ export class AuditService {
           action:    params.action,
           target:    params.target    ?? undefined,
           before:    params.before    as any ?? undefined,
-          after:     params.after     as any ?? undefined,
+          after:     params.after     as any ?? (params.metadata as any) ?? undefined,
           ipAddress: params.ipAddress ?? undefined,
           device:    params.device    ?? undefined,
         },
