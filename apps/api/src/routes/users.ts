@@ -7,6 +7,7 @@ import { riskRestrictionGuard } from '../middleware/riskCheck.js';
 import { CantonService } from '../services/canton.js';
 import { AuditService } from '../services/audit.js';
 import { HashService } from '../lib/hash.js';
+import { UserAnalyticsService } from '../services/user-analytics.service.js';
 
 const UpdateProfileSchema = z.object({
   displayName: z.string().min(2).optional(),
@@ -128,6 +129,34 @@ export async function userRoutes(fastify: FastifyInstance) {
         success: true,
         user,
         sellerAppData,
+      });
+    } catch (error: any) {
+      return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
+    }
+  });
+
+  // GET /users/me/analytics - Retrieve comprehensive real analytics for the authenticated user
+  fastify.get('/me/analytics', { preValidation: [authGuard] }, async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId } = request.user;
+      const analytics = await UserAnalyticsService.getUserAnalytics(userId);
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
+          avatarUrl: true,
+          isSeller: true,
+          isCreator: true,
+          sellerModeOn: true,
+        },
+      });
+
+      return reply.send({
+        success: true,
+        analytics,
+        user,
       });
     } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });

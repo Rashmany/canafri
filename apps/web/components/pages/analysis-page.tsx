@@ -31,6 +31,7 @@ import StakeModal from '@/components/ui/stake-modal';
 import Footer from '@/components/layout/footer';
 import SubscribeModal from '@/components/ui/subscribe-modal';
 import { cn } from '@/lib/utils';
+import { apiFetch } from '@/lib/api-client';
 
 // ─── Data Interface (GET /analytics/me schema representation) ──────────────────
 // Note: This matches the structure that will be fetched from the API.
@@ -310,10 +311,14 @@ function SectionHeader({ title, onBack }: { title: string; onBack: () => void })
 interface AnalysisPageProps {
   sellerMode?: boolean;
   onBack?: () => void;
+  onNavigate?: (page: string) => void;
+  user?: any;
 }
 
-export default function AnalysisPage({ sellerMode = false, onBack }: AnalysisPageProps) {
+export default function AnalysisPage({ sellerMode = false, onBack, onNavigate, user }: AnalysisPageProps) {
   const [loading, setLoading] = useState(true);
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData>(MOCK_ANALYTICS_DATA);
+  const [currentUser, setCurrentUser] = useState<any>(user || null);
   const [activeDetailView, setActiveDetailView] = useState<string | null>(null);
   const [isCreatorView, setIsCreatorView] = useState(true);
 
@@ -321,16 +326,46 @@ export default function AnalysisPage({ sellerMode = false, onBack }: AnalysisPag
   const [isStakeModalOpen, setIsStakeModalOpen] = useState(false);
   const [isSubscribeModalOpen, setIsSubscribeModalOpen] = useState(false);
 
-  // Simulate loading state (TanStack Query simulation)
+  // Fetch real analytics data from /api/users/me/analytics
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 800);
-    return () => clearTimeout(t);
+    let isMounted = true;
+
+    async function fetchAnalytics() {
+      try {
+        const res = await apiFetch('/api/users/me/analytics');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.analytics && isMounted) {
+            setAnalyticsData(json.analytics);
+            if (json.user) {
+              setCurrentUser(json.user);
+              if (json.user.isCreator !== undefined) {
+                setIsCreatorView(json.user.isCreator);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load user analytics:', err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchAnalytics();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (loading) return <AnalysisPageSkeleton />;
 
-  const buyerData = MOCK_ANALYTICS_DATA.buyer;
-  const sellerData = MOCK_ANALYTICS_DATA.seller;
+  const buyerData = analyticsData.buyer;
+  const sellerData = analyticsData.seller;
+  const userHandle = currentUser?.username ? `@${currentUser.username}` : (currentUser?.displayName || 'User');
 
   return (
     <div className="flex min-h-full w-full flex-col bg-background overflow-y-auto no-scrollbar">
@@ -365,7 +400,7 @@ export default function AnalysisPage({ sellerMode = false, onBack }: AnalysisPag
                     Analysis
                   </h1>
                   <p className="font-sans text-[13px] text-muted mt-1">
-                    Hello! @Joshtrek 
+                    Hello! {userHandle}{' '}
                     <span className="ml-2 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-primary/10 text-primary">
                       {sellerMode ? 'Freelancer Mode' : 'Buyer Mode'}
                     </span>
@@ -780,7 +815,7 @@ export default function AnalysisPage({ sellerMode = false, onBack }: AnalysisPag
 
       </div>
       <div className="hidden md:block">
-        <Footer />
+        <Footer onNavigate={onNavigate} />
       </div>
     </div>
   );
