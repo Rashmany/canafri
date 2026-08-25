@@ -5,6 +5,7 @@ import { LogOut, X } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { initSocket, getSocket, disconnectSocket } from '@/lib/socket';
 import { apiFetch, verifyStartupSession, performLogout, GUEST_PAGES } from '@/lib/api-client';
+import { NavProvider } from '@/lib/nav-context';
 import { usePlatformConfig } from '@/lib/platform-config-context';
 import { FeatureGate } from '@/components/ui/feature-gate';
 import Sidebar from '@/components/layout/sidebar';
@@ -42,6 +43,8 @@ import SearchPage from '@/components/pages/search-page';
 import AlreadySellerPage from '@/components/pages/already-seller-page';
 import SupportPage from '@/components/pages/support-page';
 import MyTicketsPage from '@/components/pages/my-tickets-page';
+import PrivacyPolicyPage from '@/components/pages/privacy-policy-page';
+import TermsPage from '@/components/pages/terms-page';
 
 /**
  * Root Client SPA Controller.
@@ -52,6 +55,7 @@ export default function Home() {
   const { config } = usePlatformConfig();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activePage, setActivePage] = useState<string>('Login');
+  const [previousPage, setPreviousPage] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [hideBottomNav, setHideBottomNav] = useState(false);
   const [userProfile, setUserProfile] = useState<{
@@ -331,8 +335,22 @@ export default function Home() {
     toast('Logged out successfully', 'success');
   };
 
-  // Helper helper to wrap active page transitions
+  // Helper to wrap active page transitions with authentication guard for guests
   const handleNavigate = (page: string) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+    const isPublicPage = GUEST_PAGES.includes(page) || page === 'Support';
+
+    if (!token && !isPublicPage) {
+      toast('Please sign in to access this feature', 'info');
+      setActivePage('Login');
+      setHideBottomNav(false);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('canafri_active_page', 'Login');
+      }
+      return;
+    }
+
+    setPreviousPage(activePage);
     setActivePage(page);
     setHideBottomNav(false); // Reset bottom nav state when switching pages
     if (typeof window !== 'undefined') {
@@ -376,9 +394,11 @@ export default function Home() {
           handleNavigate('OtpVerification');
         }}
         onBackClick={() => handleNavigate('MobileSplash')}
+        onNavigate={handleNavigate}
       />
     );
   }
+
 
   if (activePage === 'OtpVerification') {
     return (
@@ -441,7 +461,48 @@ export default function Home() {
     );
   }
 
+  if (activePage === 'Privacy Policy') {
+    return (
+      <NavProvider value={handleNavigate}>
+        <PrivacyPolicyPage
+          onBack={() => {
+            const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+            if (previousPage && previousPage !== 'Privacy Policy' && previousPage !== 'Terms of Service') {
+              handleNavigate(previousPage);
+            } else if (token) {
+              handleNavigate('Dashboard');
+            } else {
+              handleNavigate('Register');
+            }
+          }}
+          onNavigate={handleNavigate}
+        />
+      </NavProvider>
+    );
+  }
+
+  if (activePage === 'Terms of Service') {
+    return (
+      <NavProvider value={handleNavigate}>
+        <TermsPage
+          onBack={() => {
+            const token = typeof window !== 'undefined' ? localStorage.getItem('canafri_access_token') : null;
+            if (previousPage && previousPage !== 'Privacy Policy' && previousPage !== 'Terms of Service') {
+              handleNavigate(previousPage);
+            } else if (token) {
+              handleNavigate('Dashboard');
+            } else {
+              handleNavigate('Register');
+            }
+          }}
+          onNavigate={handleNavigate}
+        />
+      </NavProvider>
+    );
+  }
+
   return (
+    <NavProvider value={handleNavigate}>
     <div className="flex h-screen w-screen overflow-hidden bg-background">
       {/* ── Sidebar (Desktop: static, Tablet: rail, Mobile: drawer) ── */}
       <Sidebar
@@ -494,7 +555,7 @@ export default function Home() {
           {activePage === 'Analysis' ? (
             <AnalysisPage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Settings' ? (
-            <SettingsPage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} />
+            <SettingsPage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} onNavigate={handleNavigate} />
           ) : activePage === 'Profile' ? (
             <ProfilePage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} onOpenChat={handleOpenChatWithUser} onNavigate={handleNavigate} />
           ) : activePage === 'Search' ? (
@@ -683,5 +744,6 @@ export default function Home() {
         </div>
       )}
     </div>
+    </NavProvider>
   );
 }

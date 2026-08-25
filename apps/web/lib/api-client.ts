@@ -31,6 +31,8 @@ export const GUEST_PAGES = [
   'ForgotPasswordOtp',
   'ResetPassword',
   'PasswordUpdated',
+  'Privacy Policy',
+  'Terms of Service',
 ];
 
 /**

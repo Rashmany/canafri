@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import {
   Briefcase,
@@ -11,6 +11,7 @@ import {
   Mail,
   Send,
 } from 'lucide-react';
+import { useNav } from '@/lib/nav-context';
 
 // --- Types ---
 
@@ -73,7 +74,8 @@ function FooterColumn({ title, children }: FooterColumnProps) {
 // --- Footer ---
 
 export default function Footer({ onNavigate }: FooterProps) {
-  const nav = (page: string) => () => onNavigate?.(page);
+  const contextNav = useNav();
+  const nav = (page: string) => () => (onNavigate ?? contextNav)(page);
 
   return (
     <footer className="w-full border-t border-border bg-gradient-to-r from-background to-[#15121c]/50 backdrop-blur-[9.95px] px-6 md:px-12 py-8">
@@ -128,10 +130,10 @@ export default function Footer({ onNavigate }: FooterProps) {
             </FooterColumn>
 
             <FooterColumn title="Legal">
-              <NavLink icon={<FileText size={12} />}    label="Terms of Service" onClick={nav('Settings')} />
-              <NavLink icon={<ShieldCheck size={12} />} label="Privacy Policy"   onClick={nav('Settings')} />
+              <NavLink icon={<FileText size={12} />}    label="Terms of Service" onClick={nav('Terms of Service')} />
+              <NavLink icon={<ShieldCheck size={12} />} label="Privacy Policy"   onClick={nav('Privacy Policy')} />
               <NavLink icon={<Cookie size={12} />}      label="Cookie Policy"    onClick={nav('Settings')} />
-              <NavLink icon={<Mail size={12} />}        label="Contact Us"       onClick={nav('Settings')} />
+              <NavLink icon={<Mail size={12} />}        label="Contact Us"       onClick={nav('Support')} />
             </FooterColumn>
           </div>
         </div>

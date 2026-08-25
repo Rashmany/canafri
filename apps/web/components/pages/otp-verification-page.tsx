@@ -30,8 +30,28 @@ export default function OtpVerificationPage({
   // Status & Animation States
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [isShaking, setIsShaking] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const handleRestartRegistration = async () => {
+    if (isCancelling) return;
+    setIsCancelling(true);
+    try {
+      if (!isForgotPassword && email && email !== 'your email') {
+        await fetch('/api/auth/cancel-registration', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+      }
+    } catch {
+      // Proceed even if network fails
+    } finally {
+      setIsCancelling(false);
+      onBack?.();
+    }
+  };
 
   // Countdown timer effect
   useEffect(() => {
@@ -208,8 +228,9 @@ export default function OtpVerificationPage({
         {onBack && (
           <button
             type="button"
-            onClick={onBack}
-            className="md:hidden h-[36px] px-4 rounded-[10px] text-[13px] font-semibold text-[#a0a0a0] hover:text-white border border-[#1b1b1b] hover:border-[#2a2a2a] transition-all flex items-center justify-center cursor-pointer self-start mb-6"
+            onClick={handleRestartRegistration}
+            disabled={isCancelling}
+            className="md:hidden h-[36px] px-4 rounded-[10px] text-[13px] font-semibold text-[#a0a0a0] hover:text-white border border-[#1b1b1b] hover:border-[#2a2a2a] transition-all flex items-center justify-center cursor-pointer self-start mb-6 disabled:opacity-50"
           >
             Back
           </button>
@@ -292,6 +313,21 @@ export default function OtpVerificationPage({
                 </p>
               )}
             </div>
+
+            {/* Information incorrect? Restart registration */}
+            {!isForgotPassword && (
+              <p className="text-[13px] font-normal leading-[20px] text-center mt-3">
+                <span className="text-[#a0a0a0]">Information incorrect? </span>
+                <button
+                  type="button"
+                  onClick={handleRestartRegistration}
+                  disabled={isCancelling}
+                  className="text-primary font-semibold hover:underline cursor-pointer bg-transparent border-none disabled:opacity-50"
+                >
+                  {isCancelling ? 'Cancelling...' : 'Restart registration'}
+                </button>
+              </p>
+            )}
 
           </div>
         </div>

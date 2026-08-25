@@ -93,6 +93,10 @@ const ResendOtpSchema = z.object({
   email: z.string().email().toLowerCase().trim(),
 });
 
+const CancelRegistrationSchema = z.object({
+  email: z.string().email().toLowerCase().trim(),
+});
+
 const AdminLoginSchema = z.object({
   email: z.string().email().toLowerCase().trim(),
   password: z.string().min(1),
@@ -398,8 +402,10 @@ export async function authRoutes(fastify: FastifyInstance) {
       await redis.set(pendingKey, JSON.stringify(pendingPayload), { EX: 900 });
 
       // Send email OTP (via SMTP / SES / mock console fallback)
-      await sendOtpEmail(sanitizedEmail, otp, 'registration');
-      console.log(`[MOCK EMAIL] Verification OTP for ${sanitizedEmail}: ${otp}`);
+      await sendOtpEmail(sanitizedEmail, otp, 'registration', sanitizedFullName);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[DEV] Verification OTP for ${sanitizedEmail}: ${otp}`);
+      }
 
       return reply.status(201).send({
         success: true,
@@ -435,7 +441,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       if (!pendingRaw) {
         return reply.status(400).send({
           error: 'Bad Request',
-          message: 'Registration session has expired or is invalid. Please register again.',
+          message: 'Your verification session has timed out. Please request a new code.',
         });
       }
 
@@ -550,6 +556,48 @@ export async function authRoutes(fastify: FastifyInstance) {
   });
 
   // ────────────────────────────────────────────────────────────────────────────
+  // POST /auth/cancel-registration (Wipes pending registration & unlocks username/email)
+  // ────────────────────────────────────────────────────────────────────────────
+  fastify.post('/cancel-registration', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { email } = CancelRegistrationSchema.parse(request.body);
+      const sanitizedEmail = sanitizeInput(email).toLowerCase();
+
+      const pendingKey = `auth:pending:${sanitizedEmail}`;
+      const failKey = `auth:otp_fails:${sanitizedEmail}`;
+      const emailLockKey = `auth:lock:email:${sanitizedEmail}`;
+
+      const pendingRaw = await redis.get(pendingKey);
+      let usernameLockKey: string | null = null;
+      if (pendingRaw) {
+        try {
+          const parsed = JSON.parse(pendingRaw);
+          if (parsed.username) {
+            usernameLockKey = `auth:lock:username:${parsed.username}`;
+          }
+        } catch {
+          // ignore parsing error
+        }
+      }
+
+      const keysToDelete = [pendingKey, failKey, emailLockKey];
+      if (usernameLockKey) keysToDelete.push(usernameLockKey);
+
+      await redis.del(keysToDelete);
+
+      return reply.send({
+        success: true,
+        message: 'Registration session cancelled. Locks have been cleared.',
+      });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation Error', details: err.errors });
+      }
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to cancel registration.' });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
   // POST /auth/resend-otp
   // ────────────────────────────────────────────────────────────────────────────
   fastify.post('/resend-otp', { preValidation: [resendOtpRateLimit] }, async (request: FastifyRequest, reply: FastifyReply) => {
@@ -558,6 +606,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       const sanitizedEmail = sanitizeInput(email).toLowerCase();
 
       const pendingKey = `auth:pending:${sanitizedEmail}`;
+      const forgotKey = `forgot_otp:${sanitizedEmail}`;
       const cooldownKey = `auth:resend:${sanitizedEmail}`;
 
       // 1. Check 60-second cooldown
@@ -565,49 +614,64 @@ export async function authRoutes(fastify: FastifyInstance) {
       if (inCooldown) {
         return reply.status(429).send({
           error: 'Too Many Requests',
-          message: 'Please wait 60 seconds before requesting a new verification code.',
+          message: 'Please wait a moment before requesting another code.',
         });
       }
 
-      // 2. Retrieve pending registration from Redis
+      // 2. Check if this is a pending registration session
       const pendingRaw = await redis.get(pendingKey);
-      if (!pendingRaw) {
-        return reply.status(400).send({
-          error: 'Bad Request',
-          message: 'Registration session expired or invalid. Please register again.',
+
+      if (pendingRaw) {
+        const pendingData = JSON.parse(pendingRaw);
+        const newOtp = HashService.generateOTP(6);
+        const newOtpHash = HashService.hashToken(newOtp);
+
+        pendingData.otpHash = newOtpHash;
+        await redis.set(pendingKey, JSON.stringify(pendingData), { EX: 900 });
+        await redis.del(`auth:otp_fails:${sanitizedEmail}`);
+        await redis.set(cooldownKey, '1', { EX: 60 });
+
+        await sendOtpEmail(sanitizedEmail, newOtp, 'registration', pendingData.fullName);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[DEV] Resent Verification OTP for ${sanitizedEmail}: ${newOtp}`);
+        }
+
+        return reply.send({
+          success: true,
+          message: 'A new verification code has been sent to your email.',
+          devOtp: process.env.NODE_ENV !== 'production' ? newOtp : undefined,
         });
       }
 
-      const pendingData = JSON.parse(pendingRaw);
+      // 3. Check if this is a password reset flow
+      const user = await prisma.user.findUnique({ where: { email: sanitizedEmail } });
+      if (user) {
+        const newOtp = HashService.generateOTP(6);
+        await redis.set(forgotKey, HashService.hashToken(newOtp), { EX: 600 });
+        await redis.set(cooldownKey, '1', { EX: 60 });
 
-      // 3. Generate new 6-digit OTP & Hash
-      const newOtp = HashService.generateOTP(6);
-      const newOtpHash = HashService.hashToken(newOtp);
+        await sendOtpEmail(sanitizedEmail, newOtp, 'forgot_password', user.displayName || user.username);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[DEV] Resent Password Reset OTP for ${sanitizedEmail}: ${newOtp}`);
+        }
 
-      // 4. Update pending registration (refresh 15m TTL & update otpHash)
-      pendingData.otpHash = newOtpHash;
-      await redis.set(pendingKey, JSON.stringify(pendingData), { EX: 900 });
+        return reply.send({
+          success: true,
+          message: 'A new verification code has been sent to your email.',
+          devOtp: process.env.NODE_ENV !== 'production' ? newOtp : undefined,
+        });
+      }
 
-      // Reset failure counter
-      await redis.del(`auth:otp_fails:${sanitizedEmail}`);
-
-      // 5. Set 60-second cooldown
-      await redis.set(cooldownKey, '1', { EX: 60 });
-
-      // Send email OTP (via SMTP / SES / mock console fallback)
-      await sendOtpEmail(sanitizedEmail, newOtp, 'verification');
-      console.log(`[MOCK EMAIL] Resent Verification OTP for ${sanitizedEmail}: ${newOtp}`);
-
-      return reply.send({
-        success: true,
-        message: 'A new verification code has been sent to your email.',
-        devOtp: process.env.NODE_ENV !== 'production' ? newOtp : undefined,
+      // 4. If neither session exists
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: 'Your verification session has timed out. Please go back and try again.',
       });
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return reply.status(400).send({ error: 'Validation Error', details: err.errors });
       }
-      return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to resend verification code.' });
+      return reply.status(500).send({ error: 'Internal Server Error', message: 'Unable to send a new code right now. Please try again in a moment.' });
     }
   });
 
@@ -1576,8 +1640,10 @@ export async function authRoutes(fastify: FastifyInstance) {
       await redis.set(otpKey, HashService.hashToken(otp), { EX: 600 }); // 10 minutes
 
       // Send OTP via email (SMTP / SES / mock fallback)
-      await sendOtpEmail(email, otp, 'forgot_password');
-      console.log(`[MOCK EMAIL] Password reset OTP for ${email}: ${otp}`);
+      await sendOtpEmail(email, otp, 'forgot_password', user.displayName || user.username);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[DEV] Password reset OTP for ${email}: ${otp}`);
+      }
 
       await AuditService.log({
         userId: user.id,

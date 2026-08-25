@@ -27,8 +27,12 @@ import {
   Eye,
   EyeOff,
   ShieldAlert,
+  ShieldCheck,
+  FileText,
+  ExternalLink,
 } from 'lucide-react';
 import FrameComponent2 from '@/components/ui/frame-component21';
+import { useNav } from '@/lib/nav-context';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +50,7 @@ interface SettingsSection {
 interface PageProps {
   onBack?: () => void;
   sellerMode?: boolean;
+  onNavigate?: (page: string) => void;
 }
 
 // ─── Menu Configuration ───────────────────────────────────────────────────────
@@ -57,7 +62,7 @@ const MENU_CONFIG: SettingsSection[] = [
       { key: 'profile-settings', label: 'Profile Settings', icon: <User size={20} className="text-foreground" /> },
       { key: 'security',         label: 'Security',         icon: <Shield size={20} className="text-foreground" /> },
       { key: 'notification',     label: 'Notification',     icon: <Bell size={20} className="text-foreground" /> },
-      { key: 'privacy',          label: 'Privacy',          icon: <Lock size={20} className="text-foreground" /> },
+      { key: 'privacy',          label: 'Privacy & Legal',  icon: <Lock size={20} className="text-foreground" /> },
     ],
   },
   {
@@ -1720,6 +1725,7 @@ interface PrivacySettingsPanelProps {
   onSettingChange: (setting: string, val: string | boolean) => void;
   onRequestExport: () => Promise<void>;
   onDownloadCSV: () => Promise<void>;
+  onNavigate?: (page: string) => void;
 }
 
 function PrivacySettingsPanel({
@@ -1727,7 +1733,11 @@ function PrivacySettingsPanel({
   onSettingChange,
   onRequestExport,
   onDownloadCSV,
+  onNavigate,
 }: PrivacySettingsPanelProps) {
+  const contextNav = useNav();
+  const nav = (page: string) => (onNavigate ?? contextNav)(page);
+
   const [profileVisibility, setProfileVisibility] = useState('everyone');
   const [activityStatus, setActivityStatus] = useState(true);
   const [servicePolicy, setServicePolicy] = useState(true);
@@ -1778,8 +1788,8 @@ function PrivacySettingsPanel({
           <ChevronLeft size={20} className="text-foreground" />
         </button>
         <div className="flex flex-col gap-[0.375rem]">
-          <p className="font-sans font-medium text-foreground/85">Privacy Settings</p>
-          <p className="font-sans text-[10px] text-muted">Control who sees your information and manage your data</p>
+          <p className="font-sans font-medium text-foreground/85">Privacy &amp; Legal</p>
+          <p className="font-sans text-[10px] text-muted">Review platform legal policies, control visibility, and manage your data</p>
         </div>
       </div>
 
@@ -1788,6 +1798,62 @@ function PrivacySettingsPanel({
       {/* Main scrollable body */}
       <div className="flex flex-col w-full gap-8 px-4 flex-1 overflow-y-auto no-scrollbar pb-8">
         
+        {/* Section 0: Legal & Policies */}
+        <section className="flex flex-col gap-4">
+          <p className="font-sans text-[13px] font-medium text-muted">Legal &amp; Policies</p>
+          <div className="flex flex-col rounded-xl bg-card overflow-hidden">
+            
+            {/* Privacy Policy */}
+            <div className="flex items-center justify-between p-4 gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-[#8C5CFF]/10 text-[#8C5CFF] shrink-0">
+                  <ShieldCheck size={18} />
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <p className="font-sans text-[13px] font-semibold text-foreground/90">Privacy Policy</p>
+                  <p className="font-sans text-[11px] text-foreground/50 leading-normal">
+                    Review how CanaFri collects, protects, and manages your personal data
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => nav('Privacy Policy')}
+                className="flex items-center gap-1.5 shrink-0 rounded-lg border border-border bg-background px-3 py-1.5 font-sans text-[12px] font-medium text-foreground hover:bg-foreground/5 transition-colors cursor-pointer"
+              >
+                <span>Read Policy</span>
+                <ExternalLink size={12} className="opacity-60" />
+              </button>
+            </div>
+
+            <div className="h-px w-full bg-border" />
+
+            {/* Terms of Service */}
+            <div className="flex items-center justify-between p-4 gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-[#8C5CFF]/10 text-[#8C5CFF] shrink-0">
+                  <FileText size={18} />
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <p className="font-sans text-[13px] font-semibold text-foreground/90">Terms of Service</p>
+                  <p className="font-sans text-[11px] text-foreground/50 leading-normal">
+                    Read the terms and rules governing platform use, freelancing, and escrow
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => nav('Terms of Service')}
+                className="flex items-center gap-1.5 shrink-0 rounded-lg border border-border bg-background px-3 py-1.5 font-sans text-[12px] font-medium text-foreground hover:bg-foreground/5 transition-colors cursor-pointer"
+              >
+                <span>Read Terms</span>
+                <ExternalLink size={12} className="opacity-60" />
+              </button>
+            </div>
+
+          </div>
+        </section>
+
         {/* Section 1: Visibility */}
         <section className="flex flex-col gap-4">
           <p className="font-sans text-[13px] font-medium text-muted">Visibility</p>
@@ -1924,7 +1990,7 @@ function PlaceholderPanel({ title, onBack }: { title: string; onBack: () => void
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function SettingsPage({ onBack, sellerMode = false }: PageProps) {
+export default function SettingsPage({ onBack, sellerMode = false, onNavigate }: PageProps) {
   const { toast } = useToast();
   const [selected, setSelected] = useState('profile-settings');
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
@@ -2075,6 +2141,7 @@ export default function SettingsPage({ onBack, sellerMode = false }: PageProps) 
       return (
         <PrivacySettingsPanel
           onBack={handleBack}
+          onNavigate={onNavigate}
           onSettingChange={() => {}}
           onRequestExport={async () => {
             await new Promise((r) => setTimeout(r, 1200));

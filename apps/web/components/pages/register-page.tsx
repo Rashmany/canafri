@@ -10,6 +10,7 @@ interface RegisterPageProps {
   onLoginClick?: () => void;
   onRegisterSuccess?: (email?: string, devOtp?: string) => void;
   onBackClick?: () => void;
+  onNavigate?: (page: string) => void;
 }
 
 interface InputFieldProps {
@@ -129,6 +130,7 @@ export default function RegisterPage({
   onLoginClick,
   onRegisterSuccess,
   onBackClick,
+  onNavigate,
 }: RegisterPageProps) {
   const { config } = usePlatformConfig();
   const [fullName, setFullName] = useState('');
@@ -468,9 +470,23 @@ export default function RegisterPage({
                       />
                       <span className="text-[11px] leading-[16px] text-[#a0a0a0] font-normal">
                         By signing up, you agree to our{' '}
-                        <a href="#" className="text-primary hover:underline font-medium">Terms &amp; Conditions</a>
+                        <a
+                          href="/terms"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline font-medium"
+                        >
+                          Terms &amp; Conditions
+                        </a>
                         {' '}and{' '}
-                        <a href="#" className="text-primary hover:underline font-medium">Privacy Policy</a>.
+                        <a
+                          href="/privacy"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline font-medium"
+                        >
+                          Privacy Policy
+                        </a>.
                       </span>
                     </label>
                     {errors.agreed && <span className="text-[10px] text-red-500 px-1">{errors.agreed}</span>}
@@ -535,12 +551,6 @@ export default function RegisterPage({
                       autoComplete="email"
                     />
 
-                    {emailStatus === 'checking' && (
-                      <span className="text-[10px] text-white/50 px-1 mt-1 block">Checking availability...</span>
-                    )}
-                    {emailStatus === 'available' && !errors.email && (
-                      <span className="text-[10px] text-emerald-400 px-1 mt-1 block">Email address is available</span>
-                    )}
                     {emailStatus === 'taken' && (
                       <span className="text-[10px] text-red-500 px-1 mt-1 block">{emailMessage || 'Email address already registered'}</span>
                     )}
