@@ -553,7 +553,12 @@ export default function Home() {
         {/* Main Content Area */}
         <main className="flex-1 min-h-0 overflow-y-auto pb-16 md:pb-0 flex flex-col">
           {activePage === 'Analysis' ? (
-            <AnalysisPage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} />
+            <AnalysisPage
+              sellerMode={sellerMode}
+              onBack={() => handleNavigate('Dashboard')}
+              onNavigate={handleNavigate}
+              user={userProfile}
+            />
           ) : activePage === 'Settings' ? (
             <SettingsPage sellerMode={sellerMode} onBack={() => handleNavigate('Dashboard')} onNavigate={handleNavigate} />
           ) : activePage === 'Profile' ? (
