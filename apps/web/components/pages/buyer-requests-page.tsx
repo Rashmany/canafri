@@ -1,76 +1,90 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ChevronLeft, Search, Calendar, Landmark, Check } from 'lucide-react';
+import { ChevronLeft, Search, Calendar, Landmark, Check, Clock, User, Sparkles } from 'lucide-react';
 import { FindJobPageSkeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/components/ui/toast';
+import { apiFetch } from '@/lib/api-client';
 
 interface BuyerRequest {
-  id: number;
+  id: string | number;
   title: string;
   buyer: string;
+  buyerAvatar?: string;
   budget: string;
   duration: string;
   description: string;
   tags: string[];
   applied: boolean;
+  offersCount: number;
+  createdAt: string;
 }
-
-const MOCK_REQUESTS: BuyerRequest[] = [
-  {
-    id: 1,
-    title: 'Need Daml Expert to review multi-party smart contract setup',
-    buyer: 'Amara C.',
-    budget: '500 CC',
-    duration: '3 days',
-    description: 'We are deploying a small Daml ledger system and want an expert to review the authorization models and templates to prevent leaks of confidential transactions.',
-    tags: ['Daml', 'Smart Contract', 'Audit'],
-    applied: false
-  },
-  {
-    id: 2,
-    title: 'Vite / React expert to optimize loading states and layout shifts',
-    buyer: 'Michael D.',
-    budget: '150 CC',
-    duration: '1 day',
-    description: 'Optimize our dashboard layout shifts and ensure we are using rich skeleton screens for our async modules.',
-    tags: ['React', 'CSS Shimmer', 'Performance'],
-    applied: true
-  },
-  {
-    id: 3,
-    title: 'Build a Next.js prototype connecting to Canton Network nodes',
-    buyer: 'Sarah C.',
-    budget: '1,200 CC',
-    duration: '2 weeks',
-    description: 'Need a small prototype with landing page + dashboard that reads CC balances using the ledger API client.',
-    tags: ['Next.js', 'Canton Ledger', 'Node API'],
-    applied: false
-  }
-];
 
 interface BuyerRequestsPageProps {
   onBack?: () => void;
+  onNavigateToJob?: (jobId: string) => void;
 }
 
-export default function BuyerRequestsPage({ onBack }: BuyerRequestsPageProps) {
+export default function BuyerRequestsPage({ onBack, onNavigateToJob }: BuyerRequestsPageProps) {
   const [loading, setLoading] = useState(true);
-  const [requests, setRequests] = useState<BuyerRequest[]>(MOCK_REQUESTS);
+  const [requests, setRequests] = useState<BuyerRequest[]>([]);
   const [search, setSearch] = useState('');
+  const { toast } = useToast();
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 800);
-    return () => clearTimeout(t);
+    let isMounted = true;
+
+    async function fetchOpenBuyerRequests() {
+      try {
+        const res = await apiFetch('/api/jobs');
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.jobs && Array.isArray(data.jobs)) {
+            const mapped: BuyerRequest[] = data.jobs.map((job: any) => ({
+              id: job.id,
+              title: job.title || 'Untitled Request',
+              buyer: job.client?.displayName || job.client?.username || 'Client',
+              buyerAvatar: job.client?.avatarUrl,
+              budget: `${job.amountCC ?? 100} CC`,
+              duration: `${job.deadlineDays ?? 7} days`,
+              description: job.description || 'No description provided.',
+              tags: Array.isArray(job.skills) ? job.skills : [job.category || 'General'],
+              applied: false,
+              offersCount: job.proposalsCount ?? (Array.isArray(job.proposals) ? job.proposals.length : 0),
+              createdAt: job.createdAt ? new Date(job.createdAt).toLocaleDateString() : 'Recent',
+            }));
+
+            if (isMounted) {
+              setRequests(mapped);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load real buyer requests:', err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchOpenBuyerRequests();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (loading) return <FindJobPageSkeleton />;
 
-  const handleApply = (id: number) => {
+  const handleApply = (id: string | number, title: string) => {
     setRequests(prev => prev.map(r => r.id === id ? { ...r, applied: true } : r));
+    toast(`Offer submitted for "${title}"!`, 'success');
   };
 
   const filteredRequests = requests.filter(r =>
     r.title.toLowerCase().includes(search.toLowerCase()) ||
-    r.description.toLowerCase().includes(search.toLowerCase())
+    r.description.toLowerCase().includes(search.toLowerCase()) ||
+    r.tags.some(t => t.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -81,7 +95,7 @@ export default function BuyerRequestsPage({ onBack }: BuyerRequestsPageProps) {
           {onBack && (
             <button
               onClick={onBack}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted hover:text-foreground transition-colors"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted hover:text-foreground transition-colors cursor-pointer"
               title="Back"
             >
               <ChevronLeft size={16} />
@@ -92,85 +106,114 @@ export default function BuyerRequestsPage({ onBack }: BuyerRequestsPageProps) {
               Buyer Requests
             </h1>
             <p className="text-muted text-[11px] leading-4">
-              Browse and send offers directly to buyers seeking custom services
+              Browse and send offers directly to clients seeking custom freelance services
             </p>
           </div>
         </div>
       </div>
 
-      {/* Filter and Content */}
-      <div className="flex-1 px-6 py-6 flex flex-col gap-6 max-w-[800px] w-full mx-auto">
-        {/* Search */}
-        <div className="flex items-center gap-3 px-4 py-[10px] rounded-full bg-[#F5F8FB] dark:bg-[#161616] border border-[#D8D8D8] dark:border-[#1e1e1e]">
-          <Search size={16} className="text-muted" />
-          <input
-            type="text"
-            placeholder="Search buyer requests..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-transparent text-[#010101] dark:text-[rgba(255,255,255,0.8)] text-[13px] leading-[18px] placeholder-muted outline-none"
-          />
+      {/* Main Content */}
+      <div className="flex flex-col gap-6 p-6 max-w-5xl">
+        {/* Search Input */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
+            <input
+              type="text"
+              placeholder="Search by keywords, skills, or requirements..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-10 w-full rounded-xl border border-border bg-card pl-9 pr-4 text-xs text-foreground placeholder:text-muted focus:border-primary focus:outline-none transition-colors"
+            />
+          </div>
+          <div className="text-[12px] font-medium text-muted">
+            <span className="font-semibold text-foreground">{filteredRequests.length}</span> active requests
+          </div>
         </div>
 
+        {/* Requests List */}
         <div className="flex flex-col gap-4">
-          {filteredRequests.length > 0 ? (
+          {filteredRequests.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 border border-border/60 rounded-2xl bg-card text-center gap-2">
+              <Sparkles size={24} className="text-primary/60 mb-1" />
+              <span className="text-sm font-semibold text-foreground">No matching buyer requests found</span>
+              <p className="text-xs text-muted max-w-sm">
+                Check back soon as clients post new jobs and contract opportunities daily.
+              </p>
+            </div>
+          ) : (
             filteredRequests.map((req) => (
               <div
                 key={req.id}
-                className="flex flex-col gap-4 p-5 rounded-2xl border border-border bg-card hover:border-[#8C5CFF]/30 transition-all"
+                className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5 hover:border-primary/40 transition-all shadow-sm"
               >
-                <div className="flex justify-between items-start gap-2">
-                  <h3 className="text-sm font-semibold text-foreground flex-1 leading-5">{req.title}</h3>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-bold text-[#8C5CFF]">{req.budget}</p>
-                    <p className="text-[10px] text-muted">Budget</p>
+                {/* Header info */}
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-1">
+                    <h3 className="font-semibold text-foreground text-sm hover:text-primary transition-colors">
+                      {req.title}
+                    </h3>
+                    <div className="flex items-center gap-3 text-[11px] text-muted">
+                      <span className="flex items-center gap-1 font-medium text-foreground/80">
+                        <User size={12} className="text-muted" /> {req.buyer}
+                      </span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1">
+                        <Calendar size={12} /> {req.createdAt}
+                      </span>
+                      <span>•</span>
+                      <span>{req.offersCount} offers submitted</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-end shrink-0">
+                    <span className="text-base font-bold text-primary">{req.budget}</span>
+                    <span className="text-[10px] text-muted flex items-center gap-1 mt-0.5">
+                      <Clock size={10} /> Est. {req.duration}
+                    </span>
                   </div>
                 </div>
 
-                <p className="text-sm text-foreground/80 leading-relaxed font-sans">{req.description}</p>
+                {/* Description */}
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {req.description}
+                </p>
 
-                <div className="flex items-center gap-3 flex-wrap">
-                  {req.tags.map(tag => (
-                    <span key={tag} className="px-2 py-0.5 rounded bg-[#8C5CFF]/10 text-[#8C5CFF] text-[10px] font-medium">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="h-px bg-border/40 w-full mt-1" />
-
-                <div className="flex items-center justify-between mt-1">
-                  <div className="flex items-center gap-3 text-[10px] text-muted">
-                    <span className="flex items-center gap-1"><Calendar size={12} /> {req.duration}</span>
-                    <span>Buyer: <strong className="text-foreground">{req.buyer}</strong></span>
+                {/* Tags & Action */}
+                <div className="flex items-center justify-between gap-4 pt-3 border-t border-border/50">
+                  <div className="flex flex-wrap gap-1.5">
+                    {req.tags.map((t) => (
+                      <span
+                        key={t}
+                        className="rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
+                      >
+                        {t}
+                      </span>
+                    ))}
                   </div>
 
                   <button
-                    onClick={() => !req.applied && handleApply(req.id)}
+                    type="button"
+                    onClick={() => !req.applied && handleApply(req.id, req.title)}
                     disabled={req.applied}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold transition-all ${
+                    className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition-all cursor-pointer ${
                       req.applied
-                        ? 'bg-green-500/10 text-green-500 cursor-default'
-                        : 'bg-primary text-white hover:bg-primary-hover active:scale-[0.98]'
+                        ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 cursor-default'
+                        : 'bg-primary text-white hover:bg-primary-hover shadow-sm'
                     }`}
                   >
                     {req.applied ? (
                       <>
-                        <Check size={14} /> Offer Sent
+                        <Check size={13} />
+                        <span>Offer Sent</span>
                       </>
                     ) : (
-                      'Send Offer'
+                      <span>Send Offer</span>
                     )}
                   </button>
                 </div>
               </div>
             ))
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Search className="text-muted/40 mb-3 size-12" />
-              <p className="text-sm font-medium text-foreground">No matching buyer requests</p>
-              <p className="text-xs text-muted">Try adjusting your keywords.</p>
-            </div>
           )}
         </div>
       </div>

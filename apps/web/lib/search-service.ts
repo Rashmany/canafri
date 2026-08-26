@@ -1,7 +1,6 @@
-// ─── CanaFri Search Service ───────────────────────────────────────────────────
+// ─── CanaFri Dynamic Search Service ──────────────────────────────────────────
 //
-// This module defines all search types and handles local simulation of searches.
-// Updated to support exact field mappings for CanaFri's core page component layouts.
+// Handles dynamic searching across real sellers, gigs, published articles, and open jobs.
 // ─────────────────────────────────────────────────────────────────────────────
 
 "use client";
@@ -25,7 +24,6 @@ export interface SearchUser {
   completionRate: number;
   responseRate: number;
   score: number;
-  // Match ReviewProposalsPage candidate fields
   title: string;
   location: string;
   rate: string;
@@ -35,6 +33,7 @@ export interface SearchUser {
   status?: string;
   statusColor?: "green" | "purple" | "amber" | "red";
   coverLetter?: string;
+  avatarUrl?: string;
 }
 
 export interface SearchService {
@@ -51,10 +50,10 @@ export interface SearchService {
   startingPrice: number;
   deliveryDays: number;
   score: number;
-  // Match GigsPage stats fields
   views: number;
   orders: number;
   ctr: string;
+  image?: string;
 }
 
 export interface SearchArticle {
@@ -69,7 +68,6 @@ export interface SearchArticle {
   readTime: number;
   publishedAt: string;
   score: number;
-  // Match Dashboard PostCard fields
   stakeReward?: string;
   topic?: string;
   publication?: string;
@@ -91,28 +89,26 @@ export interface SearchJob {
   experienceLevel: "Entry" | "Mid" | "Senior";
   postedAt: string;
   score: number;
-  // Match FindJobPage list row fields
   payType: string;
   pay: string;
   payUnit: string;
   level: string;
   estimate: string;
   tags: string[];
-  proposals: number;
-  proposalsInReview: boolean;
-  timeAgo: string;
+  timeAgo?: string;
+  proposals?: number;
+  proposalsInReview?: number;
 }
 
 export interface SearchTag {
-  type: "tag";
-  id: string;
+  id?: string;
   name: string;
+  category: string;
+  count: number;
   postCount: number;
   trending: boolean;
   score: number;
 }
-
-export type SearchResult = SearchUser | SearchService | SearchArticle | SearchJob | SearchTag;
 
 export interface SearchApiResponse {
   query: string;
@@ -125,266 +121,184 @@ export interface SearchApiResponse {
   suggestions: string[];
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
+// ─── In-Memory Dynamic Cache ──────────────────────────────────────────────────
 
-const MOCK_USERS: SearchUser[] = [
-  {
-    type: "freelancer",
-    id: "u1",
-    name: "James Ade",
-    handle: "@jamesade",
-    bio: "Full-stack developer specialising in React and Node.js. Delivered over 50 projects with 100% completion rate.",
-    verified: true,
-    online: true,
-    rating: 4.9,
-    reviews: 312,
-    followers: 2840,
-    skills: ["React", "Node.js", "TypeScript"],
-    country: "Nigeria",
-    language: "English",
-    completionRate: 98,
-    responseRate: 99,
-    score: 100,
-    title: "Senior Full Stack React Engineer",
-    location: "Lagos, Nigeria",
-    rate: "450 CC / hr",
-    earned: "15k+ CC earned",
-    badge: "Top Rated",
-    badgeColor: "green",
-    status: "Available Now",
-    statusColor: "green",
-    coverLetter: "Hi! I am James. I specialize in building highly responsive, performant React dashboards. I have read your requirements and can deliver your project with premium quality, clean code, and fast turnarounds.",
-  },
-  {
-    type: "freelancer",
-    id: "u2",
-    name: "Amara Chibueze",
-    handle: "@amarachi",
-    bio: "UI/UX designer with a love for clean, accessible, and high-fidelity prototypes.",
-    verified: true,
-    online: false,
-    rating: 4.8,
-    reviews: 194,
-    followers: 1620,
-    skills: ["Figma", "UI/UX", "Prototyping"],
-    country: "Nigeria",
-    language: "English",
-    completionRate: 97,
-    responseRate: 95,
-    score: 90,
-    title: "Lead UI/UX Product Designer",
-    location: "Abuja, Nigeria",
-    rate: "300 CC / hr",
-    earned: "8k+ CC earned",
-    badge: "Verified Creator",
-    badgeColor: "purple",
-    status: "Busy",
-    statusColor: "amber",
-    coverLetter: "Hey there! I am interested in helping you design your mobile application. I have designed over 20+ successful apps in Figma, crafting cohesive design systems and interactive prototypes.",
-  },
-  {
-    type: "user",
-    id: "u3",
-    name: "Alex Daml",
-    handle: "@alexdaml",
-    bio: "Smart contract developer and blockchain security researcher.",
-    verified: true,
-    online: true,
-    rating: 4.7,
-    reviews: 88,
-    followers: 980,
-    skills: ["Solidity", "Daml", "Web3"],
-    country: "Germany",
-    language: "English",
-    completionRate: 95,
-    responseRate: 92,
-    score: 88,
-    title: "Smart Contract Auditor & Architect",
-    location: "Berlin, Germany",
-    rate: "600 CC / hr",
-    earned: "24k+ CC earned",
-    badge: "Top Rated",
-    badgeColor: "green",
-    status: "Active Dispute Mode",
-    statusColor: "red",
-    coverLetter: "Hello, I am a security-focused Solidity developer. I can design secure Daml / Solidity escrow smart contracts for your web3 platforms. Let's build a safe system.",
-  },
-  {
-    type: "freelancer",
-    id: "u4",
-    name: "Sina Front",
-    handle: "@sinafront",
-    bio: "Frontend engineer focused on Next.js, CSS animations, and layout speed optimizations.",
-    verified: false,
-    online: true,
-    rating: 4.6,
-    reviews: 57,
-    followers: 430,
-    skills: ["Next.js", "React", "CSS"],
-    country: "Iran",
-    language: "English",
-    completionRate: 93,
-    responseRate: 90,
-    score: 75,
-    title: "Next.js Theme & Interface Specialist",
-    location: "Tehran, Iran",
-    rate: "250 CC / hr",
-    earned: "3k+ CC earned",
-    status: "Open for gigs",
-    statusColor: "green",
-  },
-  {
-    type: "user",
-    id: "u5",
-    name: "Maria Solano",
-    handle: "@mariasolano",
-    bio: "Content creator, marketer and Web3 community coordinator.",
-    verified: true,
-    online: false,
-    rating: 4.5,
-    reviews: 42,
-    followers: 3200,
-    skills: ["Content", "Web3", "Education"],
-    country: "Spain",
-    language: "Spanish",
-    completionRate: 90,
-    responseRate: 88,
-    score: 70,
-    title: "Web3 Educator & Marketer",
-    location: "Madrid, Spain",
-    rate: "200 CC / hr",
-    earned: "4k+ CC earned",
-  },
-  {
-    type: "freelancer",
-    id: "u6",
-    name: "David Okoro",
-    handle: "@davidokoro",
-    bio: "React Native developer building cross-platform iOS and Android mobile apps.",
-    verified: false,
-    online: true,
-    rating: 4.4,
-    reviews: 29,
-    followers: 210,
-    skills: ["React Native", "iOS", "Android"],
-    country: "Nigeria",
-    language: "English",
-    completionRate: 88,
-    responseRate: 85,
-    score: 65,
-    title: "Mobile App Developer",
-    location: "Enugu, Nigeria",
-    rate: "280 CC / hr",
-    earned: "2k+ CC earned",
-  },
-  {
-    type: "user",
-    id: "u7",
-    name: "Lena Koch",
-    handle: "@lenakoch",
-    bio: "Digital artist and NFT creator with 5 years experience.",
-    verified: true,
-    online: false,
-    rating: 4.8,
-    reviews: 76,
-    followers: 5400,
-    skills: ["NFT", "Digital Art", "Illustration"],
-    country: "Germany",
-    language: "German",
-    completionRate: 96,
-    responseRate: 94,
-    score: 85,
-    title: "NFT Concept Illustrator",
-    location: "Munich, Germany",
-    rate: "500 CC / hr",
-    earned: "11k+ CC earned",
-  },
-  {
-    type: "freelancer",
-    id: "u8",
-    name: "Carlos Vega",
-    handle: "@carlosvega",
-    bio: "Backend engineer with expertise in microservices and microservices DevOps.",
-    verified: false,
-    online: true,
-    rating: 4.3,
-    reviews: 18,
-    followers: 145,
-    skills: ["Go", "Docker", "Kubernetes"],
-    country: "Mexico",
-    language: "Spanish",
-    completionRate: 87,
-    responseRate: 80,
-    score: 60,
-    title: "Kubernetes DevOps Engineer",
-    location: "Guadalajara, Mexico",
-    rate: "400 CC / hr",
-    earned: "5k+ CC earned",
-  },
-];
+let liveUsers: SearchUser[] = [];
+let liveServices: SearchService[] = [];
+let liveArticles: SearchArticle[] = [];
+let liveJobs: SearchJob[] = [];
+let liveTags: SearchTag[] = [];
+let isInitialised = false;
 
-const MOCK_SERVICES: SearchService[] = [
-  { type: "service", id: "s1", title: "React Dashboard Development", description: "I will build a professional React dashboard with charts and real-time data.", sellerName: "James Ade", sellerHandle: "@jamesade", category: "Web Development", tags: ["React", "Dashboard", "TypeScript"], rating: 4.9, reviews: 87, startingPrice: 150, deliveryDays: 7, score: 100, views: 482, orders: 14, ctr: "5.2%" },
-  { type: "service", id: "s2", title: "Smart Contract Development on Ethereum", description: "Solidity smart contracts audited and deployed to mainnet or testnet.", sellerName: "Alex Daml", sellerHandle: "@alexdaml", category: "Blockchain", tags: ["Solidity", "Ethereum", "Web3"], rating: 4.8, reviews: 54, startingPrice: 300, deliveryDays: 10, score: 92, views: 290, orders: 8, ctr: "4.8%" },
-  { type: "service", id: "s3", title: "UI/UX Design in Figma", description: "Complete UI/UX design with responsive prototypes and design system.", sellerName: "Amara Chibueze", sellerHandle: "@amarachi", category: "Design", tags: ["Figma", "UI/UX", "Design System"], rating: 4.8, reviews: 63, startingPrice: 120, deliveryDays: 5, score: 90, views: 184, orders: 11, ctr: "6.1%" },
-  { type: "service", id: "s4", title: "Next.js Full-Stack Web App", description: "Build a production-ready Next.js app with API routes, auth, and deployment.", sellerName: "Sina Front", sellerHandle: "@sinafront", category: "Web Development", tags: ["Next.js", "Full-Stack", "React"], rating: 4.6, reviews: 32, startingPrice: 200, deliveryDays: 14, score: 78, views: 120, orders: 3, ctr: "3.1%" },
-  { type: "service", id: "s5", title: "React Native Mobile App", description: "Cross-platform iOS and Android app built with React Native and Expo.", sellerName: "David Okoro", sellerHandle: "@davidokoro", category: "Mobile", tags: ["React Native", "iOS", "Android"], rating: 4.4, reviews: 19, startingPrice: 250, deliveryDays: 21, score: 68, views: 95, orders: 2, ctr: "2.1%" },
-  { type: "service", id: "s6", title: "NFT Collection Art and Metadata", description: "Generative NFT art collection with traits, rarity, and metadata setup.", sellerName: "Lena Koch", sellerHandle: "@lenakoch", category: "NFT and Art", tags: ["NFT", "Digital Art", "Generative"], rating: 4.8, reviews: 41, startingPrice: 500, deliveryDays: 14, score: 83, views: 167, orders: 5, ctr: "4.2%" },
-];
+export async function initLiveSearchData(): Promise<void> {
+  if (typeof window === "undefined") return;
 
-const MOCK_ARTICLES: SearchArticle[] = [
-  { type: "article", id: "a1", title: "Learn React in 2026: The Complete Guide", excerpt: "React continues to evolve. Here is everything you need to know to get started with hooks, RSC, and modern patterns.", authorName: "James Ade", authorHandle: "@jamesade", category: "Development", tags: ["React", "JavaScript", "Frontend"], readTime: 12, publishedAt: "2026-06-15", score: 95, stakeReward: "5 CC Read-Stake Required", topic: "React", publication: "React Daily", date: "Jun. 15", text: "React continues to evolve. In 2026, the focus has shifted heavily to React Server Components (RSC), hybrid client-server routing, and optimized builds. This comprehensive guide covers hooks, suspense, hydration strategies, and how to write clean component structures.", name: "James Ade" },
-  { type: "article", id: "a2", title: "Blockchain Security: Pitfalls in Contracts", excerpt: "A deep dive into reentrancy, integer overflows, and front-running attacks in Solidity.", authorName: "Alex Daml", authorHandle: "@alexdaml", category: "Blockchain", tags: ["Solidity", "Security", "Web3"], readTime: 15, publishedAt: "2026-05-28", score: 90, stakeReward: "10 CC Read-Stake Required", topic: "Solidity", publication: "Decentralized Review", date: "May. 28", text: "Writing secure Solidity code is critical. Millions are lost yearly to reentrancy bugs, incorrect access control, and flash loan attacks. We explore detailed code snippets highlighting these vulnerabilities and how to audit them properly.", name: "Alex Daml" },
-  { type: "article", id: "a3", title: "Designing for Web3 UX Patterns", excerpt: "How to design interfaces that make blockchain interactions feel simple and safe.", authorName: "Amara Chibueze", authorHandle: "@amarachi", category: "Design", tags: ["UI/UX", "Web3", "Design"], readTime: 8, publishedAt: "2026-06-02", score: 85, stakeReward: "5 CC Read-Stake Required", topic: "UI/UX", publication: "Design Hub", date: "Jun. 02", text: "UX design in Web3 remains one of the largest bottlenecks for mainstream adoption. Users must feel safe when signing payloads, staking CC tokens, or interacting with escrow contracts. Let's simplify design systems and micro-interactions.", name: "Amara Chibueze" },
-  { type: "article", id: "a4", title: "Next.js 15: What is New in Frontend", excerpt: "Breaking changes, new features, and a migration guide for Next.js 15.", authorName: "Sina Front", authorHandle: "@sinafront", category: "Development", tags: ["Next.js", "React", "Web"], readTime: 10, publishedAt: "2026-06-20", score: 82, stakeReward: "5 CC Read-Stake Required", topic: "Next.js", publication: "Frontend Weekly", date: "Jun. 20", text: "Next.js 15 brings major performance changes, changes to caching behavior, and a tighter integration with React 19. Learn how to migrate your existing layout files and resolve build deprecations quickly.", name: "Sina Front" },
-  { type: "article", id: "a5", title: "How to Price Your Gigs & Freelance Services", excerpt: "Strategies for pricing your work competitively while ensuring fair compensation.", authorName: "Maria Solano", authorHandle: "@mariasolano", category: "Freelancing", tags: ["Freelancing", "Business", "Pricing"], readTime: 6, publishedAt: "2026-07-01", score: 78, stakeReward: "3 CC Read-Stake Required", topic: "Freelancing", publication: "Freelancer Hub", date: "Jul. 01", text: "As freelance markets adapt in 2026, structuring your rates correctly is essential. We analyze flat rates vs hourly rates, deposit guidelines, escrow protection schemes, and how to communicate value clearly to clients.", name: "Maria Solano" },
-];
+  try {
+    const [sellersRes, jobsRes, contentRes] = await Promise.allSettled([
+      fetch("/api/users/sellers"),
+      fetch("/api/jobs"),
+      fetch("/api/content"),
+    ]);
 
-const MOCK_JOBS: SearchJob[] = [
-  { type: "job", id: "j1", title: "Senior React Developer", description: "Build a Web3 dashboard with React, TypeScript, and wagmi hooks. Need someone with solid frontend layout skills.", clientName: "John Trek", budget: "400 CC", category: "Web Development", isRemote: true, experienceLevel: "Senior", postedAt: "2 hours ago", score: 95, payType: "Fixed-price", pay: "400 CC", payUnit: "Est. Budget", level: "Expert", estimate: "Est. Time: 1 month", tags: ["React", "TypeScript", "Web3"], proposals: 8, proposalsInReview: true, timeAgo: "2 hours ago" },
-  { type: "job", id: "j2", title: "Smart Contract Auditor", description: "Audit a DeFi protocol for security vulnerabilities and produce a detailed report. Experienced auditor only.", clientName: "CryptoCo", budget: "800 CC", category: "Blockchain", isRemote: true, experienceLevel: "Senior", postedAt: "1 day ago", score: 90, payType: "Fixed-price", pay: "800 CC", payUnit: "Est. Budget", level: "Expert", estimate: "Est. Time: 2 weeks", tags: ["Solidity", "Security", "Audit"], proposals: 15, proposalsInReview: false, timeAgo: "1 day ago" },
-  { type: "job", id: "j3", title: "UI/UX Designer for Mobile App", description: "Design a cross-platform mobile app with modern, accessible UI patterns in Figma.", clientName: "AppVentures", budget: "250 CC", category: "Design", isRemote: true, experienceLevel: "Mid", postedAt: "3 hours ago", score: 85, payType: "Hourly", pay: "25 CC", payUnit: "/ hr", level: "Intermediate", estimate: "Est. Time: 3 months", tags: ["Figma", "UI/UX", "Mobile"], proposals: 12, proposalsInReview: true, timeAgo: "3 hours ago" },
-  { type: "job", id: "j4", title: "Next.js Full-Stack Engineer", description: "Build a SaaS product with Next.js, Prisma, and PostgreSQL. Local layout adjustments needed.", clientName: "StartupXYZ", budget: "600 CC", category: "Web Development", isRemote: false, experienceLevel: "Mid", postedAt: "5 days ago", score: 80, payType: "Fixed-price", pay: "600 CC", payUnit: "Est. Budget", level: "Intermediate", estimate: "Est. Time: 2 months", tags: ["Next.js", "Prisma", "PostgreSQL"], proposals: 4, proposalsInReview: false, timeAgo: "5 days ago" },
-  { type: "job", id: "j5", title: "Technical Content Writer - Blockchain", description: "Write in-depth articles on DeFi, NFTs, and blockchain fundamentals.", clientName: "CanaFri Media", budget: "100 CC", category: "Content", isRemote: true, experienceLevel: "Entry", postedAt: "1 hour ago", score: 72, payType: "Hourly", pay: "15 CC", payUnit: "/ hr", level: "Entry", estimate: "Est. Time: Ongoing", tags: ["Web3", "Content", "Writing"], proposals: 1, proposalsInReview: false, timeAgo: "1 hour ago" },
-];
+    // 1. Process Sellers
+    if (sellersRes.status === "fulfilled" && sellersRes.value.ok) {
+      const data = await sellersRes.value.json();
+      if (data?.sellers && Array.isArray(data.sellers)) {
+        liveUsers = data.sellers.map((s: any) => ({
+          type: "freelancer",
+          id: String(s.id),
+          name: s.name || "Seller",
+          handle: s.username ? (s.username.startsWith("@") ? s.username : `@${s.username}`) : "@seller",
+          bio: s.bio || s.title || "Canton & Web3 Specialist",
+          verified: !!s.isVerified,
+          online: !!s.isOnline,
+          rating: s.rating ?? 5.0,
+          reviews: s.reviewsCount ?? 0,
+          followers: 120,
+          skills: Array.isArray(s.skills) ? s.skills : [],
+          country: s.location || "Global",
+          language: "English",
+          completionRate: 99,
+          responseRate: 98,
+          score: 80,
+          title: s.title || "Freelancer",
+          location: s.location || "Global",
+          rate: `${s.minProjectBudget || "100 CC"}`,
+          earned: s.totalEarnings || "0 CC earned",
+          badge: s.level || "Verified",
+          badgeColor: "purple",
+          status: s.isOnline ? "Online" : "Available",
+          statusColor: "green",
+          avatarUrl: s.avatar,
+        }));
 
-const MOCK_TAGS: SearchTag[] = [
-  { type: "tag", id: "t1", name: "React", postCount: 1240, trending: true, score: 100 },
-  { type: "tag", id: "t2", name: "Blockchain", postCount: 980, trending: true, score: 98 },
-  { type: "tag", id: "t3", name: "AI", postCount: 2100, trending: true, score: 97 },
-  { type: "tag", id: "t4", name: "Web3", postCount: 870, trending: true, score: 95 },
-  { type: "tag", id: "t5", name: "Solidity", postCount: 640, trending: false, score: 88 },
-  { type: "tag", id: "t6", name: "NextJS", postCount: 720, trending: true, score: 90 },
-  { type: "tag", id: "t7", name: "RemoteWork", postCount: 1100, trending: true, score: 93 },
-  { type: "tag", id: "t8", name: "TypeScript", postCount: 850, trending: false, score: 87 },
-  { type: "tag", id: "t9", name: "Figma", postCount: 420, trending: false, score: 75 },
-  { type: "tag", id: "t10", name: "NFT", postCount: 560, trending: false, score: 78 },
-];
+        // Extract services/gigs from sellers
+        const servicesList: SearchService[] = [];
+        data.sellers.forEach((s: any) => {
+          if (Array.isArray(s.gigs)) {
+            s.gigs.forEach((g: any) => {
+              servicesList.push({
+                type: "service",
+                id: String(g.id || `gig-${s.id}`),
+                title: g.title,
+                description: s.bio || g.title,
+                sellerName: s.name,
+                sellerHandle: s.username,
+                category: "Programming & Tech",
+                tags: Array.isArray(s.skills) ? s.skills : ["Canton"],
+                rating: g.rating || 5.0,
+                reviews: g.reviews || 0,
+                startingPrice: parseInt(g.price) || 100,
+                deliveryDays: 3,
+                score: 85,
+                views: 120,
+                orders: 4,
+                ctr: "5.0%",
+                image: g.image,
+              });
+            });
+          }
+        });
+        if (servicesList.length > 0) {
+          liveServices = servicesList;
+        }
+      }
+    }
 
-export const POPULAR_SKILLS = ["React", "Solidity", "UI/UX", "Figma", "Smart Contracts", "TypeScript", "Next.js", "Node.js", "Web3", "Blockchain"];
+    // 2. Process Jobs
+    if (jobsRes.status === "fulfilled" && jobsRes.value.ok) {
+      const data = await jobsRes.value.json();
+      if (data?.jobs && Array.isArray(data.jobs)) {
+        liveJobs = data.jobs.map((j: any) => ({
+          type: "job",
+          id: String(j.id),
+          title: j.title || "Job Listing",
+          description: j.description || "",
+          clientName: j.client?.displayName || j.client?.username || "Client",
+          budget: `${j.amountCC ?? 100} CC`,
+          category: j.category || "Development",
+          isRemote: true,
+          experienceLevel: "Mid",
+          postedAt: j.createdAt ? new Date(j.createdAt).toLocaleDateString() : "Recent",
+          timeAgo: j.createdAt ? new Date(j.createdAt).toLocaleDateString() : "Recent",
+          score: 80,
+          payType: "Fixed Price",
+          pay: `${j.amountCC ?? 100} CC`,
+          payUnit: "Est. Budget",
+          level: "Intermediate",
+          estimate: `${j.deadlineDays ?? 7} days`,
+          tags: Array.isArray(j.skills) ? j.skills : [j.category || "General"],
+          proposals: j.proposalsCount ?? 0,
+          proposalsInReview: 0,
+        }));
+      }
+    }
 
-export const TRENDING_TERMS = ["#AI", "#Blockchain", "#RemoteWork", "#NextJS", "#Web3", "#Solidity"];
+    // 3. Process Content/Articles
+    if (contentRes.status === "fulfilled" && contentRes.value.ok) {
+      const data = await contentRes.value.json();
+      if (data?.content && Array.isArray(data.content)) {
+        liveArticles = data.content.map((c: any) => ({
+          type: "article",
+          id: String(c.id),
+          title: c.title,
+          excerpt: (c.body || c.title || "").replace(/<[^>]*>/g, "").slice(0, 160) + "…",
+          authorName: c.creator?.displayName || c.creator?.username || "Creator",
+          authorHandle: c.creator?.username ? `@${c.creator.username}` : "@creator",
+          category: c.topic || "Canton & Web3",
+          tags: [c.topic || "Blockchain", "Daml"],
+          readTime: 5,
+          publishedAt: c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "Recent",
+          score: 85,
+          stakeReward: `${c.priceCC || 5} CC Read-Stake`,
+          topic: c.topic,
+          date: c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "Recent",
+          text: c.body || c.title,
+          name: c.title,
+        }));
+      }
+    }
 
-export const POPULAR_CREATORS: SearchUser[] = MOCK_USERS
-  .filter((u) => u.verified)
-  .sort((a, b) => b.followers - a.followers)
-  .slice(0, 4);
+    // Generate tags from skills and topics
+    const tagMap = new Map<string, number>();
+    liveUsers.forEach((u) => u.skills.forEach((s) => tagMap.set(s, (tagMap.get(s) || 0) + 1)));
+    liveJobs.forEach((j) => j.tags.forEach((t) => tagMap.set(t, (tagMap.get(t) || 0) + 1)));
+    liveArticles.forEach((a) => a.tags.forEach((t) => tagMap.set(t, (tagMap.get(t) || 0) + 1)));
 
-// ─── Fuzzy Matching ───────────────────────────────────────────────────────────
+    liveTags = Array.from(tagMap.entries()).map(([name, count], index) => ({
+      id: `tag-${index + 1}`,
+      name,
+      category: "Topic",
+      count,
+      postCount: count,
+      trending: count > 1,
+      score: count * 10,
+    }));
 
-function normalise(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
+    isInitialised = true;
+  } catch (err) {
+    console.error("Failed to initialize live search cache:", err);
+  }
+}
+
+// Auto-trigger load
+if (typeof window !== "undefined") {
+  initLiveSearchData();
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function normalise(str: string): string {
+  return str.toLowerCase().trim();
 }
 
 function fuzzyMatch(haystack: string, needle: string): boolean {
-  const n = normalise(needle);
   const h = normalise(haystack);
+  const n = normalise(needle);
+  if (!n) return true;
   if (h.includes(n)) return true;
-  if (n.length <= 3) return h.includes(n);
-  for (let i = 0; i <= n.length - 3; i++) {
-    if (h.includes(n.slice(i, i + Math.ceil(n.length * 0.7)))) return true;
-  }
-  return false;
+  const words = n.split(/\s+/);
+  return words.every((w) => h.includes(w));
 }
 
 function scoreResult<T extends { score: number }>(item: T, query: string, fields: string[]): number {
@@ -399,44 +313,53 @@ function scoreResult<T extends { score: number }>(item: T, query: string, fields
   return Math.min(100, item.score + bonus);
 }
 
-// ─── Core Search Function ─────────────────────────────────────────────────────
+// ─── Search Functions ─────────────────────────────────────────────────────────
 
 export function mockSearchAll(query: string): SearchApiResponse {
+  return searchAll(query);
+}
+
+export function searchAll(query: string): SearchApiResponse {
   const q = query.trim();
   if (q.length < 2) {
     return { query: q, totalCount: 0, users: [], services: [], articles: [], jobs: [], tags: [], suggestions: [] };
   }
 
-  const users = MOCK_USERS
-    .filter((u) => [u.name, u.title, u.bio, ...u.skills].some((f) => fuzzyMatch(f, q)))
+  // Ensure initialization check
+  if (!isInitialised && typeof window !== "undefined") {
+    initLiveSearchData();
+  }
+
+  const users = liveUsers
+    .filter((u) => [u.name, u.handle, u.title, u.bio, ...u.skills].some((f) => fuzzyMatch(f, q)))
     .map((u) => ({ ...u, score: scoreResult(u, q, [u.name, u.title, u.bio, ...u.skills]) + (u.verified ? 10 : 0) }))
     .sort((a, b) => b.score - a.score);
 
-  const services = MOCK_SERVICES
+  const services = liveServices
     .filter((s) => [s.title, s.description, s.category, ...s.tags].some((f) => fuzzyMatch(f, q)))
     .map((s) => ({ ...s, score: scoreResult(s, q, [s.title, s.description, ...s.tags]) }))
     .sort((a, b) => b.score - a.score);
 
-  const articles = MOCK_ARTICLES
+  const articles = liveArticles
     .filter((a) => [a.title, a.excerpt, a.category, ...a.tags].some((f) => fuzzyMatch(f, q)))
     .map((a) => ({ ...a, score: scoreResult(a, q, [a.title, a.excerpt, ...a.tags]) }))
     .sort((a, b) => b.score - a.score);
 
-  const jobs = MOCK_JOBS
+  const jobs = liveJobs
     .filter((j) => [j.title, j.description, j.category, ...j.tags].some((f) => fuzzyMatch(f, q)))
     .map((j) => ({ ...j, score: scoreResult(j, q, [j.title, j.description, ...j.tags]) }))
     .sort((a, b) => b.score - a.score);
 
-  const tags = MOCK_TAGS
+  const tags = liveTags
     .filter((t) => fuzzyMatch(t.name, q))
     .map((t) => ({ ...t, score: scoreResult(t, q, [t.name]) + (t.trending ? 5 : 0) }))
     .sort((a, b) => b.score - a.score);
 
   const suggestions = [
-    ...MOCK_USERS.map((u) => u.name),
-    ...MOCK_SERVICES.map((s) => s.title),
-    ...MOCK_TAGS.map((t) => t.name),
-    ...POPULAR_SKILLS,
+    ...liveUsers.map((u) => u.name),
+    ...liveServices.map((s) => s.title),
+    ...liveJobs.map((j) => j.title),
+    ...liveTags.map((t) => t.name),
   ]
     .filter((s) => normalise(s).includes(normalise(q)) && normalise(s) !== normalise(q))
     .filter((v, i, a) => a.indexOf(v) === i)
@@ -444,6 +367,13 @@ export function mockSearchAll(query: string): SearchApiResponse {
 
   const totalCount = users.length + services.length + articles.length + jobs.length + tags.length;
   return { query: q, totalCount, users, services, articles, jobs, tags, suggestions };
+}
+
+export async function searchAllAsync(query: string): Promise<SearchApiResponse> {
+  if (!isInitialised) {
+    await initLiveSearchData();
+  }
+  return searchAll(query);
 }
 
 // ─── Debounce ─────────────────────────────────────────────────────────────────
@@ -463,7 +393,11 @@ const MAX_HISTORY = 10;
 
 export function getSearchHistory(): string[] {
   if (typeof window === "undefined") return [];
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]"); } catch { return []; }
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
 }
 
 export function addToSearchHistory(query: string): void {
