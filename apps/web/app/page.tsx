@@ -566,7 +566,11 @@ export default function Home() {
           ) : activePage === 'Search' ? (
             <SearchPage query={searchQuery} onBack={() => handleNavigate('Dashboard')} />
           ) : activePage === 'Wallet' ? (
-            <WalletPage onBack={() => handleNavigate('Dashboard')} />
+            <WalletPage
+              onBack={() => handleNavigate('Dashboard')}
+              onNavigate={handleNavigate}
+              user={userProfile}
+            />
           ) : activePage === 'Messages' ? (
             <FeatureGate active={config.messagingMaintenance} featureName="Messaging" reason={config.messagingMaintenanceReason}>
               <div className="h-full min-h-0 overflow-hidden -mb-16 md:mb-0 flex flex-col">
