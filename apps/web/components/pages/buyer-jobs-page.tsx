@@ -472,11 +472,7 @@ function FileIcon({ type }: { type: "pdf" | "zip" | "img" }) {
   );
 }
 
-const FALLBACK_FILES: DeliveredFile[] = [
-  { name: "project-report.pdf", size: "2.4 MB", iconBg: "bg-red-500/10", icon: "pdf" },
-  { name: "source-code.zip", size: "18.7 MB", iconBg: "bg-amber-500/10", icon: "zip" },
-  { name: "preview.png", size: "1.2 MB", iconBg: "bg-blue-500/10", icon: "img" },
-];
+const FALLBACK_FILES: DeliveredFile[] = [];
 
 function ClientDeliveryApprovalPanel({ job, onClose, onDisputeClick }: { job: Job; onClose: () => void; onDisputeClick?: () => void }) {
   // Load latest delivery from localStorage
