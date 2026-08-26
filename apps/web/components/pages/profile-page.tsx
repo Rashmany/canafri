@@ -809,38 +809,39 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
       </div>
 
       {/* Main Profile Header Section */}
-      <div className="flex flex-col px-4 pt-4 pb-5 gap-3 shrink-0">
-        {/* Top Info Row: Name & Tag on Left, Right-Aligned Avatar */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col min-w-0 flex-1">
-            <h1 className="font-sans text-[26px] font-bold leading-[32px] tracking-tight text-foreground/90 truncate">
-              {profile.fullName}
-            </h1>
-            <p className="font-sans text-[13px] font-semibold text-muted/90 mt-0.5">
-              {profile.username}
-            </p>
-            <p className="font-sans text-[11px] text-muted/70 mt-1">
-              member since {profile.memberSince}
-            </p>
-          </div>
-
-          {/* Profile Picture Aligned to Right */}
-          <div className="size-[82px] shrink-0 rounded-full flex items-center justify-center bg-gradient-to-br from-[#291D46] to-[#1D1929] border border-[rgba(140,92,255,0.3)] shadow-lg text-[#AC8EF3] overflow-hidden select-none">
+      <div className="flex flex-col px-4 pt-4 pb-6 gap-3 shrink-0 sm:items-center sm:text-center sm:max-w-2xl sm:mx-auto sm:w-full">
+        {/* Top Info Row: Name & Tag on Left + Right-Aligned Avatar on Mobile -> Centered on Tablet & Desktop */}
+        <div className="flex items-start justify-between gap-4 w-full sm:flex-col sm:items-center sm:gap-3.5">
+          {/* Profile Picture: Aligned to right on mobile, placed first and centered on tablet/desktop */}
+          <div className="size-[82px] sm:size-[100px] md:size-[108px] shrink-0 rounded-full flex items-center justify-center bg-gradient-to-br from-[#291D46] to-[#1D1929] border border-[rgba(140,92,255,0.3)] shadow-lg text-[#AC8EF3] overflow-hidden select-none order-2 sm:order-1">
             {profile.avatarUrl && profile.avatarUrl.trim() && !profile.avatarUrl.includes('default-avatar') ? (
               <img src={profile.avatarUrl} alt={profile.fullName} className="h-full w-full object-cover object-center" />
             ) : (
-              <span className="font-sans font-bold text-[24px] tracking-wider select-none">{userInitials}</span>
+              <span className="font-sans font-bold text-[24px] sm:text-[30px] md:text-[34px] tracking-wider select-none">{userInitials}</span>
             )}
+          </div>
+
+          {/* Name & Handle */}
+          <div className="flex flex-col min-w-0 flex-1 order-1 sm:order-2 sm:items-center">
+            <h1 className="font-sans text-[26px] sm:text-[30px] md:text-[32px] font-bold leading-[32px] sm:leading-[38px] tracking-tight text-foreground/90 truncate">
+              {profile.fullName}
+            </h1>
+            <p className="font-sans text-[13px] sm:text-[14px] font-semibold text-muted/90 mt-0.5">
+              {profile.username}
+            </p>
+            <p className="font-sans text-[11px] sm:text-[12px] text-muted/70 mt-1">
+              member since {profile.memberSince}
+            </p>
           </div>
         </div>
 
         {/* Action Buttons: Edit Profile & Analytics */}
         {isOwner && (
-          <div className="flex items-center gap-2.5 mt-1">
+          <div className="flex items-center gap-2.5 mt-1 sm:mt-2 w-full sm:max-w-xs md:max-w-sm sm:justify-center sm:mx-auto">
             <button
               type="button"
               onClick={() => setShowEditModal(true)}
-              className="flex-1 h-[36px] px-4 rounded-xl border border-border bg-card hover:bg-border/40 flex items-center justify-center gap-2 font-sans text-[13px] font-semibold text-foreground transition-colors cursor-pointer shadow-sm"
+              className="flex-1 h-[38px] px-4 rounded-xl border border-border bg-card hover:bg-border/40 flex items-center justify-center gap-2 font-sans text-[13px] font-semibold text-foreground transition-colors cursor-pointer shadow-sm"
             >
               <Pencil size={14} />
               <span>Edit Profile</span>
@@ -854,7 +855,7 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
                   toast('Opening profile analytics...', 'success');
                 }
               }}
-              className="flex-1 h-[36px] px-4 rounded-xl border border-border bg-card hover:bg-border/40 flex items-center justify-center gap-2 font-sans text-[13px] font-semibold text-foreground transition-colors cursor-pointer shadow-sm"
+              className="flex-1 h-[38px] px-4 rounded-xl border border-border bg-card hover:bg-border/40 flex items-center justify-center gap-2 font-sans text-[13px] font-semibold text-foreground transition-colors cursor-pointer shadow-sm"
             >
               <BarChart2 size={14} className="text-[#8C5CFF]" />
               <span>Analytics</span>
@@ -862,16 +863,16 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
           </div>
         )}
 
-        {/* Bio Text (Background Removed, Clean Text) */}
+        {/* Bio Text (Clean text, centered on tablet/desktop) */}
         {profile.bio ? (
-          <div className="mt-1">
-            <p className="font-sans text-[13.5px] font-normal leading-[20px] text-foreground/90 whitespace-pre-wrap break-words">
+          <div className="mt-1 sm:mt-2 sm:text-center sm:max-w-xl sm:mx-auto">
+            <p className="font-sans text-[13.5px] sm:text-[14px] font-normal leading-[20px] sm:leading-[22px] text-foreground/90 whitespace-pre-wrap break-words">
               {profile.bio}
             </p>
           </div>
         ) : (
           isOwner && (
-            <div className="mt-1">
+            <div className="mt-1 sm:mt-2 sm:text-center sm:max-w-xl sm:mx-auto">
               <p className="font-sans text-[12px] text-muted/60 italic">
                 No personal bio added yet. Click "Edit Profile" to add one.
               </p>

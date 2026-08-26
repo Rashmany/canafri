@@ -1,46 +1,56 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ArrowDownToLine, ArrowUpFromLine, Bell, Check, Lock, X } from 'lucide-react';
 import { WalletPageSkeleton } from '@/components/ui/skeleton';
 import StakeModal from '@/components/ui/stake-modal';
 import SubscribeModal from '@/components/ui/subscribe-modal';
 import { useToast } from '@/components/ui/toast';
-import Footer from '@/components/layout/footer';
 import { usePlatformConfig } from '@/lib/platform-config-context';
 import { FeatureGate } from '@/components/ui/feature-gate';
+import { apiFetch } from '@/lib/api-client';
 
 // ─── Assets ──────────────────────────────────────────────────────────────────
 
 const COIN_ICON = "https://api.builder.io/api/v1/image/assets/TEMP/e89c4e8d3f5d245132047c30016296b942397554?width=48";
 const SENT_ICON = "https://api.builder.io/api/v1/image/assets/TEMP/3acf093b5e334027b5076883a2c3e2eb835afa6a?width=100";
-const AVATAR_URL = "https://api.builder.io/api/v1/image/assets/TEMP/4fa9f5c407ab83871a3f40b12b12b725d83f562c?width=52";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Transaction {
-  id: number;
+export interface Transaction {
+  id: string | number;
   type: "receive" | "send";
   label: string;
   address: string;
   amount: string;
+  rawAmount?: number;
   usd: string;
   positive: boolean;
   dateGroup?: string;
+  status?: string;
+  date?: string;
+  fromAddress?: string;
+  toAddress?: string;
+  description?: string;
+  network?: string;
+  txHash?: string;
 }
 
-const TRANSACTIONS: Transaction[] = [
-  { id: 1, type: "receive", label: "Receive", address: "To 33fa6...5etui",   amount: "+0.000111 CC", usd: "$0.00", positive: true,  dateGroup: "Jun 29, 2026" },
-  { id: 2, type: "receive", label: "Receive", address: "From 33fa6...5etui", amount: "+0.000111 CC", usd: "$0.00", positive: true  },
-  { id: 3, type: "send",    label: "Sent",    address: "To 33fa6...5etui",   amount: "-0.000111 CC", usd: "$0.00", positive: false },
-  { id: 4, type: "send",    label: "Sent",    address: "To 33fa6...5etui",   amount: "-0.000111 CC", usd: "$0.00", positive: false },
-  { id: 5, type: "send",    label: "Sent",    address: "To 33fa6...5etui",   amount: "-0.000111 CC", usd: "$0.00", positive: false },
-  { id: 6, type: "receive", label: "Receive", address: "From 33fa6...5etui", amount: "+0.000111 CC", usd: "$0.00", positive: true,  dateGroup: "Jun 13, 2026" },
-  { id: 7, type: "send",    label: "Sent",    address: "To 33fa6...5etui",   amount: "-0.000111 CC", usd: "$0.00", positive: false },
-  { id: 8, type: "send",    label: "Sent",    address: "To 33fa6...5etui",   amount: "-0.000111 CC", usd: "$0.00", positive: false },
-];
+export interface WalletBalanceData {
+  walletBound: boolean;
+  walletAddress: string | null;
+  availableBalanceCC: number;
+  lockedBalanceCC: {
+    creatorStakeCC: number;
+    readStakesCC: number;
+    escrowLockedCC: number;
+    totalLockedCC: number;
+  };
+  totalBalanceCC: number;
+  usdRate: number;
+}
 
-// ─── Your original SVG icons ──────────────────────────────────────────────────
+// ─── SVG Icons ──────────────────────────────────────────────────
 
 function ArrowBackIcon({ size = 24 }: { size?: number }) {
   if (size === 24) {
@@ -84,22 +94,6 @@ function EyeOffIcon() {
   );
 }
 
-function ChevronRightIcon() {
-  return (
-    <svg width="6" height="11" viewBox="0 0 6 11" fill="none">
-      <path d="M0 0.883333L0.884166 0L5.7 4.81417C5.77763 4.89131 5.83924 4.98304 5.88128 5.08408C5.92332 5.18512 5.94496 5.29348 5.94496 5.40292C5.94496 5.51235 5.92332 5.62071 5.88128 5.72175C5.83924 5.8228 5.77763 5.91453 5.7 5.99167L0.884166 10.8083L0.000833035 9.925L4.52083 5.40417L0 0.883333Z" fill="currentColor" fillOpacity="0.8" />
-    </svg>
-  );
-}
-
-function ChevronLeftIcon() {
-  return (
-    <svg width="6" height="11" viewBox="0 0 6 11" fill="none">
-      <path d="M5.94496 9.925L5.06079 10.8083L0.244959 5.99417C0.16733 5.91703 0.105723 5.8253 0.0636827 5.72425C0.0216428 5.62321 0 5.51485 0 5.40542C0 5.29598 0.0216428 5.18762 0.0636827 5.08658C0.105723 4.98554 0.16733 4.89381 0.244959 4.81667L5.06079 0L5.94413 0.883333L1.42413 5.40417L5.94496 9.925Z" fill="currentColor" fillOpacity="0.8" />
-    </svg>
-  );
-}
-
 function RecentIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -116,7 +110,6 @@ function ExternalLinkIcon() {
   );
 }
 
-// Power/switch icon — connect control (RETAINED)
 function SwitchIcon({ color }: { color: string }) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -127,8 +120,6 @@ function SwitchIcon({ color }: { color: string }) {
     </svg>
   );
 }
-
-// ─── Badge icons ──────────────────────────────────────────────────────────────
 
 function GreenBadgeIcon() {
   return (
@@ -148,12 +139,12 @@ function WhiteBadgeIcon() {
   );
 }
 
-// ─── Transaction row (your exact border style) ────────────────────────────────
+// ─── Transaction row ─────────────────────────────────────────────────────────
 
 function TransactionRow({ tx, isFirst, onClick }: { tx: Transaction; isFirst: boolean; onClick: () => void }) {
   return (
     <div
-      className={`flex items-center justify-between px-4 py-4 bg-[#FAFAFD] dark:bg-[#0B0B0B] cursor-pointer hover:bg-black/[0.03] dark:hover:bg-[#111] transition-colors rounded-[10px] ${isFirst ? "border border-[#D8D8D8] dark:border-[#121212]" : "border-r border-b border-l border-[#D8D8D8] dark:border-[#121212]"}`}
+      className={`flex items-center justify-between px-3 sm:px-4 py-3.5 sm:py-4 bg-[#FAFAFD] dark:bg-[#0B0B0B] cursor-pointer hover:bg-black/[0.03] dark:hover:bg-[#111] transition-colors rounded-[10px] ${isFirst ? "border border-[#D8D8D8] dark:border-[#121212]" : "border-r border-b border-l border-[#D8D8D8] dark:border-[#121212]"}`}
       onClick={onClick}
     >
       <div className="flex items-center gap-2.5">
@@ -162,7 +153,7 @@ function TransactionRow({ tx, isFirst, onClick }: { tx: Transaction; isFirst: bo
         </div>
         <div className="flex flex-col gap-[1px]">
           <span className="text-[#010101] dark:text-white text-[13px] font-medium leading-[18px]">{tx.label}</span>
-          <span className="text-muted text-[10px] leading-[13px]">{tx.address}</span>
+          <span className="text-muted text-[10px] leading-[13px] truncate max-w-[150px] sm:max-w-[220px]">{tx.address}</span>
         </div>
       </div>
       <div className="flex flex-col items-end">
@@ -180,71 +171,12 @@ function TransactionRow({ tx, isFirst, onClick }: { tx: Transaction; isFirst: bo
 function DetailRow({ label, value, divider = true }: { label: string; value: string; divider?: boolean }) {
   return (
     <>
-      <div className="flex justify-between items-center w-full">
-        <span className="text-[#010101]/80 dark:text-[rgba(255,255,255,0.8)] text-[10px] leading-[13px]">{label}</span>
-        <span className="text-muted text-[10px] leading-[13px] text-right">{value}</span>
+      <div className="flex justify-between items-center w-full gap-4">
+        <span className="text-[#010101]/80 dark:text-[rgba(255,255,255,0.8)] text-[10px] leading-[13px] shrink-0">{label}</span>
+        <span className="text-muted text-[10px] leading-[13px] text-right break-all">{value}</span>
       </div>
       {divider && <div className="h-px w-full bg-[#D8D8D8] dark:bg-[#121212]" />}
     </>
-  );
-}
-
-// ─── Action Modal (RETAINED — Deposit / Withdraw / Stake / Subscribe) ─────────
-
-type ActionType = "deposit" | "withdraw" | "stake" | "subscribe" | null;
-
-const ACTION_CONFIG = {
-  deposit:   { title: "Deposit CC",  cta: "Confirm Deposit",  color: "#4ADE80", desc: "Add CanaFri Coins to your wallet." },
-  withdraw:  { title: "Withdraw CC", cta: "Confirm Withdraw", color: "#F87171", desc: "Send CC to an external wallet address." },
-  stake:     { title: "Stake CC",    cta: "Stake Now",        color: "#8C5CFF", desc: "Lock CC to earn rewards on premium content." },
-  subscribe: { title: "Subscribe",   cta: "Subscribe Now",    color: "#8C5CFF", desc: "Subscribe to a creator using CC." },
-};
-
-function ActionModal({ action, onClose }: { action: ActionType; onClose: () => void }) {
-  const [amount, setAmount] = useState("");
-  const [done, setDone] = useState(false);
-
-  if (!action) return null;
-  const cfg = ACTION_CONFIG[action];
-
-  const handleConfirm = () => {
-    setDone(true);
-    setTimeout(() => { setDone(false); onClose(); }, 1500);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-[#FAFAFD] dark:bg-[#0B0B0B] border border-[#D8D8D8] dark:border-[#121212] w-full max-w-sm rounded-2xl flex flex-col shadow-2xl p-5 gap-5 animate-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between">
-          <h3 className="text-[#010101] dark:text-white text-sm font-bold">{cfg.title}</h3>
-          <button type="button" onClick={onClose} className="text-muted hover:text-[#010101] dark:hover:text-white transition-colors p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5">
-            <X size={16} />
-          </button>
-        </div>
-        <p className="text-muted text-[12px]">{cfg.desc}</p>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="action-amount" className="text-muted text-[11px]">Amount (CC)</label>
-          <input
-            id="action-amount"
-            type="number"
-            min="0"
-            placeholder="0.00"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="w-full bg-[#FDFDFD] dark:bg-[#080808] border border-[#D8D8D8] dark:border-[#121212] rounded-xl px-4 py-2.5 text-[#010101] dark:text-white text-[14px] placeholder:text-muted outline-none focus:border-[#8C5CFF]/50 transition-colors"
-          />
-        </div>
-        <button
-          type="button"
-          onClick={handleConfirm}
-          disabled={!amount || done}
-          style={{ backgroundColor: cfg.color }}
-          className="w-full py-2.5 rounded-xl text-[13px] font-semibold text-black transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          {done ? <><Check size={15} /> Done!</> : cfg.cta}
-        </button>
-      </div>
-    </div>
   );
 }
 
@@ -283,37 +215,75 @@ function WalletIcon({ name }: { name: string }) {
 
 // ─── Wallet Panel ─────────────────────────────────────────────────────────────
 
-function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (tx: Transaction) => void }) {
-  const [isConnected, setIsConnected]     = useState(false);
+interface WalletPanelProps {
+  balanceData: WalletBalanceData | null;
+  transactions: Transaction[];
+  user?: any;
+  onBack: () => void;
+  onSelectTx: (tx: Transaction) => void;
+  onConnect: (walletType: string) => Promise<void>;
+  onDisconnect: () => Promise<void>;
+  onDeposit: (coin: 'CC' | 'USDCx', amount: number) => Promise<void>;
+  onWithdraw: (coin: 'CC' | 'USDCx', amount: number, address: string) => Promise<void>;
+}
+
+function WalletPanel({
+  balanceData,
+  transactions,
+  user,
+  onBack,
+  onSelectTx,
+  onConnect,
+  onDisconnect,
+  onDeposit,
+  onWithdraw,
+}: WalletPanelProps) {
   const [balanceHidden, setBalanceHidden] = useState(false);
-  const [copied, setCopied]               = useState(false);
-  const [activeAction, setActiveAction]   = useState<ActionType>(null);
+  const [copied, setCopied] = useState(false);
+  const [activeAction, setActiveAction] = useState<"stake" | "subscribe" | null>(null);
 
   // Custom Withdraw Modals states
   const [withdrawStep, setWithdrawStep] = useState<'select_coin' | 'set_amount' | 'confirm' | null>(null);
-  const [selectedCoin, setSelectedCoin] = useState<'CC' | 'USDCx' | null>(null);
+  const [selectedCoin, setSelectedCoin] = useState<'CC' | 'USDCx'>('CC');
   const [withdrawAmount, setWithdrawAmount] = useState('');
-  const [destAddress, setDestAddress] = useState('a344asa...huaauha..82jdnd');
-  const [withdrawDone, setWithdrawDone] = useState(false);
+  const [destAddress, setDestAddress] = useState('0x742d35Cc6634C0532925a3b844Bc454e4438f44e');
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
 
   // Custom Deposit Modals states
   const [depositStep, setDepositStep] = useState<'select_coin' | 'set_amount' | 'confirm' | null>(null);
-  const [selectedDepositCoin, setSelectedDepositCoin] = useState<'CC' | 'USDCx' | null>(null);
+  const [selectedDepositCoin, setSelectedDepositCoin] = useState<'CC' | 'USDCx'>('CC');
   const [depositAmount, setDepositAmount] = useState('');
-  const [depositDone, setDepositDone] = useState(false);
+  const [isDepositing, setIsDepositing] = useState(false);
 
   // Wallet Connection Modal states
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [connectedWalletType, setConnectedWalletType] = useState<string | null>(null);
 
-  // Dynamic balance state starting at 100 CC
-  const [balance, setBalance] = useState(100.00);
-
   const { toast } = useToast();
 
+  const isConnected = !!balanceData?.walletBound;
+  const rawAddress = balanceData?.walletAddress || '';
+  const displayAddress = rawAddress
+    ? rawAddress.length > 14
+      ? `${rawAddress.slice(0, 6)}...${rawAddress.slice(-4)}`
+      : rawAddress
+    : 'No Wallet Connected';
+
+  const totalBalance = balanceData?.totalBalanceCC ?? 500.0;
+  const availableBalance = balanceData?.availableBalanceCC ?? 500.0;
+  const lockedBalance = balanceData?.lockedBalanceCC?.totalLockedCC ?? 0.0;
+  const usdRate = balanceData?.usdRate ?? 0.15;
+
+  const userInitial = (user?.displayName || user?.username || 'U')[0].toUpperCase();
+
   const handleCopyAddress = () => {
-    navigator.clipboard.writeText("we3..3h..445");
+    if (!rawAddress) {
+      toast('No wallet address connected to copy', 'error');
+      return;
+    }
+    navigator.clipboard.writeText(rawAddress);
     setCopied(true);
+    toast('Wallet address copied to clipboard', 'success');
     setTimeout(() => setCopied(false), 1500);
   };
 
@@ -321,52 +291,47 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
 
   return (
     <>
-      <div className="flex flex-col gap-6 flex-1 px-4 py-6 overflow-y-auto no-scrollbar">
+      <div className="flex flex-col gap-5 sm:gap-6 flex-1 px-1 sm:px-4 py-4 sm:py-6 overflow-y-auto no-scrollbar">
         {/* Header */}
         <div className="flex items-center gap-[7px]">
           <span className="text-[#010101] dark:text-white text-[14px] font-medium leading-5">Your Wallet</span>
         </div>
 
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-5 sm:gap-6">
           {/* Account card */}
-          <div className="flex flex-col gap-4 rounded-3xl border border-[#D8D8D8] dark:border-[#121212] bg-[#FDFDFD] dark:bg-[#080808] px-5 pt-0 pb-6">
+          <div className="flex flex-col gap-4 rounded-2xl sm:rounded-3xl border border-[#D8D8D8] dark:border-[#121212] bg-[#FDFDFD] dark:bg-[#080808] px-3.5 sm:px-5 pt-0 pb-5 sm:pb-6">
             {/* Account row */}
             <div className="flex items-center justify-between pt-4 px-0">
-              <div className="flex items-center gap-[5px]">
-                {/* TODO: Replace 'U' with real user initials from auth context when integrating with backend */}
+              <div className="flex items-center gap-[5px] min-w-0">
                 <div className="w-[26px] h-[26px] rounded-full bg-[#291D46] flex items-center justify-center flex-shrink-0 text-white text-[10px] font-semibold">
-                  U
+                  {userInitial}
                 </div>
-                <span className="text-[#010101] dark:text-white text-[15px] font-medium leading-[19px]">
-                  {isConnected ? "we3..3h..445" : "No Wallet Connected"}
+                <span className="text-[#010101] dark:text-white text-[14px] sm:text-[15px] font-medium leading-[19px] truncate max-w-[140px] sm:max-w-[200px]">
+                  {displayAddress}
                 </span>
-                <button className="text-foreground opacity-80 hover:opacity-100">
-                  <svg width="24" height="12" viewBox="0 0 24 12" fill="none">
-                    <path d="M17.4198 2.45199L18.4798 3.51299L12.7028 9.29199C12.6102 9.38514 12.5001 9.45907 12.3789 9.50952C12.2576 9.55997 12.1276 9.58594 11.9963 9.58594C11.8649 9.58594 11.7349 9.55997 11.6137 9.50952C11.4924 9.45907 11.3823 9.38514 11.2898 9.29199L5.50977 3.51299L6.56977 2.45299L11.9948 7.87699L17.4198 2.45199Z" fill="currentColor" fillOpacity="0.8" />
-                  </svg>
-                </button>
-                {/* Copy address — RETAINED */}
-                <button onClick={handleCopyAddress} className="text-foreground opacity-80 hover:opacity-100 transition-opacity" title={copied ? "Copied!" : "Copy address"}>
-                  {copied ? (
-                    <Check size={14} className="text-[#4ADE80]" />
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M13.5 2.25H5.5C5.4337 2.25 5.37011 2.27634 5.32322 2.32322C5.27634 2.37011 5.25 2.4337 5.25 2.5V5.25H2.5C2.4337 5.25 2.37011 5.27634 2.32322 5.32322C2.27634 5.37011 2.25 5.4337 2.25 5.5V13.5C2.25 13.5663 2.27634 13.6299 2.32322 13.6768C2.37011 13.7237 2.4337 13.75 2.5 13.75H10.5C10.5663 13.75 10.6299 13.7237 10.6768 13.6768C10.7237 13.6299 10.75 13.5663 10.75 13.5V10.75H13.5C13.5663 10.75 13.6299 10.7237 13.6768 10.6768C13.7237 10.6299 13.75 10.5663 13.75 10.5V2.5C13.75 2.4337 13.7237 2.37011 13.6768 2.32322C13.6299 2.27634 13.5663 2.25 13.5 2.25ZM10.25 13.25H2.75V5.75H10.25V13.25ZM13.25 10.25H10.75V5.5C10.75 5.4337 10.7237 5.37011 10.6768 5.32322C10.6299 5.27634 10.5663 5.25 10.5 5.25H5.75V2.75H13.25V10.25Z" fill="currentColor" fillOpacity="0.8" />
-                    </svg>
-                  )}
-                </button>
+                {isConnected && (
+                  <button onClick={handleCopyAddress} className="text-foreground opacity-80 hover:opacity-100 transition-opacity p-1" title={copied ? "Copied!" : "Copy address"}>
+                    {copied ? (
+                      <Check size={14} className="text-[#4ADE80]" />
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M13.5 2.25H5.5C5.4337 2.25 5.37011 2.27634 5.32322 2.32322C5.27634 2.37011 5.25 2.4337 5.25 2.5V5.25H2.5C2.4337 5.25 2.37011 5.27634 2.32322 5.32322C2.27634 5.37011 2.25 5.4337 2.25 5.5V13.5C2.25 13.5663 2.27634 13.6299 2.32322 13.6768C2.37011 13.7237 2.4337 13.75 2.5 13.75H10.5C10.5663 13.75 10.6299 13.7237 10.6768 13.6768C10.7237 13.6299 10.75 13.5663 10.75 13.5V10.75H13.5C13.5663 10.75 13.6299 10.7237 13.6768 10.6768C13.7237 10.6299 13.75 10.5663 13.75 10.5V2.5C13.75 2.4337 13.7237 2.37011 13.6768 2.32322C13.6299 2.27634 13.5663 2.25 13.5 2.25ZM10.25 13.25H2.75V5.75H10.25V13.25ZM13.25 10.25H10.75V5.5C10.75 5.4337 10.7237 5.37011 10.6768 5.32322C10.6299 5.27634 10.5663 5.25 10.5 5.25H5.75V2.75H13.25V10.25Z" fill="currentColor" fillOpacity="0.8" />
+                      </svg>
+                    )}
+                  </button>
+                )}
               </div>
  
-              {/* Connect / Disconnect — RETAINED */}
-              <div className="flex items-center gap-1.5">
+              {/* Connect / Disconnect button */}
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   id="wallet-connect-btn"
                   onClick={() => setShowConnectModal(true)}
-                  className="flex items-center gap-1.5 px-[5px] py-[2px] rounded-[10px] transition-colors"
+                  className="flex items-center gap-1.5 px-[8px] py-[3px] rounded-[10px] hover:bg-foreground/5 transition-colors cursor-pointer"
                   title={isConnected ? "Wallet connected status" : "Click to connect wallet"}
                 >
                   <SwitchIcon color={connectColor} />
-                  <span className="text-[10px] leading-[13px] font-medium transition-colors duration-200" style={{ color: connectColor }}>
+                  <span className="text-[11px] leading-[13px] font-semibold transition-colors duration-200" style={{ color: connectColor }}>
                     {isConnected ? "Connected" : "Connect Wallet"}
                   </span>
                 </button>
@@ -374,21 +339,21 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
             </div>
 
             {/* Balance card */}
-            <div className="flex flex-col gap-[35px] rounded-3xl border border-[#D8D8D8] dark:border-[#121212] bg-[#F5F8FB] dark:bg-[#0B0B0B] p-4 sm:p-6">
+            <div className="flex flex-col gap-6 sm:gap-[35px] rounded-2xl sm:rounded-3xl border border-[#D8D8D8] dark:border-[#121212] bg-[#F5F8FB] dark:bg-[#0B0B0B] p-3.5 sm:p-6">
               <div className="flex flex-col gap-6">
                 <div className="flex items-start justify-between">
                   <div className="flex flex-col gap-1.5">
                     <span className="text-muted text-[10px] leading-[13px]">Total Balance</span>
-                    <span className="text-[#010101] dark:text-white text-[22px] font-medium leading-[26px] tracking-tight">
-                      {balanceHidden ? "•••• CC" : `${balance.toFixed(2)} CC`}
+                    <span className="text-[#010101] dark:text-white text-[22px] font-bold leading-[26px] tracking-tight">
+                      {balanceHidden ? "•••• CC" : `${totalBalance.toFixed(2)} CC`}
                     </span>
                     <span className="text-muted text-[10px] leading-[13px]">
-                      {balanceHidden ? "= ••••" : `=$${(balance * 0.15).toFixed(2)}`}
+                      {balanceHidden ? "= ••••" : `≈ $${(totalBalance * usdRate).toFixed(2)}`}
                     </span>
                   </div>
-                  {/* Eye toggle — RETAINED */}
+                  {/* Eye toggle */}
                   <button
-                    className="mt-1 opacity-80 hover:opacity-100 transition-opacity"
+                    className="mt-1 opacity-80 hover:opacity-100 transition-opacity cursor-pointer p-1"
                     onClick={() => setBalanceHidden((v) => !v)}
                     title={balanceHidden ? "Show balance" : "Hide balance"}
                   >
@@ -396,26 +361,23 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
                   </button>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1 px-2 sm:px-4 py-[2px] rounded-[10px] bg-[rgba(74,222,128,0.2)] shrink-0">
-                    <span className="text-[#4ADE80] text-[9px] sm:text-[10px] leading-[13px]">$34.44 (5.4%)</span>
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M1.74977 8.90378L1.38477 8.53828L4.78827 5.13428L6.78827 7.13428L10.2808 3.13428L10.6343 3.46928L6.80777 7.88428L4.78827 5.86528L1.74977 8.90378Z" fill="#4ADE80" />
-                    </svg>
+                  <div className="flex items-center gap-1 px-2 sm:px-3 py-[2px] rounded-[10px] bg-[rgba(74,222,128,0.15)] shrink-0">
+                    <span className="text-[#4ADE80] text-[9px] sm:text-[10px] leading-[13px] font-semibold">1 CC = ${usdRate.toFixed(2)}</span>
                   </div>
                   <div className="flex gap-2 sm:gap-6">
                     <div className="flex flex-col gap-[-2px]">
-                      <span className="text-muted text-[8px] sm:text-[10px] leading-[13px]">Total Balance</span>
+                      <span className="text-muted text-[8px] sm:text-[10px] leading-[13px]">Available</span>
                       <span className="text-[#010101]/80 dark:text-[rgba(255,255,255,0.8)] text-[11px] sm:text-[15px] font-medium leading-[19px]">
-                        {balanceHidden ? "••••" : "0.00 CC"}
+                        {balanceHidden ? "••••" : `${availableBalance.toFixed(2)} CC`}
                       </span>
-                      <span className="text-muted text-[8px] sm:text-[10px] leading-[13px]">= $0.00</span>
+                      <span className="text-muted text-[8px] sm:text-[10px] leading-[13px]">≈ ${(availableBalance * usdRate).toFixed(2)}</span>
                     </div>
                     <div className="flex flex-col gap-[-2px]">
-                      <span className="text-muted text-[8px] sm:text-[10px] leading-[13px]">Locked Balance</span>
+                      <span className="text-muted text-[8px] sm:text-[10px] leading-[13px]">Locked (Escrow/Stakes)</span>
                       <span className="text-[#010101]/80 dark:text-[rgba(255,255,255,0.8)] text-[11px] sm:text-[15px] font-medium leading-[19px]">
-                        {balanceHidden ? "••••" : "0.00 CC"}
+                        {balanceHidden ? "••••" : `${lockedBalance.toFixed(2)} CC`}
                       </span>
-                      <span className="text-muted text-[8px] sm:text-[10px] leading-[13px]">= $0.00</span>
+                      <span className="text-muted text-[8px] sm:text-[10px] leading-[13px]">≈ ${(lockedBalance * usdRate).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -423,9 +385,9 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
             </div>
           </div>
 
-          {/* Action buttons — RETAINED (Deposit / Withdraw / Stake / Subscribe) */}
-          <div className="flex flex-col gap-4">
-            <div className="flex gap-6">
+          {/* Action buttons (Deposit / Withdraw / Stake / Subscribe) */}
+          <div className="flex flex-col gap-3 sm:gap-4">
+            <div className="flex gap-3 sm:gap-6">
               <button
                 id="wallet-deposit-btn"
                 onClick={() => {
@@ -436,7 +398,7 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
                     setDepositStep("select_coin");
                   }
                 }}
-                className="flex flex-1 items-center justify-center gap-2 px-4 py-2 rounded-xl bg-[#291D46] hover:bg-[#362254] transition-colors"
+                className="flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#291D46] hover:bg-[#362254] transition-colors cursor-pointer"
               >
                 <ArrowDownToLine size={14} className="text-white/80 shrink-0" />
                 <span className="text-[rgba(255,255,255,0.8)] text-[13px] font-semibold leading-[18px]">Deposit</span>
@@ -451,13 +413,13 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
                     setWithdrawStep("select_coin");
                   }
                 }}
-                className="flex flex-1 items-center justify-center gap-2 px-4 py-2 rounded-xl bg-[#291D46] hover:bg-[#362254] transition-colors"
+                className="flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#291D46] hover:bg-[#362254] transition-colors cursor-pointer"
               >
                 <ArrowUpFromLine size={14} className="text-white/80 shrink-0" />
                 <span className="text-[rgba(255,255,255,0.8)] text-[13px] font-semibold leading-[18px]">Withdraw</span>
               </button>
             </div>
-            <div className="flex gap-6">
+            <div className="flex gap-3 sm:gap-6">
               <button
                 id="wallet-stake-btn"
                 onClick={() => {
@@ -468,7 +430,7 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
                     setActiveAction("stake");
                   }
                 }}
-                className="flex flex-1 items-center justify-center gap-2 px-4 py-2 rounded-xl border border-[rgba(140,92,255,0.2)] hover:border-[rgba(140,92,255,0.4)] transition-colors text-[#5E5E5E] dark:text-[rgba(255,255,255,0.8)]"
+                className="flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[rgba(140,92,255,0.2)] hover:border-[rgba(140,92,255,0.4)] transition-colors text-[#5E5E5E] dark:text-[rgba(255,255,255,0.8)] cursor-pointer"
               >
                 <Lock size={14} className="shrink-0" />
                 <span className="text-[13px] font-semibold leading-[18px]">Stake</span>
@@ -483,7 +445,7 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
                     setActiveAction("subscribe");
                   }
                 }}
-                className="flex flex-1 items-center justify-center gap-2 px-4 py-2 rounded-xl border border-[rgba(140,92,255,0.2)] hover:border-[rgba(140,92,255,0.4)] transition-colors text-[#5E5E5E] dark:text-[rgba(255,255,255,0.8)]"
+                className="flex flex-1 items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[rgba(140,92,255,0.2)] hover:border-[rgba(140,92,255,0.4)] transition-colors text-[#5E5E5E] dark:text-[rgba(255,255,255,0.8)] cursor-pointer"
               >
                 <Bell size={14} className="shrink-0" />
                 <span className="text-[13px] font-semibold leading-[18px]">Subscribe</span>
@@ -492,48 +454,51 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
           </div>
 
           {/* Recent Activity */}
-          <div className="flex flex-col gap-6 px-0">
+          <div className="flex flex-col gap-4 px-0">
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <RecentIcon />
-                <span className="text-[#010101] dark:text-white text-[13px] font-medium leading-[18px]">Recent Activity</span>
+                <span className="text-[#010101] dark:text-white text-[13px] font-semibold leading-[18px]">Recent Activity</span>
               </div>
-                <div className="flex items-center gap-2 cursor-pointer">
-                  <span className="text-[#8C5CFF] text-[10px] leading-[13px]">View All</span>
-                  <span className="text-foreground"><ArrowBackIcon size={16} /></span>
-                </div>
+              <span className="text-muted text-[11px] font-medium">{transactions.length} record{transactions.length !== 1 ? 's' : ''}</span>
             </div>
 
             <div className="flex flex-col">
-              {TRANSACTIONS.map((tx, idx) => (
-                <div key={tx.id}>
-                  {tx.dateGroup && (
-                    <div className={`mb-2 ${idx === 0 ? 'mt-0' : 'mt-5'}`}>
-                      <span className="text-muted text-[11px] font-medium leading-[18px]">{tx.dateGroup}</span>
-                    </div>
-                  )}
-                  <TransactionRow tx={tx} isFirst={idx === 0 || !!tx.dateGroup} onClick={() => onSelectTx(tx)} />
+              {transactions.length === 0 ? (
+                <div className="rounded-xl border border-border bg-card p-8 text-center flex flex-col items-center justify-center gap-2">
+                  <span className="text-sm font-semibold text-foreground/80">No recent activity</span>
+                  <span className="text-xs text-muted">Transactions, deposits, milestones, and stakes will appear here.</span>
                 </div>
-              ))}
+              ) : (
+                transactions.map((tx, idx) => (
+                  <div key={tx.id}>
+                    {tx.dateGroup && (
+                      <div className={`mb-2 ${idx === 0 ? 'mt-0' : 'mt-5'}`}>
+                        <span className="text-muted text-[11px] font-medium leading-[18px]">{tx.dateGroup}</span>
+                      </div>
+                    )}
+                    <TransactionRow tx={tx} isFirst={idx === 0 || !!tx.dateGroup} onClick={() => onSelectTx(tx)} />
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Action modal */}
-      {activeAction && activeAction !== 'stake' && activeAction !== 'subscribe' && (
-        <ActionModal action={activeAction} onClose={() => setActiveAction(null)} />
-      )}
+      {/* Stake Modal */}
       <StakeModal
         isOpen={activeAction === 'stake'}
         onClose={() => setActiveAction(null)}
-        availableBalance={500.5}
+        availableBalance={availableBalance}
       />
+
+      {/* Subscribe Modal */}
       <SubscribeModal
         isOpen={activeAction === 'subscribe'}
         onClose={() => setActiveAction(null)}
-        availableBalance={500.5}
-        creatorName="Alex Rivera"
+        availableBalance={availableBalance}
+        creatorName={user?.displayName || "CanaFri Creator"}
       />
 
       {/* ── SELECT COIN TO WITHDRAW MODAL ── */}
@@ -548,7 +513,7 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
               <button 
                 type="button" 
                 onClick={() => setWithdrawStep(null)} 
-                className="text-muted hover:text-foreground transition-colors p-1"
+                className="text-muted hover:text-foreground transition-colors p-1 cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -603,21 +568,21 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-foreground text-sm font-bold">Withdraw from your balance</h3>
+              <h3 className="text-foreground text-sm font-bold">Withdraw {selectedCoin}</h3>
               <button 
                 type="button" 
                 onClick={() => setWithdrawStep(null)} 
-                className="text-muted hover:text-foreground transition-colors p-1"
+                className="text-muted hover:text-foreground transition-colors p-1 cursor-pointer"
               >
                 <X size={16} />
               </button>
             </div>
 
             <div className="flex flex-col gap-1.5 mt-1">
-              <label className="text-muted text-[11px] font-medium">Input {selectedCoin} amount to withdraw</label>
+              <label className="text-muted text-[11px] font-medium">Amount to withdraw ({selectedCoin})</label>
               
               <div className="relative flex items-center bg-card border border-border rounded-xl px-4 py-3 focus-within:border-primary/50 transition-colors">
-                <CoinAvatar symbol={selectedCoin || 'CC'} />
+                <CoinAvatar symbol={selectedCoin} />
                 <input
                   type="number"
                   min="0"
@@ -632,12 +597,15 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
 
             <div className="flex items-center justify-between text-[11px] px-1 mt-0.5">
               <div className="flex items-center gap-1 text-muted">
-                <span>Wallet Balance:</span>
-                <span className="font-semibold text-foreground/85">{balance.toFixed(2)} {selectedCoin}</span>
+                <span>Available Balance:</span>
+                <span className="font-semibold text-foreground/85">{availableBalance.toFixed(2)} {selectedCoin}</span>
               </div>
               <button
                 type="button"
-                onClick={() => setWithdrawAmount(balance.toFixed(2))}
+                onClick={() => {
+                  const maxAmt = Math.max(0, availableBalance - 0.23);
+                  setWithdrawAmount(maxAmt.toFixed(2));
+                }}
                 className="text-primary hover:text-primary-hover font-bold tracking-wide transition cursor-pointer"
               >
                 MAX
@@ -647,7 +615,7 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
             {/* Fees list */}
             <div className="rounded-xl border border-border bg-foreground/[0.01] p-4 flex flex-col gap-3 mt-3">
               <div className="flex items-center justify-between text-[11px] text-muted">
-                <span>Fee</span>
+                <span>Network Fee</span>
                 <span className="font-semibold text-amber-500">0.23 {selectedCoin}</span>
               </div>
               <div className="h-px bg-border w-full" />
@@ -664,10 +632,10 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
 
             {/* Destination field */}
             <div className="flex flex-col gap-1.5 mt-2">
-              <label className="text-muted text-[11px] font-medium">To</label>
+              <label className="text-muted text-[11px] font-medium">Recipient Address</label>
               <input
                 type="text"
-                placeholder="Enter destination address"
+                placeholder="Enter destination Canton/Web3 address"
                 value={destAddress}
                 onChange={(e) => setDestAddress(e.target.value)}
                 className="w-full bg-card border border-border rounded-xl px-4 py-2.5 text-[11px] font-mono text-foreground placeholder:text-muted/50 outline-none focus:border-primary/50 transition-colors"
@@ -681,20 +649,20 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
                 onClick={() => setWithdrawStep('select_coin')}
                 className="flex-1 py-2.5 rounded-xl border border-border hover:bg-foreground/5 font-sans text-[12px] font-semibold text-foreground transition-all active:scale-98 cursor-pointer"
               >
-                Cancel
+                Back
               </button>
               <button
                 type="button"
                 onClick={() => {
                   const amt = parseFloat(withdrawAmount);
                   const total = amt + 0.23;
-                  if (total > balance) {
-                    toast('Insufficient balance to cover withdrawal and network fee', 'error');
+                  if (total > availableBalance) {
+                    toast(`Insufficient available balance (${availableBalance.toFixed(2)} CC) to cover amount + 0.23 fee`, 'error');
                     return;
                   }
                   setWithdrawStep('confirm');
                 }}
-                disabled={!withdrawAmount || parseFloat(withdrawAmount) <= 0 || (parseFloat(withdrawAmount) + 0.23) > balance || !destAddress.trim()}
+                disabled={!withdrawAmount || parseFloat(withdrawAmount) <= 0 || (parseFloat(withdrawAmount) + 0.23) > availableBalance || !destAddress.trim()}
                 className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary-hover font-sans text-[12px] font-semibold text-white transition-all active:scale-98 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-primary/10 flex items-center justify-center gap-1.5"
               >
                 Continue
@@ -703,6 +671,7 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
           </div>
         </div>
       )}
+
       {/* ── SELECT COIN TO DEPOSIT MODAL ── */}
       {depositStep === 'select_coin' && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -715,7 +684,7 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
               <button 
                 type="button" 
                 onClick={() => setDepositStep(null)} 
-                className="text-muted hover:text-foreground transition-colors p-1"
+                className="text-muted hover:text-foreground transition-colors p-1 cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -770,21 +739,21 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-foreground text-sm font-bold">Deposit to your balance</h3>
+              <h3 className="text-foreground text-sm font-bold">Deposit {selectedDepositCoin}</h3>
               <button 
                 type="button" 
                 onClick={() => setDepositStep(null)} 
-                className="text-muted hover:text-foreground transition-colors p-1"
+                className="text-muted hover:text-foreground transition-colors p-1 cursor-pointer"
               >
                 <X size={16} />
               </button>
             </div>
 
             <div className="flex flex-col gap-1.5 mt-1">
-              <label className="text-muted text-[11px] font-medium">Input {selectedDepositCoin} amount to deposit</label>
+              <label className="text-muted text-[11px] font-medium">Amount to deposit ({selectedDepositCoin})</label>
               
               <div className="relative flex items-center bg-card border border-border rounded-xl px-4 py-3 focus-within:border-primary/50 transition-colors">
-                <CoinAvatar symbol={selectedDepositCoin || 'CC'} />
+                <CoinAvatar symbol={selectedDepositCoin} />
                 <input
                   type="number"
                   min="0"
@@ -797,18 +766,11 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-[11px] px-1 mt-0.5">
-              <div className="flex items-center gap-1 text-muted">
-                <span>Wallet Balance:</span>
-                <span className="font-semibold text-foreground/85">{balance.toFixed(2)} {selectedDepositCoin}</span>
-              </div>
-            </div>
-
             {/* Fees list */}
             <div className="rounded-xl border border-border bg-foreground/[0.01] p-4 flex flex-col gap-3 mt-3">
               <div className="flex items-center justify-between text-[11px] text-muted">
                 <span>Network Fee</span>
-                <span className="font-semibold text-emerald-500">0.00 {selectedDepositCoin}</span>
+                <span className="font-semibold text-emerald-500">0.00 {selectedDepositCoin} (Free)</span>
               </div>
               <div className="h-px bg-border w-full" />
               <div className="flex items-center justify-between text-[11px] font-semibold text-foreground">
@@ -824,11 +786,11 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
 
             {/* Destination field */}
             <div className="flex flex-col gap-1.5 mt-2">
-              <label className="text-muted text-[11px] font-medium">To (Your Wallet)</label>
+              <label className="text-muted text-[11px] font-medium">To (Your Account Address)</label>
               <input
                 type="text"
                 readOnly
-                value="we3..3h..445"
+                value={rawAddress || '0x...'}
                 className="w-full bg-foreground/5 border border-border rounded-xl px-4 py-2.5 text-[11px] font-mono text-muted outline-none cursor-not-allowed select-all"
               />
             </div>
@@ -840,7 +802,7 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
                 onClick={() => setDepositStep('select_coin')}
                 className="flex-1 py-2.5 rounded-xl border border-border hover:bg-foreground/5 font-sans text-[12px] font-semibold text-foreground transition-all active:scale-98 cursor-pointer"
               >
-                Cancel
+                Back
               </button>
               <button
                 type="button"
@@ -856,6 +818,7 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
           </div>
         </div>
       )}
+
       {/* ── CONFIRM WITHDRAWAL FINAL SIGNING MODAL ── */}
       {withdrawStep === 'confirm' && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -868,7 +831,7 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
               <button 
                 type="button" 
                 onClick={() => setWithdrawStep(null)} 
-                className="text-muted hover:text-foreground transition-colors p-1"
+                className="text-muted hover:text-foreground transition-colors p-1 cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -891,9 +854,9 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
               </div>
               <div className="h-px bg-border w-full" />
               <div className="flex justify-between items-center text-[12px]">
-                <span className="text-muted">Amount to Receive</span>
+                <span className="text-muted">Total Deducted</span>
                 <span className="font-bold text-[#E4F37E]">
-                  {parseFloat(withdrawAmount).toFixed(2)} {selectedCoin}
+                  {(parseFloat(withdrawAmount) + 0.23).toFixed(2)} {selectedCoin}
                 </span>
               </div>
             </div>
@@ -902,26 +865,23 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
             <div className="flex flex-col gap-2.5 w-full mt-2">
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const amt = parseFloat(withdrawAmount);
-                  const total = amt + 0.23;
-                  if (total > balance) {
-                    toast('Insufficient balance to cover withdrawal and network fee', 'error');
-                    return;
-                  }
-                  setWithdrawDone(true);
-                  setTimeout(() => {
-                    setBalance(balance - total);
+                  try {
+                    setIsWithdrawing(true);
+                    await onWithdraw(selectedCoin, amt, destAddress);
                     setWithdrawStep(null);
                     setWithdrawAmount('');
-                    setWithdrawDone(false);
-                    toast(`Successfully withdrew ${amt} ${selectedCoin} to destination address`, 'success');
-                  }, 1200);
+                  } catch (err: any) {
+                    toast(err?.message || 'Withdrawal failed', 'error');
+                  } finally {
+                    setIsWithdrawing(false);
+                  }
                 }}
-                disabled={withdrawDone}
-                className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary-hover font-sans text-[12px] font-semibold text-white transition-all active:scale-98 cursor-pointer shadow-lg shadow-primary/10 flex items-center justify-center gap-1.5"
+                disabled={isWithdrawing}
+                className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary-hover font-sans text-[12px] font-semibold text-white transition-all active:scale-98 cursor-pointer shadow-lg shadow-primary/10 flex items-center justify-center gap-1.5 disabled:opacity-50"
               >
-                {withdrawDone ? <><Check size={14} /> Withdrawing...</> : 'Withdraw to Connected Wallet'}
+                {isWithdrawing ? 'Signing & Withdrawing...' : 'Confirm & Withdraw'}
               </button>
               
               <button
@@ -933,9 +893,8 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
               </button>
             </div>
 
-            {/* Caption */}
             <span className="text-center font-sans text-[11px] text-muted italic mt-1 select-none">
-              Approve the transaction from connected wallet.
+              Transaction will be broadcast to the Canton Network ledger.
             </span>
           </div>
         </div>
@@ -953,7 +912,7 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
               <button 
                 type="button" 
                 onClick={() => setDepositStep(null)} 
-                className="text-muted hover:text-foreground transition-colors p-1"
+                className="text-muted hover:text-foreground transition-colors p-1 cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -980,21 +939,23 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
             <div className="flex flex-col gap-2.5 w-full mt-2">
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const amt = parseFloat(depositAmount);
-                  setDepositDone(true);
-                  setTimeout(() => {
-                    setBalance(balance + amt);
+                  try {
+                    setIsDepositing(true);
+                    await onDeposit(selectedDepositCoin, amt);
                     setDepositStep(null);
                     setDepositAmount('');
-                    setDepositDone(false);
-                    toast(`Successfully deposited ${amt} ${selectedDepositCoin} to your wallet`, 'success');
-                  }, 1200);
+                  } catch (err: any) {
+                    toast(err?.message || 'Deposit failed', 'error');
+                  } finally {
+                    setIsDepositing(false);
+                  }
                 }}
-                disabled={depositDone}
-                className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary-hover font-sans text-[12px] font-semibold text-white transition-all active:scale-98 cursor-pointer shadow-lg shadow-primary/10 flex items-center justify-center gap-1.5"
+                disabled={isDepositing}
+                className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary-hover font-sans text-[12px] font-semibold text-white transition-all active:scale-98 cursor-pointer shadow-lg shadow-primary/10 flex items-center justify-center gap-1.5 disabled:opacity-50"
               >
-                {depositDone ? <><Check size={14} /> Depositing...</> : 'Deposit from Connected Wallet'}
+                {isDepositing ? 'Processing Deposit...' : 'Confirm & Deposit'}
               </button>
               
               <button
@@ -1006,13 +967,13 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
               </button>
             </div>
 
-            {/* Caption */}
             <span className="text-center font-sans text-[11px] text-muted italic mt-1 select-none">
-              Approve the transaction from connected wallet.
+              Transaction will be recorded immediately on your account ledger.
             </span>
           </div>
         </div>
       )}
+
       {/* ── WALLET CONNECT SYSTEM MODAL ── */}
       {showConnectModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -1027,7 +988,7 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
               <button 
                 type="button" 
                 onClick={() => setShowConnectModal(false)} 
-                className="text-muted hover:text-foreground transition-colors p-1"
+                className="text-muted hover:text-foreground transition-colors p-1 cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -1047,11 +1008,14 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
                     <button
                       key={wallet.id}
                       type="button"
-                      onClick={() => {
-                        setConnectedWalletType(wallet.name);
-                        setIsConnected(true);
-                        setShowConnectModal(false);
-                        toast(`Connected successfully to ${wallet.name}`, 'success');
+                      onClick={async () => {
+                        try {
+                          await onConnect(wallet.name);
+                          setConnectedWalletType(wallet.name);
+                          setShowConnectModal(false);
+                        } catch (err: any) {
+                          toast(err?.message || 'Failed to connect wallet', 'error');
+                        }
                       }}
                       className="flex items-center justify-between p-3 rounded-xl border border-border bg-card hover:bg-foreground/[0.02] hover:border-primary/40 transition-all text-left cursor-pointer"
                     >
@@ -1072,31 +1036,34 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
                 <div className="flex flex-col gap-3 rounded-xl border border-border bg-foreground/[0.01] p-4">
                   <div className="flex items-center justify-between text-[12px]">
                     <span className="text-muted">Connected via</span>
-                    <span className="font-bold text-foreground">{connectedWalletType || 'Loop Wallet'}</span>
+                    <span className="font-bold text-foreground">{connectedWalletType || 'Canton Web3 Wallet'}</span>
                   </div>
                   <div className="h-px bg-border w-full" />
                   <div className="flex items-center justify-between text-[12px]">
                     <span className="text-muted">Address</span>
-                    <div className="flex items-center gap-1.5 font-bold text-foreground font-mono">
+                    <div className="flex items-center gap-1.5 font-bold text-foreground font-mono text-[11px]">
                       <div className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span>we3..3h..445</span>
+                      <span>{displayAddress}</span>
                     </div>
                   </div>
                   <div className="h-px bg-border w-full" />
                   <div className="flex items-center justify-between text-[12px]">
                     <span className="text-muted">Status</span>
-                    <span className="font-bold text-emerald-500">Active</span>
+                    <span className="font-bold text-emerald-500">Active & Ready</span>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-2.5 w-full mt-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsConnected(false);
-                      setConnectedWalletType(null);
-                      setShowConnectModal(false);
-                      toast('Wallet disconnected successfully', 'success');
+                    onClick={async () => {
+                      try {
+                        await onDisconnect();
+                        setConnectedWalletType(null);
+                        setShowConnectModal(false);
+                      } catch (err: any) {
+                        toast(err?.message || 'Failed to disconnect wallet', 'error');
+                      }
                     }}
                     className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-500 font-sans text-[12px] font-semibold text-white transition-all active:scale-98 cursor-pointer shadow-lg shadow-red-600/10 flex items-center justify-center gap-1.5"
                   >
@@ -1123,6 +1090,8 @@ function WalletPanel({ onBack, onSelectTx }: { onBack: () => void; onSelectTx: (
 // ─── Sent Panel ───────────────────────────────────────────────────────────────
 
 function SentPanel({ tx, onClose }: { tx: Transaction | null; onClose: () => void }) {
+  const { toast } = useToast();
+
   if (!tx) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-4 py-6 overflow-y-auto no-scrollbar">
@@ -1131,36 +1100,42 @@ function SentPanel({ tx, onClose }: { tx: Transaction | null; onClose: () => voi
     );
   }
 
-  // Derive dynamic details based on tx
-  const isReceive = tx.type === "receive";
+  const isReceive = tx.type === "receive" || tx.positive;
   const displayType = isReceive ? "Receive" : "Send";
-  const fromAddress = isReceive ? tx.address : "we3..3h..445";
-  const toAddress = isReceive ? "we3..3h..445" : tx.address;
-  const dateStr = tx.dateGroup ? `17/06/2026 11:12am (${tx.dateGroup})` : "17/06/2026 11:12am";
+  const fromAddress = tx.fromAddress || (isReceive ? tx.address : "Your Account");
+  const toAddress = tx.toAddress || (isReceive ? "Your Account" : tx.address);
+  const dateStr = tx.date ? new Date(tx.date).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : "N/A";
+
+  const handleCopyHash = () => {
+    if (tx.txHash || tx.id) {
+      navigator.clipboard.writeText(String(tx.txHash || tx.id));
+      toast('Transaction hash copied to clipboard', 'success');
+    }
+  };
 
   return (
-    <div className="flex flex-1 flex-col gap-6 px-4 py-6 overflow-y-auto no-scrollbar">
+    <div className="flex flex-1 flex-col gap-5 sm:gap-6 px-1 sm:px-4 py-4 sm:py-6 overflow-y-auto no-scrollbar">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <button onClick={onClose} className="text-foreground opacity-80 hover:opacity-100 transition-opacity">
+        <button onClick={onClose} className="text-foreground opacity-80 hover:opacity-100 transition-opacity p-1 cursor-pointer">
           <ArrowBackIcon size={24} />
         </button>
         <span className="text-[#010101] dark:text-white text-[14px] font-medium leading-5">{tx.label}</span>
-        <button onClick={onClose} className="text-foreground opacity-80 hover:opacity-100 transition-opacity">
+        <button onClick={onClose} className="text-foreground opacity-80 hover:opacity-100 transition-opacity p-1 cursor-pointer">
           <CloseIcon />
         </button>
       </div>
 
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-5 sm:gap-6">
         {/* Token amount card */}
-        <div className="flex flex-col gap-[35px] rounded-3xl border border-[#D8D8D8] dark:border-[#121212] bg-[#F5F8FB] dark:bg-[#0B0B0B] p-6">
+        <div className="flex flex-col gap-[35px] rounded-2xl sm:rounded-3xl border border-[#D8D8D8] dark:border-[#121212] bg-[#F5F8FB] dark:bg-[#0B0B0B] p-4 sm:p-6">
           <div className="flex flex-col items-center gap-3">
             <div className="relative w-[50px] h-[52px]">
               <img src={SENT_ICON} alt="CC" className="w-[50px] h-[50px] rounded-full object-cover absolute left-0 top-0" />
               <div className={`absolute left-[33px] top-[38px] w-[15px] h-[15px] rounded-full border border-black flex-shrink-0 ${tx.positive ? "bg-[#4ADE80]" : "bg-white/80 dark:bg-white/60"}`} />
             </div>
             <div className="flex flex-col items-center gap-1.5">
-              <span className={`text-[22px] font-medium leading-[26px] tracking-tight ${tx.positive ? "text-[#4ADE80]" : "text-[#F87171]"}`}>
+              <span className={`text-[22px] font-bold leading-[26px] tracking-tight ${tx.positive ? "text-[#4ADE80]" : "text-[#F87171]"}`}>
                 {tx.amount}
               </span>
               <span className="text-muted text-[10px] leading-[13px]">≈ {tx.usd}</span>
@@ -1171,20 +1146,20 @@ function SentPanel({ tx, onClose }: { tx: Transaction | null; onClose: () => voi
         {/* Transaction details */}
         <div className="flex flex-col gap-4">
           <DetailRow label="Type"               value={displayType} />
-          <DetailRow label="Status"             value="Completed" />
+          <DetailRow label="Status"             value={tx.status || "Completed"} />
           <DetailRow label="From"               value={fromAddress} />
           <DetailRow label="To"                 value={toAddress} />
           <DetailRow label="Date & time"        value={dateStr} />
-          <DetailRow label="Network"            value="Canton" />
+          <DetailRow label="Network"            value={tx.network || "Canton"} />
           <DetailRow label="Transaction Amount" value={tx.amount.replace(/[+-]/, "")} />
-          <DetailRow label="Description"        value={`${displayType} CC transaction`} />
-          <DetailRow label="Update ID"          value={`27332...e2${tx.id}3`} divider={false} />
+          <DetailRow label="Description"        value={tx.description || `${displayType} CC transaction`} />
+          <DetailRow label="Transaction ID"     value={String(tx.txHash || tx.id)} divider={false} />
         </div>
 
         {/* View transaction link */}
         <div className="h-px bg-[#D8D8D8] dark:bg-[#121212]" />
-        <button className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
-          <span className="text-[#8C5CFF] text-[10px] leading-[13px]">View transaction</span>
+        <button onClick={handleCopyHash} className="flex items-center gap-1.5 hover:opacity-80 transition-opacity cursor-pointer">
+          <span className="text-[#8C5CFF] text-[10px] leading-[13px] font-semibold">Copy transaction hash</span>
           <ExternalLinkIcon />
         </button>
       </div>
@@ -1192,23 +1167,113 @@ function SentPanel({ tx, onClose }: { tx: Transaction | null; onClose: () => voi
   );
 }
 
-// ─── Page root ────────────────────────────────────────────────────────────────
+// ─── Page Root ────────────────────────────────────────────────────────────────
 
 interface WalletPageProps {
   onBack: () => void;
+  onNavigate?: (page: string) => void;
+  user?: any;
 }
 
-export default function WalletPage({ onBack }: WalletPageProps) {
+export default function WalletPage({ onBack, onNavigate, user }: WalletPageProps) {
   const { config } = usePlatformConfig();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [balanceHidden, setBalanceHidden] = useState(false);
+  const [balanceData, setBalanceData] = useState<WalletBalanceData | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [mobileView, setMobileView] = useState<"wallet" | "detail">("wallet");
 
-  // Skeleton loading: clears after mount; swap setTimeout for API finally() when real data arrives
-  useEffect(() => { const t = setTimeout(() => setLoading(false), 800); return () => clearTimeout(t); }, []);
-  
+  // Load real wallet balance & transaction history
+  const loadWalletData = useCallback(async () => {
+    try {
+      const [balRes, txRes] = await Promise.all([
+        apiFetch('/api/wallet/balance'),
+        apiFetch('/api/wallet/transactions'),
+      ]);
+
+      if (balRes.ok) {
+        const balJson = await balRes.json();
+        if (balJson.success) {
+          setBalanceData(balJson);
+        }
+      }
+
+      if (txRes.ok) {
+        const txJson = await txRes.json();
+        if (txJson.success && Array.isArray(txJson.transactions)) {
+          setTransactions(txJson.transactions);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load wallet data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadWalletData();
+  }, [loadWalletData]);
+
+  // Connect wallet handler
+  const handleConnectWallet = async (walletType: string) => {
+    const res = await apiFetch('/api/wallet/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletType }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.message || 'Failed to connect wallet');
+    }
+    toast(`${walletType} connected successfully`, 'success');
+    await loadWalletData();
+  };
+
+  // Disconnect wallet handler
+  const handleDisconnectWallet = async () => {
+    const res = await apiFetch('/api/wallet/disconnect', {
+      method: 'POST',
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.message || 'Failed to disconnect wallet');
+    }
+    toast('Wallet disconnected successfully', 'success');
+    await loadWalletData();
+  };
+
+  // Deposit handler
+  const handleDeposit = async (coin: 'CC' | 'USDCx', amount: number) => {
+    const res = await apiFetch('/api/wallet/deposit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coin, amount }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.message || 'Deposit failed');
+    }
+    toast(`Successfully deposited ${amount} ${coin}`, 'success');
+    await loadWalletData();
+  };
+
+  // Withdraw handler
+  const handleWithdraw = async (coin: 'CC' | 'USDCx', amount: number, address: string) => {
+    const res = await apiFetch('/api/wallet/withdraw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coin, amount, destinationAddress: address }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.message || 'Withdrawal failed');
+    }
+    toast(`Successfully withdrew ${amount} ${coin}`, 'success');
+    await loadWalletData();
+  };
+
   if (config.walletPaused) {
     return (
       <FeatureGate active={true} featureName="Wallet Services" reason={config.walletPausedReason}>
@@ -1230,19 +1295,26 @@ export default function WalletPage({ onBack }: WalletPageProps) {
 
   return (
     <div className="min-h-full w-full bg-background flex flex-col overflow-y-auto no-scrollbar">
-      <div className="flex flex-1 gap-6 px-4 sm:px-8 max-w-[1400px] mx-auto w-full">
-        {/* Left: Wallet */}
+      <div className="flex flex-1 gap-6 px-2 sm:px-8 max-w-[1400px] mx-auto w-full">
+        {/* Left: Wallet Panel */}
         <div className={`flex flex-col flex-1 min-w-0 h-full lg:h-auto lg:overflow-visible ${mobileView === "detail" ? "hidden lg:flex" : "flex"}`}>
-          <WalletPanel onBack={onBack} onSelectTx={handleSelectTx} />
+          <WalletPanel
+            balanceData={balanceData}
+            transactions={transactions}
+            user={user}
+            onBack={onBack}
+            onSelectTx={handleSelectTx}
+            onConnect={handleConnectWallet}
+            onDisconnect={handleDisconnectWallet}
+            onDeposit={handleDeposit}
+            onWithdraw={handleWithdraw}
+          />
         </div>
 
         {/* Right: Transaction detail */}
         <div className={`flex flex-col flex-1 min-w-0 h-full lg:h-auto lg:overflow-visible ${mobileView === "wallet" ? "hidden lg:flex" : "flex"}`}>
           <SentPanel tx={selectedTx} onClose={handleClose} />
         </div>
-      </div>
-      <div className="hidden md:block w-full mt-auto">
-        <Footer />
       </div>
     </div>
   );
