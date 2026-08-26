@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { FileText, Share2, Mail, Star, Archive, Ban, Trash2, Loader2, Paperclip, X, Check, CheckCheck } from "lucide-react";
+import { FileText, Share2, Mail, Star, Archive, Ban, Trash2, Loader2, Paperclip, X, Check, CheckCheck, Lock } from "lucide-react";
 import { MessagesPageSkeleton } from '@/components/ui/skeleton';
 import { useToast } from "@/components/ui/toast";
 import { getSocket } from "@/lib/socket";
@@ -329,7 +329,7 @@ function ChatPanel({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages.length]);
+  }, [messages.length, isTyping]);
 
   // Handle Typing event debounce
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -539,10 +539,8 @@ function ChatPanel({
             <span className="text-muted text-[10px] leading-[13px]">
               {isBlocked
                 ? "Blocked"
-                : isTyping
-                ? "Typing..."
                 : isUserOnline
-                ? "Active Now (Socket.IO Real-time)"
+                ? "Active Now"
                 : chatUser?.lastSeen
                 ? `Last seen ${formatRelativeTime(chatUser.lastSeen)}`
                 : "Offline"}
@@ -615,10 +613,9 @@ function ChatPanel({
           </div>
         )}
 
-        <div className="flex justify-center">
-          <span className="px-4 py-[4px] rounded-full bg-[rgba(140,92,255,0.15)] dark:bg-[rgba(140,92,255,0.25)] text-[#8C5CFF] dark:text-[rgba(255,255,255,0.8)] text-[11px] leading-[16px]">
-            Socket.IO Encrypted Direct Channel
-          </span>
+        <div className="flex items-center justify-center gap-1.5 text-muted/60 text-[11px] py-1 select-none">
+          <Lock size={11} className="text-muted/60" />
+          <span>Messages are end-to-end encrypted</span>
         </div>
 
         {messages.length === 0 ? (
@@ -699,6 +696,16 @@ function ChatPanel({
               </div>
             )
           )
+        )}
+        {/* Animated 3-dot typing indicator bubble */}
+        {isTyping && (
+          <div className="flex justify-start items-center animate-in fade-in duration-200">
+            <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-[#F5F8FB] dark:bg-[#161616] border border-[#D8D8D8] dark:border-[#1f1f1f] shadow-sm flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-white animate-bounce [animation-delay:-0.3s]" />
+              <span className="size-1.5 rounded-full bg-white animate-bounce [animation-delay:-0.15s]" />
+              <span className="size-1.5 rounded-full bg-white animate-bounce" />
+            </div>
+          </div>
         )}
         <div ref={messagesEndRef} />
       </div>
