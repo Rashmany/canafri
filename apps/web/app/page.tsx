@@ -8,6 +8,7 @@ import { apiFetch, verifyStartupSession, performLogout, GUEST_PAGES } from '@/li
 import { NavProvider } from '@/lib/nav-context';
 import { usePlatformConfig } from '@/lib/platform-config-context';
 import { FeatureGate } from '@/components/ui/feature-gate';
+import PhoneVerificationModal from '@/components/ui/phone-verification-modal';
 import Sidebar from '@/components/layout/sidebar';
 import TopNav from '@/components/layout/top-nav';
 import BottomNav from '@/components/layout/bottom-nav';
@@ -63,11 +64,13 @@ export default function Home() {
     handle: string;
     avatarSrc: string;
     isSeller: boolean;
+    phoneVerified: boolean;
   }>({
     name: '',
     handle: '',
     avatarSrc: '/images/default-avatar.png',
     isSeller: false,
+    phoneVerified: false,
   });
   const [savedJobIds, setSavedJobIds] = useState<Record<number, boolean>>({});
   const [pendingEmail, setPendingEmail] = useState('');
@@ -79,9 +82,39 @@ export default function Home() {
   const [messageTargetUser, setMessageTargetUser] = useState<{ id: string; name: string; username?: string; avatarUrl?: string } | null>(null);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [phoneGateModal, setPhoneGateModal] = useState<{
+    isOpen: boolean;
+    actionTitle: string;
+    talentName?: string;
+    onVerified?: () => void;
+  }>({ isOpen: false, actionTitle: '' });
   const { toast } = useToast();
 
   const handleOpenChatWithUser = (user: { id: string; name: string; username?: string; avatarUrl?: string }) => {
+    let isPhoneVerified = userProfile.phoneVerified;
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('canafri_user_profile');
+        if (stored) {
+          isPhoneVerified = isPhoneVerified || !!JSON.parse(stored).phoneVerified;
+        }
+      } catch {}
+    }
+
+    if (!isPhoneVerified) {
+      setPhoneGateModal({
+        isOpen: true,
+        actionTitle: `message ${user.name}`,
+        talentName: user.name,
+        onVerified: () => {
+          setUserProfile((prev) => ({ ...prev, phoneVerified: true }));
+          setMessageTargetUser(user);
+          handleNavigate('Messages');
+        },
+      });
+      return;
+    }
+
     setMessageTargetUser(user);
     handleNavigate('Messages');
   };
@@ -120,6 +153,7 @@ export default function Home() {
             handle: profile.username ? `@${profile.username}` : '@user',
             avatarSrc: profile.avatarSrc || '/images/default-avatar.png',
             isSeller: !!(profile.isSeller && profile.sellerApproved),
+            phoneVerified: !!profile.phoneVerified,
           });
         } catch (e) {
           console.error('Failed to parse user profile', e);
@@ -140,6 +174,7 @@ export default function Home() {
                 handle: u.username ? `@${u.username}` : '@user',
                 avatarSrc: u.avatarUrl || '/images/default-avatar.png',
                 isSeller: isSellerApproved,
+                phoneVerified: !!u.phoneVerified,
               });
               // Sync back to local storage
               try {
@@ -149,6 +184,9 @@ export default function Home() {
                   fullName: u.displayName || existing.fullName || '',
                   username: u.username || existing.username || '',
                   email: u.email || existing.email || '',
+                  phone: u.phone || existing.phone || '',
+                  phonePrefix: u.phonePrefix || existing.phonePrefix || '+1',
+                  phoneVerified: !!u.phoneVerified,
                   isSeller: u.isSeller,
                   sellerApproved: u.sellerApproved,
                   sellerApplied: u.sellerApplied,
@@ -231,6 +269,7 @@ export default function Home() {
         handle: '',
         avatarSrc: '/images/default-avatar.png',
         isSeller: false,
+        phoneVerified: false,
       });
       const currentPage = typeof window !== 'undefined' ? localStorage.getItem('canafri_active_page') : activePage;
       const isGuest = GUEST_PAGES.includes(currentPage || activePage);
@@ -287,6 +326,7 @@ export default function Home() {
           handle: u.username ? `@${u.username}` : '@user',
           avatarSrc: u.avatarUrl || '/images/default-avatar.png',
           isSeller: !!(u.isSeller && u.sellerApproved),
+          phoneVerified: !!u.phoneVerified,
         });
 
         // Initialize Socket.IO connection ONLY AFTER startup verification completes with a valid token
@@ -330,6 +370,7 @@ export default function Home() {
       handle: '',
       avatarSrc: '/images/default-avatar.png',
       isSeller: false,
+      phoneVerified: false,
     });
     setActivePage('Login');
     toast('Logged out successfully', 'success');
@@ -752,6 +793,20 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* ── Global Phone Verification Firewall Modal ── */}
+      <PhoneVerificationModal
+        isOpen={phoneGateModal.isOpen}
+        onClose={() => setPhoneGateModal({ isOpen: false, actionTitle: '' })}
+        onVerified={() => {
+          setPhoneGateModal({ isOpen: false, actionTitle: '' });
+          if (phoneGateModal.onVerified) {
+            phoneGateModal.onVerified();
+          }
+        }}
+        actionTitle={phoneGateModal.actionTitle}
+        talentName={phoneGateModal.talentName}
+      />
     </div>
     </NavProvider>
   );

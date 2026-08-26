@@ -214,6 +214,20 @@ export async function messageRoutes(fastify: FastifyInstance) {
       const { userId: senderId } = request.user;
       const { receiverId, jobId, content, attachments, fileUrl, fileType } = SendMessageSchema.parse(request.body);
 
+      // 0. Phone verification firewall: Sender must be phone verified to message users
+      const sender = await prisma.user.findUnique({
+        where: { id: senderId },
+        select: { phoneVerified: true, role: true },
+      });
+
+      if (!sender?.phoneVerified && sender?.role !== 'ADMIN') {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: 'Phone verification is required before sending messages to talent or clients.',
+          code: 'PHONE_VERIFICATION_REQUIRED',
+        });
+      }
+
       // 1. Anti-Flood check: max 5 messages within 10 seconds
       const floodKey = `messages_flood:${senderId}`;
       const floodCount = await redis.incr(floodKey);
