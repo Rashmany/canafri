@@ -304,12 +304,12 @@ function JobsNavItem({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const subItems = [
-    { label: 'Find Work', page: 'Find Job' },
-    { label: 'Saved Jobs', page: 'Bookmarks:Jobs' },
-    { label: 'Proposals', page: 'Proposals' },
+    { label: 'Post a Job', page: 'Post a Job' },
+    { label: 'My Posted Jobs', page: 'My Posted Jobs' },
+    { label: 'Find Freelancers', page: 'Find Sellers' },
   ];
 
-  const isActive = subItems.some(item => activePage === item.page) || activePage === 'Jobs';
+  const isActive = subItems.some(item => activePage === item.page) || activePage === 'Jobs' || activePage === 'ReviewProposals';
 
   useEffect(() => {
     if (!open) return;
