@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import Footer from '@/components/layout/footer';
 import { FindJobPageSkeleton } from '@/components/ui/skeleton';
+import PhoneVerificationModal from '@/components/ui/phone-verification-modal';
+import { useToast } from '@/components/ui/toast';
 import { CheckCircle2, ShieldCheck, Globe, MapPin, Briefcase, Clock, DollarSign, Wallet, Check } from 'lucide-react';
 
 // ─── Unified Types ────────────────────────────────────────────────────────────
@@ -65,262 +67,6 @@ export interface Seller {
   workHistory: SellerWorkHistory[];
   reviews: SellerReview[];
 }
-
-// ─── Mock Sellers Data ────────────────────────────────────────────────────────
-
-export const SELLERS: Seller[] = [
-  {
-    id: 20001,
-    name: 'Elena Rostova',
-    username: '@elena_canton',
-    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=256&q=80',
-    title: 'Senior Daml & Canton Smart Contract Architect',
-    level: 'Top Rated Seller',
-    rating: 5.0,
-    reviewsCount: 64,
-    minProjectBudget: '150 CC ($200)',
-    totalEarnings: '$45k+ (85,000 CC)',
-    location: 'United Kingdom',
-    responseTime: '1 hour',
-    isVerified: true,
-    isOnline: true,
-    bio: 'Daml certified smart contract developer with 6+ years of experience in enterprise distributed ledgers. Specialized in Canton multi-party workflows, private sub-networks, tokenization protocols, and financial asset settlement systems.',
-    skills: ['Daml', 'Canton Network', 'Smart Contracts', 'Ledger API', 'TypeScript', 'Java'],
-    completedJobs: 58,
-    jobSuccess: '99%',
-    verifications: ['Email Verified', 'ID Verified', 'Phone Verified', 'Payment Verified', 'Canton Node Verified'],
-    languages: [
-      { name: 'English', level: 'Native', pct: 100 },
-      { name: 'German', level: 'Fluent', pct: 85 },
-    ],
-    gigs: [
-      {
-        id: 'g-1',
-        title: 'I will write production-ready Daml smart contracts for Canton network',
-        price: '180 CC',
-        image: 'https://images.unsplash.com/photo-1639762681485-074b7f938ba0?auto=format&fit=crop&w=600&q=80',
-        rating: 5.0,
-        reviews: 42,
-      },
-      {
-        id: 'g-2',
-        title: 'I will audit & optimize your Canton participant node contracts',
-        price: '250 CC',
-        image: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=600&q=80',
-        rating: 4.9,
-        reviews: 22,
-      },
-    ],
-    workHistory: [
-      {
-        id: 'w-1',
-        title: 'Canton ledger multi-party sub-network agreement templates audit & implementation.',
-        date: 'Jan 2026',
-        amount: '850 CC',
-        feedback: 'World-class Daml expertise. Solved complex privacy routing rules effortlessly.',
-        status: 'Completed',
-      },
-      {
-        id: 'w-2',
-        title: 'Institutional digital asset tokenization contracts on Daml.',
-        date: 'Dec 2025',
-        amount: '1,200 CC',
-        feedback: 'Delivered robust ledger contracts with 100% test coverage.',
-        status: 'Completed',
-      },
-    ],
-    reviews: [
-      {
-        id: 'r-1',
-        reviewerName: 'Marcus Vance',
-        reviewerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=128&q=80',
-        rating: 5,
-        comment: 'Elena delivered exceptional Daml contracts ahead of schedule. Her understanding of Canton privacy rules saved our protocol from a major design flaw.',
-        date: '2 days ago',
-      },
-      {
-        id: 'r-2',
-        reviewerName: 'Devon Tech Labs',
-        reviewerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=128&q=80',
-        rating: 5,
-        comment: 'Brilliant communication and deep expertise in Ledger API integrations. Highly recommended for any complex Canton project.',
-        date: '1 week ago',
-      },
-    ],
-  },
-  {
-    id: 20002,
-    name: 'Alexander Chen',
-    username: '@alex_dev',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=256&q=80',
-    title: 'Full-Stack Web3 & Canton Wallet Integration Engineer',
-    level: 'Top Rated Seller',
-    rating: 4.9,
-    reviewsCount: 42,
-    minProjectBudget: '120 CC ($160)',
-    totalEarnings: '$32k+ (60,000 CC)',
-    location: 'Singapore',
-    responseTime: '2 hours',
-    isVerified: true,
-    isOnline: true,
-    bio: 'Frontend expert specializing in Next.js, React, and Canton Node RPC/REST API integrations. Built over 15 dApps, staking dashboards, and non-custodial crypto wallet interfaces with zero security incidents.',
-    skills: ['React', 'Next.js', 'Tailwind CSS', 'Canton Wallet', 'Ethers.js', 'Fastify'],
-    completedJobs: 39,
-    jobSuccess: '96%',
-    verifications: ['Email Verified', 'ID Verified', 'Phone Verified', 'Payment Verified'],
-    languages: [
-      { name: 'English', level: 'Native', pct: 100 },
-      { name: 'Mandarin', level: 'Native', pct: 100 },
-    ],
-    gigs: [
-      {
-        id: 'g-3',
-        title: 'I will build a custom Next.js wallet dashboard for Canton network',
-        price: '150 CC',
-        image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=600&q=80',
-        rating: 5.0,
-        reviews: 28,
-      },
-      {
-        id: 'g-4',
-        title: 'I will integrate Fastify WebSockets for real-time transaction feeds',
-        price: '100 CC',
-        image: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=600&q=80',
-        rating: 4.8,
-        reviews: 14,
-      },
-    ],
-    workHistory: [
-      {
-        id: 'w-3',
-        title: 'Canton DeFi staking dashboard frontend integration.',
-        date: 'Nov 2025',
-        amount: '600 CC',
-        feedback: 'Extremely clean React code and responsive UI.',
-        status: 'Completed',
-      },
-    ],
-    reviews: [
-      {
-        id: 'r-3',
-        reviewerName: 'Sarah Jenkins',
-        reviewerAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=128&q=80',
-        rating: 5,
-        comment: 'Alexander turned our Figma mocks into a buttery smooth Next.js wallet interface in under 4 days. Incredible craftsmanship.',
-        date: '5 days ago',
-      },
-    ],
-  },
-  {
-    id: 20003,
-    name: 'Tunde Afolabi',
-    username: '@tunde_security',
-    avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=256&q=80',
-    title: 'Blockchain Security Auditor & Canton Privacy Consultant',
-    level: 'Verified Seller',
-    rating: 4.8,
-    reviewsCount: 29,
-    minProjectBudget: '200 CC ($260)',
-    totalEarnings: '$28k+ (50,000 CC)',
-    location: 'Nigeria',
-    responseTime: '1 hour',
-    isVerified: true,
-    isOnline: false,
-    bio: 'Cybersecurity researcher focused on smart contract formal verification, consensus vulnerabilities, and privacy-preserving zero-knowledge proofs on Canton network.',
-    skills: ['Security Auditing', 'Daml', 'Zero Knowledge', 'Penetration Testing', 'Canton'],
-    completedJobs: 27,
-    jobSuccess: '94%',
-    verifications: ['Email Verified', 'ID Verified', 'Phone Verified', 'Payment Verified'],
-    languages: [
-      { name: 'English', level: 'Fluent', pct: 90 },
-    ],
-    gigs: [
-      {
-        id: 'g-5',
-        title: 'I will perform a comprehensive security audit of your Daml contract',
-        price: '300 CC',
-        image: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=600&q=80',
-        rating: 4.9,
-        reviews: 21,
-      },
-    ],
-    workHistory: [
-      {
-        id: 'w-4',
-        title: 'Formal verification audit of multi-party Daml escrow templates.',
-        date: 'Oct 2025',
-        amount: '950 CC',
-        feedback: 'In-depth security report with actionable mitigation code.',
-        status: 'Completed',
-      },
-    ],
-    reviews: [
-      {
-        id: 'r-4',
-        reviewerName: 'Canton Treasury Org',
-        reviewerAvatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=128&q=80',
-        rating: 5,
-        comment: 'Tunde found 2 critical authorization flaws during his audit. His report was clear and provided step-by-step resolution code.',
-        date: '2 weeks ago',
-      },
-    ],
-  },
-  {
-    id: 20004,
-    name: 'Sophia Lindqvist',
-    username: '@sophia_design',
-    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=256&q=80',
-    title: 'Senior Web3 UI/UX & Product Designer',
-    level: 'Verified Seller',
-    rating: 5.0,
-    reviewsCount: 38,
-    minProjectBudget: '100 CC ($130)',
-    totalEarnings: '$22k+ (40,000 CC)',
-    location: 'Sweden',
-    responseTime: '3 hours',
-    isVerified: true,
-    isOnline: true,
-    bio: 'Designing sleek, dark-mode first crypto trading platforms, NFT marketplaces, and Canton DeFi web apps. Focused on conversion-centered design and micro-interactions.',
-    skills: ['Figma', 'UI/UX Design', 'Design Systems', 'Web3', 'Prototyping'],
-    completedJobs: 35,
-    jobSuccess: '100%',
-    verifications: ['Email Verified', 'ID Verified', 'Payment Verified'],
-    languages: [
-      { name: 'English', level: 'Fluent', pct: 90 },
-      { name: 'Swedish', level: 'Native', pct: 100 },
-    ],
-    gigs: [
-      {
-        id: 'g-6',
-        title: 'I will design a high-converting Web3 SaaS or Canton dApp interface',
-        price: '140 CC',
-        image: 'https://images.unsplash.com/photo-1581291518857-4e27b48ff24e?auto=format&fit=crop&w=600&q=80',
-        rating: 5.0,
-        reviews: 35,
-      },
-    ],
-    workHistory: [
-      {
-        id: 'w-5',
-        title: 'Complete UI/UX design system for Canton NFT marketplace.',
-        date: 'Dec 2025',
-        amount: '550 CC',
-        feedback: 'Stunning Figma design files with fully interactive prototypes.',
-        status: 'Completed',
-      },
-    ],
-    reviews: [
-      {
-        id: 'r-5',
-        reviewerName: 'Fintech Spark',
-        reviewerAvatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=128&q=80',
-        rating: 5,
-        comment: 'Sophia is hands down the best Web3 UI designer we have worked with. World-class aesthetics and perfect Figma design tokens.',
-        date: '3 days ago',
-      },
-    ],
-  },
-];
 
 // ─── Utility Components ───────────────────────────────────────────────────────
 
@@ -670,7 +416,31 @@ interface SellerDetailPanelProps {
 }
 
 function SellerDetailPanel({ seller, onClose, onOpenChat }: SellerDetailPanelProps) {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<'overview' | 'gigs' | 'workHistory' | 'reviews'>('overview');
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const [phoneActionTitle, setPhoneActionTitle] = useState('contact or hire talent');
+
+  const checkPhoneVerification = (action: () => void, title: string) => {
+    let isPhoneVerified = false;
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('canafri_user_profile');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          isPhoneVerified = !!parsed.phoneVerified;
+        }
+      } catch {}
+    }
+    if (!isPhoneVerified) {
+      setPhoneActionTitle(title);
+      setPendingAction(() => action);
+      setShowPhoneModal(true);
+      return;
+    }
+    action();
+  };
 
   if (!seller) {
     return (
@@ -914,20 +684,54 @@ function SellerDetailPanel({ seller, onClose, onOpenChat }: SellerDetailPanelPro
       <div className="flex items-center gap-3 pt-2 pb-6">
         <button
           type="button"
-          onClick={() => alert(`Direct hire offer sent to ${seller.name}`)}
+          onClick={() => {
+            checkPhoneVerification(() => {
+              toast(`Opening hire contract for ${seller.name}…`, 'success');
+            }, `hire ${seller.name}`);
+          }}
           className="flex-1 py-3 px-4 rounded-xl bg-[#8C5CFF] hover:bg-[#8C5CFF]/90 text-white font-semibold text-[13px] transition-all shadow-md text-center cursor-pointer"
         >
           Hire Seller
         </button>
         <button
           type="button"
-          onClick={() => alert(`Opening chat with ${seller.name}`)}
+          onClick={() => {
+            checkPhoneVerification(() => {
+              if (onOpenChat) {
+                onOpenChat({
+                  id: String(seller.id),
+                  name: seller.name,
+                  username: seller.username,
+                  avatarUrl: seller.avatar,
+                });
+              } else {
+                toast(`Opening chat with ${seller.name}…`, 'success');
+              }
+            }, `message ${seller.name}`);
+          }}
           className="py-3 px-5 rounded-xl border border-[#8C5CFF]/40 text-[#8C5CFF] hover:bg-[#8C5CFF]/10 font-semibold text-[13px] transition-all text-center cursor-pointer"
         >
           Contact Seller
         </button>
       </div>
 
+      {/* Phone Verification Firewall Modal */}
+      <PhoneVerificationModal
+        isOpen={showPhoneModal}
+        onClose={() => {
+          setShowPhoneModal(false);
+          setPendingAction(null);
+        }}
+        onVerified={() => {
+          setShowPhoneModal(false);
+          if (pendingAction) {
+            pendingAction();
+            setPendingAction(null);
+          }
+        }}
+        actionTitle={phoneActionTitle}
+        talentName={seller.name}
+      />
     </div>
   );
 }

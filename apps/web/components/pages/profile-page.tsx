@@ -24,6 +24,7 @@ import {
   BarChart2,
 } from 'lucide-react';
 import PersonalInfoModal from '@/components/ui/personal-info-modal';
+import PhoneVerificationModal from '@/components/ui/phone-verification-modal';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
 import { Post, PostCard, PostDetail, CommentItem } from './dashboard-page';
@@ -130,6 +131,29 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
   const [postedJobsOpen, setPostedJobsOpen] = useState<boolean>(false);
   const [showAllRatings, setShowAllRatings] = useState<boolean>(false);
   const [showAllJobs, setShowAllJobs] = useState<boolean>(false);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const [phoneActionTitle, setPhoneActionTitle] = useState('message this freelancer');
+
+  const checkPhoneVerification = (action: () => void, title: string) => {
+    let isPhoneVerified = false;
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('canafri_user_profile');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          isPhoneVerified = !!parsed.phoneVerified;
+        }
+      } catch {}
+    }
+    if (!isPhoneVerified) {
+      setPhoneActionTitle(title);
+      setPendingAction(() => action);
+      setShowPhoneModal(true);
+      return;
+    }
+    action();
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -462,16 +486,18 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
                   <button
                     type="button"
                     onClick={() => {
-                      if (onOpenChat) {
-                        onOpenChat({
-                          id: profile.id || 'seller-1',
-                          name: profile.fullName || profile.displayName || 'User',
-                          username: profile.username,
-                          avatarUrl: profile.avatarSrc,
-                        });
-                      } else {
-                        toast(`Opening message composer for ${profile.fullName}…`, 'success');
-                      }
+                      checkPhoneVerification(() => {
+                        if (onOpenChat) {
+                          onOpenChat({
+                            id: profile.id || 'seller-1',
+                            name: profile.fullName || profile.displayName || 'User',
+                            username: profile.username,
+                            avatarUrl: profile.avatarSrc,
+                          });
+                        } else {
+                          toast(`Opening message composer for ${profile.fullName}…`, 'success');
+                        }
+                      }, `message ${profile.fullName || 'this freelancer'}`);
                     }}
                     className="h-[36px] px-[16px] rounded-[12px] border border-primary/50 text-[13px] font-semibold text-foreground hover:bg-foreground/5 transition-colors cursor-pointer"
                   >
@@ -479,7 +505,11 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
                   </button>
                   <button
                     type="button"
-                    onClick={() => toast(`Opening hire contract for ${profile.fullName}…`, 'success')}
+                    onClick={() => {
+                      checkPhoneVerification(() => {
+                        toast(`Opening hire contract for ${profile.fullName}…`, 'success');
+                      }, `hire ${profile.fullName || 'this talent'}`);
+                    }}
                     className="h-[36px] px-[16px] rounded-[12px] bg-primary hover:bg-primary-hover text-[13px] font-semibold text-white transition-colors cursor-pointer"
                   >
                     Hire
@@ -1203,6 +1233,24 @@ export default function ProfilePage({ onBack, sellerMode = false, isOwner = true
           />
         </div>
       )}
+
+      {/* Phone Verification Firewall Modal */}
+      <PhoneVerificationModal
+        isOpen={showPhoneModal}
+        onClose={() => {
+          setShowPhoneModal(false);
+          setPendingAction(null);
+        }}
+        onVerified={() => {
+          setShowPhoneModal(false);
+          if (pendingAction) {
+            pendingAction();
+            setPendingAction(null);
+          }
+        }}
+        actionTitle={phoneActionTitle}
+        talentName={profile.fullName}
+      />
     </div>
   );
 }

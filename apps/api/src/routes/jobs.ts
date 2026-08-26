@@ -136,6 +136,20 @@ export async function jobRoutes(fastify: FastifyInstance) {
       const { userId: clientId } = request.user;
       const { title, description, category, skills, amountCC, deadlineDays } = CreateJobSchema.parse(request.body);
 
+      // Phone verification check for job posting/hiring
+      const client = await prisma.user.findUnique({
+        where: { id: clientId },
+        select: { phoneVerified: true, role: true },
+      });
+
+      if (!client?.phoneVerified && client?.role !== 'ADMIN') {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: 'Phone verification is required before posting jobs or hiring talent.',
+          code: 'PHONE_VERIFICATION_REQUIRED',
+        });
+      }
+
       // Try on-chain Canton escrow execution
       let cantonResult = { contractId: 'temp_contract_id', txId: 'temp_tx_id' };
       try {
