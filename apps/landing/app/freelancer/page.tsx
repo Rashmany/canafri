@@ -61,36 +61,119 @@ const NAV_LINKS = [
   { label: 'About', href: '/about' },
 ];
 
-const clientSteps = [
-  { n: '01', title: 'Post a Job', body: 'Describe your project, define milestones, and set the CC payment. Your posting goes live on the CanaFri marketplace immediately after escrow funding.' },
-  { n: '02', title: 'Review & Hire', body: 'Browse verified freelancer profiles, review ratings, and send offers. Use the built-in messaging to align on scope before committing to escrow.' },
-  { n: '03', title: 'Track Milestones', body: 'Monitor progress through the on-chain milestone dashboard. Approve or request revisions for each deliverable — all actions are cryptographically signed.' },
-  { n: '04', title: 'Release & Review', body: 'On final approval, CC is released instantly. Leave a verified on-chain review that helps the freelancer build their reputation across the platform.' },
-];
+const horizontalLines = Array.from({ length: 5 });
+const verticalLines = Array.from({ length: 9 });
 
 const freelancerSteps = [
-  { n: '01', title: 'Build Your Profile', body: 'Create an on-chain reputation profile listing your Canton Network skills, DAML experience, and past project history. Verified skills earn you a trust badge.' },
-  { n: '02', title: 'Browse & Apply', body: 'Search open jobs filtered by skill, CC rate, and duration. Submit proposals with your milestone breakdown directly through the platform.' },
-  { n: '03', title: 'Deliver Milestones', body: 'Work and submit deliverables for each milestone. The smart contract tracks your submissions — there is no ambiguity about what was delivered and when.' },
-  { n: '04', title: 'Get Paid Instantly', body: 'On milestone approval, CC hits your wallet in seconds. Build your on-chain reputation with every successful delivery to command higher rates.' },
+  {
+    n: '01',
+    title: 'Build Your Verified Profile',
+    body: 'Set up your portfolio showcasing your skills, past work, and services. Build a verified reputation on-chain that clients can trust from day one.',
+    img: '/what-we-offer/fig-1.jpg',
+    points: [
+      'Showcase your portfolio, rates, and core skills',
+      'Build an on-chain track record of completed jobs',
+      'Receive direct contract proposals from global clients',
+    ],
+  },
+  {
+    n: '02',
+    title: 'Browse & Submit Proposals',
+    body: 'Explore pre-funded contracts across development, design, writing, and marketing. Send proposals with structured milestones directly to verified clients.',
+    img: '/what-we-offer/fig-2.jpg',
+    points: [
+      'Work only on jobs with 100% pre-funded escrow deposits',
+      'Define clear milestones and delivery dates upfront',
+      'Direct confidential communication via encrypted channels',
+    ],
+  },
+  {
+    n: '03',
+    title: 'Deliver Work with Proof',
+    body: 'Submit completed deliverables milestone by milestone. The Canton smart contract logs your submissions with tamper-proof timestamps, eliminating disputes over delivery timing.',
+    img: '/what-we-offer/fig-7.jpg',
+    points: [
+      'Immutable submission records with cryptographic proof',
+      'Transparent milestone review and revision handoffs',
+      'Built-in 7-day auto-approval protection if clients go silent',
+    ],
+  },
+  {
+    n: '04',
+    title: 'Instant Automated Settlement',
+    body: 'When the client signs off, payment releases automatically to your wallet in seconds. No waiting weeks for bank clearing, wire fees, or payment processing middlemen.',
+    img: '/what-we-offer/fig-8.jpg',
+    points: [
+      'Direct settlement to your private wallet in seconds',
+      'Zero international wire delays or conversion spreads',
+      'Compound your on-chain rating to unlock higher-tier jobs',
+    ],
+  },
+];
+
+const clientSteps = [
+  {
+    n: '01',
+    title: 'Define Scope & Fund Escrow',
+    body: 'Post your project requirements, establish milestone stages, and fund the contract budget. Your job goes live with instant proof of funds, attracting top freelance professionals.',
+    img: '/what-we-offer/fig-3.jpg',
+    points: [
+      'Specify clear milestones and deliverables for each phase',
+      'Pre-fund escrow to signal credibility to elite talent',
+      'Non-custodial smart contract holds funds securely',
+    ],
+  },
+  {
+    n: '02',
+    title: 'Hire Verified Specialists',
+    body: 'Review incoming bids from verified freelancers across development, design, writing, and marketing. Compare past completion histories and client reviews before hiring.',
+    img: '/what-we-offer/fig-4.jpg',
+    points: [
+      'Filter candidates by verified skills and portfolio quality',
+      'Inspect past on-chain milestone completion rates',
+      'Lock in binding terms with single-click cryptographic signatures',
+    ],
+  },
+  {
+    n: '03',
+    title: 'Track Milestone Progress',
+    body: 'Monitor live project milestones through your smart contract dashboard. Review submitted deliverables, inspect progress, and approve releases or request revisions.',
+    img: '/what-we-offer/fig-5.jpg',
+    points: [
+      'Real-time transparency over every milestone state',
+      'Review project deliverables with built-in audit trails',
+      'Decentralized 72-hour arbitration if disagreements occur',
+    ],
+  },
+  {
+    n: '04',
+    title: 'Approve & Release Funds',
+    body: 'When you are satisfied with a milestone delivery, sign off to disburse payment immediately. Provide on-chain feedback that cements your standing as a preferred employer.',
+    img: '/what-we-offer/fig-6.jpg',
+    points: [
+      'Complete control over payment releases upon inspection',
+      'Automatic receipts recorded permanently on the ledger',
+      'Build trusted employer reputation across the marketplace',
+    ],
+  },
 ];
 
 const categories = [
-  { icon: '⚡', label: 'DAML Smart Contracts', count: '142 open jobs' },
-  { icon: '🔗', label: 'Canton Network Dev', count: '89 open jobs' },
-  { icon: '🛡️', label: 'Smart Contract Auditing', count: '61 open jobs' },
-  { icon: '📊', label: 'Tokenomics Design', count: '47 open jobs' },
-  { icon: '🎨', label: 'Web3 UI/UX Design', count: '38 open jobs' },
-  { icon: '✍️', label: 'Technical Writing', count: '93 open jobs' },
+  { icon: '💻', label: 'Development & IT', count: '340 open jobs' },
+  { icon: '🎨', label: 'Design & Creative', count: '215 open jobs' },
+  { icon: '✍️', label: 'Writing & Translation', count: '185 open jobs' },
+  { icon: '🎬', label: 'Video & Animation', count: '120 open jobs' },
+  { icon: '📈', label: 'Digital Marketing', count: '160 open jobs' },
+  { icon: '🤖', label: 'AI & Data Services', count: '95 open jobs' },
 ];
 
 const freelancerFaqs = [
-  { q: 'How do I get my first job on CanaFri?', a: 'Create your profile and highlight any Canton Network or DAML experience. Apply to introductory-level jobs to build your initial on-chain reputation. Most clients browse by rating, so early positive reviews are critical.' },
-  { q: 'What CC rate should I charge?', a: 'Rates vary by skill and experience. DAML smart contract developers typically charge 250–400 CC/hr. Technical writers typically charge 80–150 CC/hr. Check the marketplace for live rate benchmarks.' },
+  { q: 'How do I get my first job on CanaFri?', a: 'Create your profile and showcase your portfolio, skills, and rates. Apply to open contracts that match your expertise and deliver quality work to build your initial on-chain reputation.' },
+  { q: 'What rates should I charge?', a: 'You set your own rates freely based on your experience and project scope. You can charge fixed milestone prices or hourly rates in CC. Check marketplace listings for live rate benchmarks across your industry.' },
   { q: 'Is there a fee for freelancers?', a: 'CanaFri charges a 5% service fee on earnings, deducted automatically at the time of escrow release. There are no subscription fees or listing charges for freelancers.' },
-  { q: 'How do clients post jobs?', a: 'Clients sign up, complete KYB (Know Your Business) verification, fund their CC wallet, and create a job posting with defined milestones. The escrow contract is created automatically on posting.' },
-  { q: 'Can I work on multiple jobs simultaneously?', a: 'Yes, there is no cap on simultaneous contracts. However, your on-chain reputation score factors in delivery rate — consistently missing deadlines will lower your visibility in search results.' },
-  { q: 'What happens if a client ghosts me?', a: 'If a client fails to respond to a submitted milestone within 7 days, the smart contract can auto-approve the milestone and release funds to you. This is a built-in protection for freelancers.' },
+  { q: 'How do clients post jobs?', a: 'Clients sign up, fund their contract escrow wallet, and create a job posting with defined milestones. The escrow smart contract is created automatically upon posting.' },
+  { q: 'Can I work on multiple jobs simultaneously?', a: 'Yes, there is no cap on simultaneous contracts. Your on-chain reputation score factors in timely delivery, so meeting deadlines consistently keeps your profile at peak visibility.' },
+  { q: 'What happens if a client ghosts me?', a: 'If a client fails to respond to a submitted milestone within 7 days, the smart contract auto-approves the milestone and releases funds to you. This is a protocol-enforced safeguard for freelancers.' },
 ];
 
 export default function FreelancerPage() {
@@ -194,28 +277,22 @@ export default function FreelancerPage() {
       </div>
 
       {/* ── Hero ── */}
-      <section className="relative pt-40 pb-24 px-6 sm:px-10 lg:px-16 overflow-hidden">
+      <section className="relative w-full pt-36 pb-0 sm:pt-44 flex flex-col overflow-hidden">
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] rounded-full bg-[#10B981]/08 blur-[120px]" />
-          <div className="absolute top-20 left-1/3 w-[500px] h-[300px] rounded-full bg-[#8C5CFF]/12 blur-[80px]" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] rounded-full bg-[#8C5CFF]/10 blur-[120px]" />
+          <div className="absolute top-20 left-1/3 w-[500px] h-[300px] rounded-full bg-[#320053]/20 blur-[80px]" />
         </div>
         <div className="bg-grid-pattern absolute inset-0 opacity-40" />
-        <div className="relative max-w-5xl mx-auto text-center">
+        <div className="relative z-10 max-w-5xl mx-auto text-center px-6 sm:px-10 lg:px-16 pb-16 sm:pb-20 w-full">
           <Reveal>
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#10B981]/10 border border-[#10B981]/20 mb-8">
-              <span className="size-1.5 rounded-full bg-[#10B981] animate-pulse" />
-              <span className="font-sans text-xs font-semibold text-[#10B981] tracking-wide uppercase">Web3 Talent Marketplace</span>
-            </div>
-          </Reveal>
-          <Reveal delay={75}>
             <h1 className="font-outfit font-bold text-4xl sm:text-5xl lg:text-6xl leading-[1.1] tracking-tight mb-6">
-              Where elite Canton talent<br />
-              <span className="gradient-text-primary">meets trustless work</span>
+              Where skilled freelancers<br />
+              <span className="gradient-text-primary">meet guaranteed payments</span>
             </h1>
           </Reveal>
           <Reveal delay={150}>
             <p className="font-sans text-base sm:text-lg text-[var(--muted)] max-w-2xl mx-auto mb-10 leading-relaxed">
-              CanaFri connects clients with top DAML developers, Canton Network architects, and Web3 specialists. Every engagement is protected by milestone-based CC escrow — zero-trust, zero-surprises.
+              CanaFri connects businesses with verified freelance talent in development, design, writing, and marketing. Every project is secured by Canton smart contract escrow with zero payment delays and zero chargeback risk.
             </p>
           </Reveal>
           <Reveal delay={225}>
@@ -230,44 +307,46 @@ export default function FreelancerPage() {
           </Reveal>
         </div>
 
-        {/* Stats strip */}
-        <Reveal delay={300} className="mt-20 max-w-4xl mx-auto">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-white/[0.06] rounded-2xl overflow-hidden border border-white/[0.06]">
-            {[
-              { value: '500+', label: 'Verified Freelancers' },
-              { value: '1,200+', label: 'Jobs Completed' },
-              { value: '4.9★', label: 'Average Rating' },
-              { value: '5%', label: 'Service Fee' },
-            ].map((s) => (
-              <div key={s.label} className="flex flex-col items-center justify-center py-6 px-4 bg-[#0B0B0B]">
-                <p className="font-outfit font-bold text-2xl sm:text-3xl text-white mb-1">{s.value}</p>
-                <p className="font-sans text-xs text-[var(--muted)] text-center">{s.label}</p>
+        {/* Key Metrics Strip — exact style from About & Creator page */}
+        <div className="w-full border-t border-white/[0.08] mt-16 sm:mt-20">
+          <div className="max-w-[117.25rem] mx-auto px-6 sm:px-10 lg:px-16">
+            <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-white/[0.06]">
+              <div className="flex flex-col items-center text-center gap-0.5 py-4 sm:py-5">
+                <span className="font-outfit text-lg sm:text-xl font-bold text-white">500+</span>
+                <span className="font-sans text-[11px] sm:text-xs text-[#8f9bb3]">Verified Freelancers</span>
               </div>
-            ))}
+              <div className="flex flex-col items-center text-center gap-0.5 py-4 sm:py-5">
+                <span className="font-outfit text-lg sm:text-xl font-bold text-[#a78bfa]">1,200+</span>
+                <span className="font-sans text-[11px] sm:text-xs text-[#8f9bb3]">Jobs Completed</span>
+              </div>
+              <div className="flex flex-col items-center text-center gap-0.5 py-4 sm:py-5">
+                <span className="font-outfit text-lg sm:text-xl font-bold text-white">4.9★</span>
+                <span className="font-sans text-[11px] sm:text-xs text-[#8f9bb3]">Average Rating</span>
+              </div>
+              <div className="flex flex-col items-center text-center gap-0.5 py-4 sm:py-5">
+                <span className="font-outfit text-lg sm:text-xl font-bold text-[#a78bfa]">5%</span>
+                <span className="font-sans text-[11px] sm:text-xs text-[#8f9bb3]">Low Service Fee</span>
+              </div>
+            </div>
           </div>
-        </Reveal>
+        </div>
       </section>
 
       {/* ── Job Categories ── */}
-      <section className="py-24 px-6 sm:px-10 lg:px-16 bg-[#0B0B0B]">
-        <div className="max-w-5xl mx-auto">
-          <Reveal className="text-center mb-16">
-            <p className="font-sans text-xs font-semibold uppercase tracking-widest text-[#8C5CFF] mb-3">Top Categories</p>
-            <h2 className="font-outfit font-bold text-3xl sm:text-4xl text-white mb-4">The most in-demand Canton talent</h2>
-            <p className="font-sans text-sm text-[var(--muted)] max-w-xl mx-auto">From DAML smart contract development to technical writing — find exactly the skill you need for your next Canton project.</p>
+      <section className="py-24 px-6 sm:px-10 lg:px-16">
+        <div className="max-w-6xl mx-auto">
+          <Reveal className="text-center mb-12 sm:mb-16">
+            <h2 className="font-outfit font-bold text-3xl sm:text-4xl lg:text-5xl text-white">The most in demand talent</h2>
           </Reveal>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {categories.map((cat, i) => (
               <Reveal key={cat.label} delay={(i % 3) * 75}>
-                <Link href="/#freelancers" className="group glass-card rounded-2xl p-6 flex items-center gap-4 cursor-pointer block">
-                  <div className="w-12 h-12 rounded-xl bg-[#8C5CFF]/10 border border-[#8C5CFF]/15 flex items-center justify-center text-2xl shrink-0 group-hover:bg-[#8C5CFF]/20 transition-colors">
-                    {cat.icon}
-                  </div>
-                  <div>
+                <Link href="/#freelancers" className="group relative rounded-2xl bg-[#0d0d12]/70 backdrop-blur-xl px-6 py-5 flex items-center gap-3 transition-all duration-300 hover:shadow-[0_12px_32px_rgba(50,0,83,0.25)] block overflow-hidden">
+                  <div className="flex-1 min-w-0">
                     <p className="font-outfit font-bold text-sm text-white group-hover:text-[#8C5CFF] transition-colors">{cat.label}</p>
                     <p className="font-sans text-xs text-[var(--muted)] mt-0.5">{cat.count}</p>
                   </div>
-                  <svg className="w-4 h-4 text-white/20 group-hover:text-[#8C5CFF] ml-auto shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                  <svg className="w-4 h-4 text-white/20 group-hover:text-[#8C5CFF] shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
                 </Link>
               </Reveal>
             ))}
@@ -275,24 +354,23 @@ export default function FreelancerPage() {
         </div>
       </section>
 
-      {/* ── Tabbed How It Works ── */}
-      <section className="py-24 px-6 sm:px-10 lg:px-16">
-        <div className="max-w-5xl mx-auto">
-          <Reveal className="text-center mb-12">
-            <p className="font-sans text-xs font-semibold uppercase tracking-widest text-[#8C5CFF] mb-3">How It Works</p>
-            <h2 className="font-outfit font-bold text-3xl sm:text-4xl text-white mb-4">One platform, two journeys</h2>
-            <p className="font-sans text-sm text-[var(--muted)] max-w-xl mx-auto">Whether you&apos;re hiring or being hired, CanaFri is designed to make every step clear, protected, and on-chain.</p>
+      {/* ── Tabbed How It Works (Alternating Zigzag Layout) ── */}
+      <section className="py-24 px-6 sm:px-10 lg:px-16 relative">
+        <div className="max-w-6xl mx-auto">
+          <Reveal className="text-center mb-10 sm:mb-12">
+            <h2 className="font-outfit font-bold text-3xl sm:text-4xl lg:text-5xl text-white mb-4">One platform, two clear journeys</h2>
+            <p className="font-sans text-sm sm:text-base text-[var(--muted)] max-w-xl mx-auto">Whether you are hiring or being hired, CanaFri is designed to make every step transparent, protected, and settled on-chain.</p>
           </Reveal>
 
-          {/* Tab selector */}
-          <Reveal className="flex justify-center mb-10">
-            <div className="inline-flex p-1 rounded-xl bg-white/[0.04] border border-white/[0.08] gap-1">
+          {/* Role switcher tab buttons */}
+          <Reveal className="flex justify-center mb-12 sm:mb-16">
+            <div className="inline-flex p-1 rounded-2xl bg-white/[0.04] gap-1">
               {(['freelancer', 'client'] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`px-6 py-2.5 rounded-lg font-sans font-semibold text-sm transition-all duration-200 cursor-pointer capitalize ${activeTab === tab ? 'bg-[var(--primary)] text-white shadow-[0_0.2rem_0.6rem_var(--primary-glow)]' : 'text-[var(--muted)] hover:text-white'}`}
+                  className={`px-7 py-3 rounded-xl font-sans font-semibold text-sm transition-all duration-200 cursor-pointer ${activeTab === tab ? 'bg-white text-[#320053] shadow-md' : 'text-[var(--muted)] hover:text-white'}`}
                 >
                   {tab === 'freelancer' ? 'I am a Freelancer' : 'I am a Client'}
                 </button>
@@ -300,100 +378,145 @@ export default function FreelancerPage() {
             </div>
           </Reveal>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {activeSteps.map((step, i) => (
-              <Reveal key={`${activeTab}-${step.n}`} delay={(i % 2) * 75}>
-                <div className="glass-card rounded-2xl p-7 relative overflow-hidden group h-full">
-                  <div className="absolute top-5 right-5 font-outfit font-black text-5xl text-white/[0.04] group-hover:text-white/[0.07] transition-colors select-none leading-none">{step.n}</div>
-                  <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 border border-[#10B981]/20 flex items-center justify-center mb-5">
-                    <span className="font-outfit font-bold text-sm text-[#10B981]">{step.n}</span>
-                  </div>
-                  <h3 className="font-outfit font-bold text-lg text-white mb-3">{step.title}</h3>
-                  <p className="font-sans text-sm text-[var(--muted)] leading-relaxed">{step.body}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
+          <div className="flex flex-col gap-8 sm:gap-12 lg:gap-14">
+            {activeSteps.map((step, i) => {
+              const isEven = i % 2 === 0;
+              return (
+                <Reveal key={`${activeTab}-${step.n}`} delay={Math.min(i, 3) * 75}>
+                  <div className="relative rounded-3xl bg-[#0d0d12]/70 backdrop-blur-xl p-6 sm:p-8 lg:p-10 transition-all duration-300 hover:shadow-[0_20px_50px_rgba(50,0,83,0.25)] group overflow-hidden">
+                    {/* Ambient light glow */}
+                    <div
+                      className={`pointer-events-none absolute w-80 h-80 rounded-full blur-[90px] opacity-15 transition-opacity duration-500 group-hover:opacity-30 ${
+                        isEven ? '-top-20 -right-20 bg-[#8C5CFF]' : '-bottom-20 -left-20 bg-[#6366f1]'
+                      }`}
+                      aria-hidden="true"
+                    />
 
-      {/* ── Trust Signals ── */}
-      <section className="py-24 px-6 sm:px-10 lg:px-16 bg-[#0B0B0B]">
-        <div className="max-w-5xl mx-auto">
-          <Reveal className="text-center mb-16">
-            <p className="font-sans text-xs font-semibold uppercase tracking-widest text-[#8C5CFF] mb-3">Why CanaFri</p>
-            <h2 className="font-outfit font-bold text-3xl sm:text-4xl text-white mb-4">Built for Web3 professionals</h2>
-          </Reveal>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {[
-              { title: 'On-Chain Reputation', body: 'Every review, rating, and completed milestone is recorded on Canton. Your reputation is portable, verifiable, and impossible to fake.', icon: '🏆' },
-              { title: 'CC-Denominated Rates', body: 'All payments are in Canton Coin. No FX risk, no bank delays, no cross-border fees. Your rate is what you earn, every time.', icon: '💎' },
-              { title: 'Verified Skill Badges', body: 'Pass a community-reviewed skill assessment to earn a verified badge in your Canton or DAML specialty. Badges increase your search visibility by 3x.', icon: '✅' },
-              { title: 'Privacy-Preserving', body: 'Client budget, freelancer rate, and contract terms are only visible to the involved parties — not the broader marketplace — thanks to Canton sub-ledgers.', icon: '🔒' },
-              { title: 'Automated Protection', body: 'Smart contract auto-approval kicks in if a client goes silent for 7 days. Freelancers are protected by protocol, not platform policy.', icon: '⚡' },
-              { title: 'Global Reach, Local Privacy', body: 'CanaFri operates globally but Canton Network ensures your contract details remain private. Work anywhere, keep your business confidential.', icon: '🌍' },
-            ].map((feat, i) => (
-              <Reveal key={feat.title} delay={(i % 3) * 75}>
-                <div className="glass-card rounded-2xl p-6 h-full group">
-                  <div className="text-2xl mb-4">{feat.icon}</div>
-                  <h3 className="font-outfit font-bold text-base text-white mb-2">{feat.title}</h3>
-                  <p className="font-sans text-sm text-[var(--muted)] leading-relaxed">{feat.body}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
+                    <div className="relative z-10 flex flex-col lg:flex-row items-center gap-8 lg:gap-12">
+                      {/* Image column */}
+                      <div className={`w-full lg:w-1/2 ${isEven ? 'lg:order-1' : 'lg:order-2'}`}>
+                        <div className="relative w-full h-[260px] sm:h-[320px] lg:h-[360px] rounded-2xl overflow-hidden bg-black/50 transition-all duration-500">
+                          <img
+                            src={step.img}
+                            alt={step.title}
+                            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ease-out"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-[#09090b]/80 via-transparent to-transparent pointer-events-none" />
+                          <div className="absolute top-4 left-4 px-3.5 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-xs font-outfit font-bold text-white tracking-wider uppercase flex items-center gap-2">
+                            <span className="size-2 rounded-full bg-[#8C5CFF]" />
+                            Step {step.n}
+                          </div>
+                        </div>
+                      </div>
 
-      {/* ── FAQ ── */}
-      <section className="py-24 px-6 sm:px-10 lg:px-16">
-        <div className="max-w-3xl mx-auto">
-          <Reveal className="text-center mb-14">
-            <p className="font-sans text-xs font-semibold uppercase tracking-widest text-[#8C5CFF] mb-3">FAQ</p>
-            <h2 className="font-outfit font-bold text-3xl sm:text-4xl text-white">Marketplace questions answered</h2>
-          </Reveal>
-          <div className="flex flex-col gap-3">
-            {freelancerFaqs.map((faq, i) => (
-              <Reveal key={i} delay={(i % 3) * 75}>
-                <div className="glass-card rounded-2xl overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                    className="w-full flex items-center justify-between px-6 py-5 text-left cursor-pointer group"
-                    aria-expanded={openFaq === i}
-                  >
-                    <span className="font-sans font-semibold text-sm text-white group-hover:text-[#8C5CFF] transition-colors pr-4">{faq.q}</span>
-                    <svg className={`w-4 h-4 text-[#8C5CFF] shrink-0 transition-transform duration-300 ${openFaq === i ? 'rotate-45' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
-                  </button>
-                  {openFaq === i && (
-                    <div className="px-6 pb-5 border-t border-white/[0.06]">
-                      <p className="font-sans text-sm text-[var(--muted)] leading-relaxed pt-4">{faq.a}</p>
+                      {/* Content column */}
+                      <div className={`w-full lg:w-1/2 flex flex-col justify-center ${isEven ? 'lg:order-2' : 'lg:order-1'}`}>
+                        <h3 className="font-outfit font-bold text-2xl sm:text-3xl text-white mb-3.5 leading-snug">
+                          {step.title}
+                        </h3>
+                        <p className="font-sans text-sm sm:text-base text-[var(--muted)] leading-relaxed mb-6">
+                          {step.body}
+                        </p>
+                        <ul className="flex flex-col gap-2.5">
+                          {step.points.map((pt) => (
+                            <li key={pt} className="flex items-center gap-3 text-xs sm:text-sm text-white/85">
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#8C5CFF]/20 text-[#8C5CFF]">
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                  <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              </span>
+                              <span>{pt}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
-                  )}
-                </div>
-              </Reveal>
-            ))}
+                  </div>
+                </Reveal>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* ── CTA Banner ── */}
-      <section className="py-24 px-6 sm:px-10 lg:px-16 bg-[#0B0B0B] relative overflow-hidden">
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#320053]/20 via-transparent to-[#10B981]/05" />
-        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] rounded-full bg-[#8C5CFF]/08 blur-[100px]" />
-        <div className="relative max-w-3xl mx-auto text-center">
+      {/* ── FAQ (Home & Creator exact style) ── */}
+      <section className="relative w-full py-10 sm:py-12 lg:py-16 bg-[#f6f6f8] overflow-hidden scroll-mt-20">
+        <div className="mx-auto flex w-full max-w-[117.25rem] flex-col items-center gap-8 px-6 sm:px-10 lg:px-16">
+          <Reveal className="w-full flex items-center justify-center">
+            <div className="flex w-full items-center justify-center mb-2">
+              <h2 className="font-outfit text-3xl sm:text-4xl lg:text-[44px] font-bold leading-tight tracking-[-0.84px] text-[#030303] text-center">
+                Marketplace questions answered
+              </h2>
+            </div>
+          </Reveal>
+          <div className="flex flex-col gap-4 sm:gap-5 w-full">
+            {freelancerFaqs.map((faq, i) => {
+              const isOpen = openFaq === i;
+              return (
+                <Reveal key={i} delay={Math.min(i, 4) * 75} className="w-full">
+                  <div className={`relative flex flex-col w-full rounded-2xl transition-all duration-300 border ${isOpen ? 'bg-[#320053] border-[#320053] shadow-[0_8px_24px_rgba(50,0,83,0.25)]' : 'bg-[#f1f1f4] border-transparent hover:border-black/5'}`}>
+                    <button
+                      type="button"
+                      className="w-full flex items-center justify-between px-6 sm:px-[30px] py-5 text-left cursor-pointer group rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#320053]"
+                      aria-expanded={isOpen}
+                      onClick={() => setOpenFaq(isOpen ? null : i)}
+                    >
+                      <h3 className={`font-outfit font-bold text-lg sm:text-xl tracking-[0] leading-snug pr-4 transition-colors duration-200 ${isOpen ? 'text-white' : 'text-[#030303] group-hover:text-[#320053]'}`}>
+                        {faq.q}
+                      </h3>
+                      <div className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all duration-300 ${isOpen ? 'bg-white/20 text-white' : 'bg-black/[0.04] text-[#5d5d7f] group-hover:bg-[#320053]/10 group-hover:text-[#320053]'}`}>
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="transition-transform duration-300 ease-out" style={{ transform: isOpen ? 'rotate(45deg)' : 'rotate(0deg)' }}>
+                          <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      </div>
+                    </button>
+                    <div className={`grid transition-all duration-300 ease-in-out ${isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                      <div className="overflow-hidden">
+                        <div className="px-6 sm:px-[30px] pb-6 pt-1">
+                          <p className={`font-sans font-normal text-sm sm:text-base leading-[24px] transition-colors duration-200 ${isOpen ? 'text-white/95' : 'text-[#5d5d7f]'}`}>
+                            {faq.a}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Reveal>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA Banner (Exact Testimonials Dark Gradient Style) ── */}
+      <section className="relative flex flex-col items-center justify-center overflow-hidden bg-[linear-gradient(180deg,rgba(50,0,83,1)_0%,rgba(0,5,24,1)_100%)] py-20 sm:py-24 lg:py-28 px-6 sm:px-10 lg:px-16">
+        {/* Glow blobs */}
+        <div className="absolute left-[200px] top-[-100px] h-[400px] w-[400px] rounded-[200px] bg-[#8080d715] blur-[75px]" aria-hidden="true" />
+        <div className="absolute left-[840px] top-[50px] h-[400px] w-[500px] rounded-[250px/200px] bg-[#aad9d910] blur-[90px]" aria-hidden="true" />
+        {/* Horizontal lines */}
+        <div className="absolute left-1/2 -translate-x-1/2 top-0 flex h-80 w-[1440px] max-w-full flex-col items-start justify-between pointer-events-none opacity-40" aria-hidden="true">
+          {horizontalLines.map((_, index) => (
+            <div key={`hl-${index}`} className="relative h-px w-full self-stretch bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+          ))}
+        </div>
+        {/* Vertical lines */}
+        <div className="absolute left-1/2 -translate-x-1/2 top-0 flex h-80 w-[1440px] max-w-full items-start justify-between pointer-events-none opacity-40" aria-hidden="true">
+          {verticalLines.map((_, index) => (
+            <div key={`vl-${index}`} className={`relative h-80 w-px bg-gradient-to-b from-white/15 via-white/5 to-transparent ${index === verticalLines.length - 1 ? 'mr-[-1.00px]' : ''}`} />
+          ))}
+        </div>
+        <div className="relative z-10 max-w-3xl mx-auto text-center">
           <Reveal>
             <h2 className="font-outfit font-bold text-3xl sm:text-4xl lg:text-5xl text-white mb-5 leading-tight">
-              Ready to work on <span className="gradient-text-primary">the future of finance?</span>
+              Work with confidence, <span className="gradient-text-primary">get paid with certainty</span>
             </h2>
-            <p className="font-sans text-sm text-[var(--muted)] mb-10 max-w-xl mx-auto leading-relaxed">
-              Join the marketplace purpose-built for Canton Network professionals. Zero-trust escrow, on-chain reputation, and instant CC payments.
+            <p className="font-sans text-sm text-[#a1b5d8] mb-10 max-w-xl mx-auto leading-relaxed">
+              Join thousands of freelancers and businesses collaborating safely. Every milestone is protected by Canton smart contract escrow with instant wallet payouts.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/#signup" className="px-8 py-3.5 bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-xl font-sans font-semibold text-white text-sm shadow-[0_0.25rem_1rem_var(--primary-glow)] hover:shadow-[0_0.35rem_1.5rem_var(--primary-glow)] transition-all duration-300 hover:-translate-y-0.5">
+              <Link href="/#signup" className="px-8 py-3.5 bg-white hover:bg-[#f6f0ff] active:scale-[0.98] rounded-xl font-sans font-semibold text-[#320053] text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
                 Get Started Free
               </Link>
-              <Link href="/escrow" className="px-8 py-3.5 rounded-xl font-sans font-semibold text-sm text-white/80 hover:text-white border border-[#8C5CFF]/40 hover:border-[#8C5CFF] hover:bg-[#8C5CFF]/5 transition-all duration-300">
+              <Link href="/escrow" className="px-8 py-3.5 rounded-xl font-sans font-semibold text-sm text-white border border-[#8C5CFF] hover:bg-[#8C5CFF]/20 transition-all duration-300 hover:-translate-y-0.5">
                 Learn About Escrow →
               </Link>
             </div>

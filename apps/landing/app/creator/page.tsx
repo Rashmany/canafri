@@ -285,7 +285,7 @@ export default function CreatorPage() {
               const isEven = i % 2 === 0;
               return (
                 <Reveal key={step.n} delay={Math.min(i, 3) * 75}>
-                  <div className="relative rounded-3xl border border-white/[0.08] bg-[#0d0d12]/70 backdrop-blur-xl p-6 sm:p-8 lg:p-10 transition-all duration-300 hover:border-[#8C5CFF]/35 hover:shadow-[0_16px_40px_rgba(50,0,83,0.25)] group overflow-hidden">
+                  <div className="relative rounded-3xl bg-[#0d0d12]/70 backdrop-blur-xl p-6 sm:p-8 lg:p-10 transition-all duration-300 hover:shadow-[0_20px_50px_rgba(50,0,83,0.25)] group overflow-hidden">
                     {/* Ambient light glow */}
                     <div
                       className={`pointer-events-none absolute w-80 h-80 rounded-full blur-[90px] opacity-15 transition-opacity duration-500 group-hover:opacity-30 ${
@@ -297,14 +297,14 @@ export default function CreatorPage() {
                     <div className="relative z-10 flex flex-col lg:flex-row items-center gap-8 lg:gap-12">
                       {/* Image column */}
                       <div className={`w-full lg:w-1/2 ${isEven ? 'lg:order-1' : 'lg:order-2'}`}>
-                        <div className="relative w-full h-[260px] sm:h-[320px] lg:h-[360px] rounded-2xl overflow-hidden bg-black/50 border border-white/10 group-hover:border-[#8C5CFF]/30 transition-all duration-500">
+                        <div className="relative w-full h-[260px] sm:h-[320px] lg:h-[360px] rounded-2xl overflow-hidden bg-black/50 transition-all duration-500">
                           <img
                             src={step.img}
                             alt={step.title}
                             className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ease-out"
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-[#09090b]/80 via-transparent to-transparent pointer-events-none" />
-                          <div className="absolute top-4 left-4 px-3.5 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/15 text-xs font-outfit font-bold text-white tracking-wider uppercase flex items-center gap-2">
+                          <div className="absolute top-4 left-4 px-3.5 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-xs font-outfit font-bold text-white tracking-wider uppercase flex items-center gap-2">
                             <span className="size-2 rounded-full bg-[#8C5CFF]" />
                             Step {step.n}
                           </div>
@@ -342,133 +342,53 @@ export default function CreatorPage() {
       </section>
 
       {/* ── Tokenomics ── */}
-      <section className="py-24 px-6 sm:px-10 lg:px-16 relative">
-        <div className="max-w-6xl mx-auto">
-          <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-b from-[#120f1f]/80 via-[#0d0c14]/90 to-[#09090b] backdrop-blur-2xl p-8 sm:p-12 lg:p-16 overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-            {/* Ambient glow blobs */}
-            <div className="pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full bg-[#8C5CFF]/15 blur-[100px]" aria-hidden="true" />
-            <div className="pointer-events-none absolute -bottom-32 -left-32 w-96 h-96 rounded-full bg-[#38BDF8]/10 blur-[100px]" aria-hidden="true" />
-
-            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
-              {/* Left Column: Human narrative */}
-              <div className="lg:col-span-6 flex flex-col justify-center">
-                <Reveal>
-                  <h2 className="font-outfit font-bold text-3xl sm:text-4xl lg:text-[44px] text-white mb-6 leading-tight">
-                    Stake once.{' '}
-                    <span className="gradient-text-primary block sm:inline">Earn forever.</span>
-                  </h2>
-                  <p className="font-sans text-sm sm:text-base text-[var(--muted)] mb-8 leading-relaxed">
-                    Your 300 CC creator stake is never spent or absorbed into platform fees. It remains in your personal Canton smart contract, securing your publishing node while compounding yield. Every reader who locks funds to access your work feeds directly into an automated pool where you receive the majority share of generated rewards.
+      <section className="py-24 px-6 sm:px-10 lg:px-16">
+        <div className="max-w-5xl mx-auto">
+          <div className="glass-card-interactive rounded-3xl p-10 md:p-14 relative overflow-hidden">
+            <div className="pointer-events-none absolute top-0 right-0 w-[500px] h-[300px] rounded-full bg-[#8C5CFF]/10 blur-[80px]" />
+            <div className="relative grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+              <Reveal>
+                <h2 className="font-outfit font-bold text-3xl sm:text-4xl text-white mb-5 leading-tight">
+                  Stake once.<br />Earn forever.
+                </h2>
+                <p className="font-sans text-sm text-[var(--muted)] mb-8 leading-relaxed max-w-md">
+                  Your 300 CC creator stake never sits idle. It actively participates in reader pool economics, earning baseline yield while your published content generates continuous CC rewards from active reader pools.
+                </p>
+                <Link
+                  href="/#signup"
+                  className="inline-flex px-7 py-3 bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-xl font-sans font-semibold text-white text-sm shadow-[0_0.25rem_1rem_var(--primary-glow)] hover:shadow-[0_0.35rem_1.5rem_var(--primary-glow)] transition-all duration-300 hover:-translate-y-0.5"
+                >
+                  Become a Creator
+                </Link>
+              </Reveal>
+              <Reveal delay={150}>
+                <div className="flex flex-col gap-5">
+                  {[
+                    { label: 'Author Reward Share', pct: 70, color: '#8C5CFF' },
+                    { label: 'Reader Staking Return', pct: 20, color: '#A78BFA' },
+                    { label: 'Governance & Network Reserve', pct: 10, color: '#38BDF8' },
+                  ].map((bar) => (
+                    <div key={bar.label}>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-sans text-xs text-[var(--muted)]">{bar.label}</span>
+                        <span className="font-outfit font-bold text-xs text-white">{bar.pct}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-700 ease-out"
+                          style={{
+                            width: `${bar.pct}%`,
+                            background: `linear-gradient(90deg, ${bar.color}88, ${bar.color})`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <p className="font-sans text-[11px] text-[var(--muted-dark)] mt-1">
+                    * 100% automated on-chain distribution executed by Canton smart contracts.
                   </p>
-
-                  <div className="flex flex-col gap-3.5 mb-9">
-                    {[
-                      'Principal is always your property with a standard 7-day un-stake window',
-                      'No middleman cuts or opaque algorithmic deductions',
-                      'Earnings stream in real time straight into your non-custodial wallet',
-                    ].map((item) => (
-                      <div key={item} className="flex items-center gap-3 text-xs sm:text-sm text-white/85">
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#8C5CFF]/20 text-[#8C5CFF]">
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                            <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        </span>
-                        <span>{item}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div>
-                    <Link
-                      href="/#signup"
-                      className="inline-flex px-8 py-3.5 bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-xl font-sans font-semibold text-white text-sm shadow-[0_0.25rem_1rem_var(--primary-glow)] hover:shadow-[0_0.35rem_1.5rem_var(--primary-glow)] transition-all duration-300 hover:-translate-y-0.5"
-                    >
-                      Become a Creator
-                    </Link>
-                  </div>
-                </Reveal>
-              </div>
-
-              {/* Right Column: Transparent 100% Split Breakdown */}
-              <div className="lg:col-span-6">
-                <Reveal delay={150}>
-                  <div className="flex flex-col gap-6 rounded-2xl border border-white/[0.08] bg-black/40 p-6 sm:p-8 backdrop-blur-md">
-                    {/* Header of the card */}
-                    <div className="flex items-center justify-between pb-4 border-b border-white/[0.06]">
-                      <span className="font-outfit font-semibold text-sm sm:text-base text-white">Pool Yield Allocation</span>
-                      <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-sans text-xs font-medium">
-                        100% Balanced On-Chain
-                      </span>
-                    </div>
-
-                    {/* Unified Multi-Segment Distribution Bar */}
-                    <div className="flex flex-col gap-2">
-                      <div className="h-3 w-full rounded-full bg-white/[0.06] overflow-hidden flex p-0.5 gap-1">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-[#8C5CFF] to-[#a855f7] transition-all duration-700"
-                          style={{ width: '70%' }}
-                          title="70% Author Share"
-                        />
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-[#38BDF8] to-[#0ea5e9] transition-all duration-700"
-                          style={{ width: '20%' }}
-                          title="20% Reader APY"
-                        />
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-[#a78bfa] to-[#818cf8] transition-all duration-700"
-                          style={{ width: '10%' }}
-                          title="10% Protocol & Governance"
-                        />
-                      </div>
-                      <div className="flex justify-between items-center text-[11px] font-sans text-[var(--muted)] px-1">
-                        <span className="text-[#8C5CFF] font-medium">70% Author</span>
-                        <span className="text-[#38BDF8] font-medium">20% Reader APY</span>
-                        <span className="text-[#a78bfa] font-medium">10% Network</span>
-                      </div>
-                    </div>
-
-                    {/* Breakdown items */}
-                    <div className="flex flex-col gap-3.5 pt-2">
-                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:border-[#8C5CFF]/30 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <span className="size-3 rounded-full bg-[#8C5CFF] shrink-0" />
-                          <div>
-                            <p className="font-sans font-medium text-sm text-white">Author Reward Share</p>
-                            <p className="font-sans text-xs text-[var(--muted)]">Direct streaming yield based on active readership</p>
-                          </div>
-                        </div>
-                        <span className="font-outfit font-extrabold text-xl text-white">70%</span>
-                      </div>
-
-                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:border-[#38BDF8]/30 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <span className="size-3 rounded-full bg-[#38BDF8] shrink-0" />
-                          <div>
-                            <p className="font-sans font-medium text-sm text-white">Reader Staking Return</p>
-                            <p className="font-sans text-xs text-[var(--muted)]">Yield earned by readers while locking CC to access</p>
-                          </div>
-                        </div>
-                        <span className="font-outfit font-extrabold text-xl text-white">20%</span>
-                      </div>
-
-                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:border-[#a78bfa]/30 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <span className="size-3 rounded-full bg-[#a78bfa] shrink-0" />
-                          <div>
-                            <p className="font-sans font-medium text-sm text-white">Network &amp; Governance</p>
-                            <p className="font-sans text-xs text-[var(--muted)]">Sub-ledger validator security and community rewards</p>
-                          </div>
-                        </div>
-                        <span className="font-outfit font-extrabold text-xl text-white">10%</span>
-                      </div>
-                    </div>
-
-                    <p className="font-sans text-xs text-[var(--muted)] text-center pt-1 border-t border-white/[0.04]">
-                      Smart contracts automatically execute distributions every block with zero human intervention.
-                    </p>
-                  </div>
-                </Reveal>
-              </div>
+                </div>
+              </Reveal>
             </div>
           </div>
         </div>
