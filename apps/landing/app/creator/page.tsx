@@ -232,7 +232,7 @@ export default function CreatorPage() {
           </Reveal>
           <Reveal delay={150}>
             <p className="font-sans text-base sm:text-lg text-[var(--muted)] max-w-2xl mx-auto mb-10 leading-relaxed">
-              CanaFri&apos;s Read-to-Earn protocol lets technical writers and Canton Network experts monetize their knowledge without paywalls. Stake once, earn continuously with quality enforced at the protocol level.
+              Publish your knowledge. Stake your content. Get paid every time someone reads it.
             </p>
           </Reveal>
           <Reveal delay={225}>
@@ -465,7 +465,7 @@ export default function CreatorPage() {
               Turn your expertise into <span className="gradient-text-primary">passive CC income</span>
             </h2>
             <p className="font-sans text-sm text-[#a1b5d8] mb-10 max-w-xl mx-auto leading-relaxed">
-              Join Canton Network experts already earning Canton Coin from their technical content. Your stake earns while you sleep.
+              Your knowledge is already worth something. Start earning from it today.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/#signup" className="px-8 py-3.5 bg-white hover:bg-[#f6f0ff] active:scale-[0.98] rounded-xl font-sans font-semibold text-[#320053] text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">

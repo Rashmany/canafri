@@ -291,8 +291,8 @@ export default function FreelancerPage() {
             </h1>
           </Reveal>
           <Reveal delay={150}>
-            <p className="font-sans text-base sm:text-lg text-[var(--muted)] max-w-2xl mx-auto mb-10 leading-relaxed">
-              CanaFri connects businesses with verified freelance talent in development, design, writing, and marketing. Every project is secured by Canton smart contract escrow with zero payment delays and zero chargeback risk.
+            <p className="font-sans text-base sm:text-lg text-[var(--muted)] max-w-xl mx-auto mb-10 leading-relaxed">
+              Post a job or find your next client. Every contract is backed by smart contract escrow so no one has to take anyone on faith.
             </p>
           </Reveal>
           <Reveal delay={225}>
@@ -510,7 +510,7 @@ export default function FreelancerPage() {
               Work with confidence, <span className="gradient-text-primary">get paid with certainty</span>
             </h2>
             <p className="font-sans text-sm text-[#a1b5d8] mb-10 max-w-xl mx-auto leading-relaxed">
-              Join thousands of freelancers and businesses collaborating safely. Every milestone is protected by Canton smart contract escrow with instant wallet payouts.
+              Find your next job, deliver great work, get paid on time. Every single time.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/#signup" className="px-8 py-3.5 bg-white hover:bg-[#f6f0ff] active:scale-[0.98] rounded-xl font-sans font-semibold text-[#320053] text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">

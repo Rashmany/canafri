@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, JSX } from "react";
+import Link from "next/link";
 import {
   Sparkle,
   MessageSquare,
@@ -268,63 +269,6 @@ const experts = [
   { id: 4, rating: "4.8", reviews: 8, role: "Tokenomics & Protocol Strategist", name: "David Kim", rate: "280 CC/Min", bio: "Advising creators and DAOs on sustainable Canton token staking, reader pool dynamics, and governance." },
 ];
 
-/* ─────────────────────────────────────────────
-   ECOSYSTEM TRUST METRICS BAR
-───────────────────────────────────────────── */
-export const EcosystemMetricsBar = () => {
-  return (
-    <section className="relative z-10 w-full bg-[#0d091a] border-y border-white/[0.08] py-8 sm:py-10">
-      <div className="mx-auto max-w-[117.25rem] px-6 sm:px-10 lg:px-16">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 divide-y md:divide-y-0 md:divide-x divide-white/[0.08]">
-          <div className="flex flex-col items-center text-center p-2">
-            <span className="font-outfit text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight">
-              $0
-            </span>
-            <span className="text-xs sm:text-sm font-semibold text-[#8C5CFF] uppercase tracking-wider mt-1">
-              Upfront Cost
-            </span>
-            <p className="text-xs text-[#8f9bb3] mt-1 max-w-[200px]">
-              Free to register, explore, publish, and post projects
-            </p>
-          </div>
-          <div className="flex flex-col items-center text-center p-2 pt-6 md:pt-2">
-            <span className="font-outfit text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight">
-              100%
-            </span>
-            <span className="text-xs sm:text-sm font-semibold text-[#8C5CFF] uppercase tracking-wider mt-1">
-              Smart Contract Escrow
-            </span>
-            <p className="text-xs text-[#8f9bb3] mt-1 max-w-[200px]">
-              Funds locked in Canton escrow before work begins
-            </p>
-          </div>
-          <div className="flex flex-col items-center text-center p-2 pt-6 md:pt-2">
-            <span className="font-outfit text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight">
-              &lt; 1s
-            </span>
-            <span className="text-xs sm:text-sm font-semibold text-[#8C5CFF] uppercase tracking-wider mt-1">
-              Settlement Finality
-            </span>
-            <p className="text-xs text-[#8f9bb3] mt-1 max-w-[200px]">
-              Sub-second payout directly to your Canton wallet
-            </p>
-          </div>
-          <div className="flex flex-col items-center text-center p-2 pt-6 md:pt-2">
-            <span className="font-outfit text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight">
-              0%
-            </span>
-            <span className="text-xs sm:text-sm font-semibold text-[#8C5CFF] uppercase tracking-wider mt-1">
-              Dispute Loss Risk
-            </span>
-            <p className="text-xs text-[#8f9bb3] mt-1 max-w-[200px]">
-              Protected by on-chain milestone approval &amp; resolution
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-};
 
 /* ─────────────────────────────────────────────
    CANAFRI CONTENT CARDS (EXACT COPY FROM CONTENT PAGE)
@@ -1995,6 +1939,24 @@ function WalletMiniCard({ showExtraButtons = false }: { showExtraButtons?: boole
 
 type RoleKey = "Freelancer" | "Creator" | "Client";
 
+const ROLE_NAV: Record<RoleKey, { href: string; label: string; actionText: string }> = {
+  Freelancer: {
+    href: "/freelancer",
+    label: "Read full freelancer guide",
+    actionText: "Explore Freelancer guide",
+  },
+  Creator: {
+    href: "/creator",
+    label: "Read full creator guide",
+    actionText: "Explore Creator guide",
+  },
+  Client: {
+    href: "/escrow",
+    label: "Explore escrow & client protection",
+    actionText: "Explore Escrow guide",
+  },
+};
+
 interface HowItWorksCard {
   bgClass: string;
   icon: React.ReactNode;
@@ -2617,9 +2579,6 @@ export const HeroSection = (): JSX.Element => {
         </Reveal>
       </div>
 
-      {/* ECOSYSTEM TRUST METRICS BAR */}
-      <EcosystemMetricsBar />
-
       {/* SECTION 2: WHAT WE OFFER (Light bg section: #F6F6F8) */}
       <section id="what-we-offer" className="w-full bg-[#F6F6F8] py-10 sm:py-12 lg:py-16 scroll-mt-20">
         <div className="mx-auto flex w-full max-w-[117.25rem] flex-col items-center gap-10 lg:gap-12 px-6 sm:px-10 lg:px-16">
@@ -3083,6 +3042,17 @@ export const HeroSection = (): JSX.Element => {
                   </button>
                 ))}
               </div>
+
+              {/* Dedicated guide link for selected role */}
+              <Link
+                href={ROLE_NAV[activeRole].href}
+                className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#8C5CFF] hover:text-[#320053] transition-colors group/link"
+              >
+                <span>{ROLE_NAV[activeRole].label}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="transition-transform group-hover/link:translate-x-1">
+                  <path d="M5 12h14m-7-7 7 7-7 7" />
+                </svg>
+              </Link>
             </div>
           </Reveal>
 
@@ -3143,18 +3113,17 @@ export const HeroSection = (): JSX.Element => {
                       </p>
                     </div>
 
-                    {/* Explore more — full-width button with brand bg color, revealed on hover on desktop */}
-                    <button
-                      type="button"
-                      onClick={() => handleAction(`Explore ${activeRole}`)}
+                    {/* Explore more — full-width link with brand bg color, revealed on hover on desktop */}
+                    <Link
+                      href={ROLE_NAV[activeRole].href}
                       className="w-full flex items-center justify-center gap-2 py-3 px-5 rounded-full text-sm font-semibold bg-[#320053] text-white hover:bg-[#480075] shadow-sm transition-all duration-200 cursor-pointer lg:opacity-0 lg:-translate-y-1 lg:group-hover:opacity-100 lg:group-hover:translate-y-0"
                       aria-label={`Explore more about CanaFri for ${activeRole}`}
                     >
-                      <span>Explore more</span>
+                      <span>Explore {activeRole} guide</span>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M5 12h14m-7-7 7 7-7 7" />
                       </svg>
-                    </button>
+                    </Link>
                   </div>
                 </article>
               </Reveal>

@@ -232,7 +232,7 @@ export default function EscrowPage() {
           </Reveal>
           <Reveal delay={150}>
             <p className="font-sans text-base sm:text-lg text-[var(--muted)] max-w-2xl mx-auto mb-10 leading-relaxed">
-              Every CanaFri job locks payment in a Canton DAML smart contract before work begins. Funds release only on milestone approval, guaranteed mathematically with zero reliance on trust.
+              Payment locks in before work starts. Releases only when you say so. No trust required.
             </p>
           </Reveal>
           <Reveal delay={225}>
@@ -501,7 +501,7 @@ export default function EscrowPage() {
               Get paid for what you <span className="gradient-text-primary">actually deliver</span>
             </h2>
             <p className="font-sans text-sm text-[#a1b5d8] mb-10 max-w-xl mx-auto leading-relaxed">
-              Every payment is locked securely before work starts and released on your terms. CanaFri escrow is the trustless foundation every modern freelancer and client deserves.
+              Funds in before work starts. Out only when you approve. That is the whole deal.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/#signup" className="px-8 py-3.5 bg-white hover:bg-[#f6f0ff] active:scale-[0.98] rounded-xl font-sans font-semibold text-[#320053] text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
