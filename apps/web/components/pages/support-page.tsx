@@ -177,7 +177,7 @@ export default function SupportPage({ onBack }: SupportPageProps) {
   const [activeTab, setActiveTab] = useState<'faq' | 'contact' | 'my-tickets'>('faq');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [expandedId, setExpandedId] = useState<string | null>('acc-1');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Contact Form State
   const [formCategory, setFormCategory] = useState<string>(FORM_CATEGORIES[0]);

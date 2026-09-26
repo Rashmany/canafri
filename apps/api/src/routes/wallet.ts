@@ -417,10 +417,15 @@ export async function walletRoutes(fastify: FastifyInstance) {
         }
       }
 
-      // Format date groups and sort descending
+      // Sort descending by date
       transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      // Assign date groups like "Today", "Yesterday", "Jun 29, 2026"
+      const { limit: limitQuery, page: pageQuery } = request.query as { limit?: string; page?: string };
+      const limit = Math.min(parseInt(limitQuery || '20', 10), 50);
+      const page = Math.max(parseInt(pageQuery || '1', 10), 1);
+      const startIndex = (page - 1) * limit;
+      const paginated = transactions.slice(startIndex, startIndex + limit);
+
       const now = new Date();
       const todayStr = now.toDateString();
       const yesterday = new Date(now);
@@ -428,7 +433,7 @@ export async function walletRoutes(fastify: FastifyInstance) {
       const yesterdayStr = yesterday.toDateString();
 
       let lastDateGroup = '';
-      const formattedTransactions = transactions.map((tx, idx) => {
+      const formattedTransactions = paginated.map((tx) => {
         const txDate = new Date(tx.date);
         let group = '';
         if (txDate.toDateString() === todayStr) {
@@ -448,7 +453,13 @@ export async function walletRoutes(fastify: FastifyInstance) {
         };
       });
 
-      return reply.send({ success: true, transactions: formattedTransactions });
+      return reply.send({
+        success: true,
+        transactions: formattedTransactions,
+        totalCount: transactions.length,
+        hasMore: startIndex + limit < transactions.length,
+        page,
+      });
     } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
