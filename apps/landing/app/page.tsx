@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, JSX } from "react";
 import Link from "next/link";
+import { SIGNUP_URL, LOGIN_URL } from "@/lib/config";
 import {
   Sparkle,
   MessageSquare,
@@ -17,7 +18,7 @@ import {
 } from "lucide-react";
 import { Post, PostCard } from "@/components/post-card";
 
-/* ─── useInView hook ───────────────────────────────────────────── */
+/* Viewport intersection observer */
 function useInView(options: IntersectionObserverInit = {}) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -39,7 +40,7 @@ function useInView(options: IntersectionObserverInit = {}) {
   return { ref, isVisible };
 }
 
-/* ─── Reveal wrapper component ─────────────────────────────────── */
+/* Scroll reveal wrapper */
 interface RevealProps {
   children: React.ReactNode;
   className?: string;
@@ -74,6 +75,15 @@ const navigationItems = [
 
 const handleAction = (action: string) => {
   if (typeof window !== "undefined") {
+    const act = action.toLowerCase().trim();
+    if (act.includes("sign up") || act.includes("get started") || act === "signup") {
+      window.open(SIGNUP_URL, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (act.includes("login") || act.includes("sign in")) {
+      window.open(LOGIN_URL, "_blank", "noopener,noreferrer");
+      return;
+    }
     const slug = action.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const target = document.getElementById(slug);
     if (target) {
@@ -270,12 +280,7 @@ const experts = [
 ];
 
 
-/* ─────────────────────────────────────────────
-   CANAFRI CONTENT CARDS (EXACT COPY FROM CONTENT PAGE)
-───────────────────────────────────────────── */
-
-// Post and PostCard are imported from @/components/post-card
-
+/* Featured creator articles */
 const contentFeedPosts: Post[] = [
   {
     id: "post-1",
@@ -312,7 +317,7 @@ const contentFeedPosts: Post[] = [
   },
 ];
 
-// ─── Interactive Card Container for Landing Page ──────────────────────────────────
+// Interactive post card container
 
 function InteractivePostCard({ post }: { post: Post }) {
   const [liked, setLiked] = useState(false);
@@ -363,9 +368,10 @@ export const TrendingArticlesSection = () => {
         {/* Bottom CTA Row */}
         <Reveal delay={150}>
           <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
-            <button
-              type="button"
-              onClick={() => handleAction("Sign Up")}
+            <a
+              href={SIGNUP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="all-unset box-border flex items-center justify-center gap-2 px-7 py-3.5 bg-[var(--primary)] rounded-lg shadow-[0_0.25rem_1rem_var(--primary-glow)] cursor-pointer hover:bg-[var(--primary-hover)] transition-all text-white font-sans font-semibold text-sm group"
             >
               <span>Start Publishing &amp; Earn</span>
@@ -379,7 +385,7 @@ export const TrendingArticlesSection = () => {
               >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
               </svg>
-            </button>
+            </a>
             <button
               type="button"
               onClick={() => handleAction("Find Talent")}
@@ -394,14 +400,7 @@ export const TrendingArticlesSection = () => {
   );
 };
 
-/* ─────────────────────────────────────────────
-   WHY CHOOSE CANAFRI? — data & sub-components
-   (original design component preserved verbatim;
-   asset paths point to /public — replace with
-   real exports when available)
-───────────────────────────────────────────── */
-
-
+/* Why Choose CanaFri comparison section */
 function WhyCanafriSection() {
   const [activeTab, setActiveTab] = useState<"canafri" | "canton">("canafri");
 
@@ -412,7 +411,13 @@ function WhyCanafriSection() {
       description:
         "Smart contracts lock client funds before work begins. Milestones release only upon your verified approval.",
       badgeBg: "bg-[#edf5ff]",
-      icon: "/icons/canafri-escrow-protection.png",
+      iconColor: "#2563eb",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+      ),
     },
     {
       id: "canafri-1",
@@ -420,7 +425,12 @@ function WhyCanafriSection() {
       description:
         "Publish premium knowledge and earn recurring Canton Coin from every reader directly into your wallet.",
       badgeBg: "bg-[#f5efff]",
-      icon: "/icons/canafri-creator-economy.png",
+      iconColor: "#8c5cff",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z" />
+        </svg>
+      ),
     },
     {
       id: "canafri-2",
@@ -428,7 +438,12 @@ function WhyCanafriSection() {
       description:
         "Sub-second transaction finality with near-zero gas overhead. Say goodbye to international wire fees.",
       badgeBg: "bg-[#fff8ed]",
-      icon: "/icons/canafri-low-fee-speed.png",
+      iconColor: "#d97706",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+      ),
     },
     {
       id: "canafri-3",
@@ -436,7 +451,13 @@ function WhyCanafriSection() {
       description:
         "Enterprise-grade privacy, horizontal scalability, and regulatory compliance built at the protocol level.",
       badgeBg: "bg-[#f0fdf4]",
-      icon: "/icons/canafri-canton-network.png",
+      iconColor: "#16a34a",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <rect width="7" height="7" x="14" y="3" rx="1" />
+          <path d="M10 21V8a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H3" />
+        </svg>
+      ),
     },
   ];
 
@@ -447,7 +468,13 @@ function WhyCanafriSection() {
       description:
         "Transaction details are shared strictly between transacting parties. Zero public ledger data leaks.",
       badgeBg: "bg-[#edf5ff]",
-      icon: "/icons/canton-private-design.png",
+      iconColor: "#2563eb",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      ),
     },
     {
       id: "canton-1",
@@ -455,7 +482,15 @@ function WhyCanafriSection() {
       description:
         "Payment and contract actions settle together with deterministic finality, eliminating counterparty risk.",
       badgeBg: "bg-[#f5efff]",
-      icon: "/icons/canton-atomic-settlement.png",
+      iconColor: "#8c5cff",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <path d="m7.5 4.27 9 5.15" />
+          <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+          <path d="m3.3 7 8.7 5 8.7-5" />
+          <path d="M12 22V12" />
+        </svg>
+      ),
     },
     {
       id: "canton-2",
@@ -463,7 +498,14 @@ function WhyCanafriSection() {
       description:
         "CanaFri uses Daml smart contracts to encode authorization, privacy, and business rules at the protocol level.",
       badgeBg: "bg-[#fff8ed]",
-      icon: "/icons/canton-daml-workflows.png",
+      iconColor: "#d97706",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+          <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+          <path d="m9 15 2 2 4-4" />
+        </svg>
+      ),
     },
     {
       id: "canton-3",
@@ -471,7 +513,14 @@ function WhyCanafriSection() {
       description:
         "A composable, privacy-enabled network engineered specifically for enterprise financial workflows and institutional trust.",
       badgeBg: "bg-[#f0fdf4]",
-      icon: "/icons/canton-powered-canton.png",
+      iconColor: "#16a34a",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+          <path d="M2 12h20" />
+        </svg>
+      ),
     },
   ];
 
@@ -550,15 +599,12 @@ function WhyCanafriSection() {
                   aria-hidden="true"
                 />
 
-                {/* Centered Circular Icon Image */}
+                {/* Circular Icon */}
                 <div
-                  className={`relative z-10 flex items-center justify-center size-16 sm:size-18 rounded-full ${card.badgeBg} group-hover:bg-white group-hover:shadow-[0_6px_20px_rgba(0,0,0,0.2)] transition-all duration-300 group-hover:scale-105 mb-2 shrink-0 shadow-inner`}
+                  className={`relative z-10 flex items-center justify-center size-14 sm:size-16 rounded-2xl ${card.badgeBg} group-hover:bg-white/10 transition-all duration-300 group-hover:scale-105 mb-3 shrink-0`}
+                  style={{ color: card.iconColor }}
                 >
-                  <img
-                    src={card.icon}
-                    alt={card.title}
-                    className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
-                  />
+                  {card.icon}
                 </div>
 
                 {/* Title */}
@@ -580,11 +626,7 @@ function WhyCanafriSection() {
   );
 }
 
-/* ─────────────────────────────────────────────
-   WHAT PEOPLE SAY (Testimonials Section)
-   Glassmorphism 3-card layout with ambient gradient,
-   background grid lines, and featured highlight card.
-───────────────────────────────────────────── */
+/* Community testimonials */
 const horizontalLines = Array.from({ length: 6 });
 const verticalLines = Array.from({ length: 12 });
 
@@ -706,24 +748,23 @@ export const TestimonialsSection = () => {
 
         {/* Center bottom Sign Up button */}
         <Reveal delay={150} className="flex items-center justify-center w-full mt-2 sm:mt-4">
-          <button
-            type="button"
+          <a
             id="testimonials-signup-cta"
-            onClick={() => handleAction("Sign Up")}
+            href={SIGNUP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
             className="box-border relative flex h-11 px-8 items-center justify-center rounded-xl bg-white hover:bg-white/90 text-[#121212] font-semibold text-sm transition-all duration-200 cursor-pointer shadow-md hover:shadow-lg hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
             aria-label="Sign up for Canafri"
           >
             Sign Up
-          </button>
+          </a>
         </Reveal>
       </div>
     </section>
   );
 };
 
-/* ─────────────────────────────────────────────
-   FAQ SECTION
-───────────────────────────────────────────── */
+/* Frequently asked questions */
 const faqItems = [
   {
     id: "faq-what-is-canafri",
@@ -864,9 +905,7 @@ export const FAQSection = () => {
   );
 };
 
-/* ─────────────────────────────────────────────
-   CTA / GET STARTED SECTION
-───────────────────────────────────────────── */
+/* Call to action section */
 export const CTASection = () => {
   // To replace placeholders, set your image URLs here:
   const bannerPhotoSrc: string | null = "/banner/banner1-pic.jpg";
@@ -998,10 +1037,11 @@ export const CTASection = () => {
 
           {/* Right CTA button — horizontally aligned with left content */}
           <Reveal delay={150} className="flex items-center shrink-0 lg:pb-1">
-            <button
-              type="button"
+            <a
               id="cta-get-started"
-              onClick={() => handleAction("Get Started")}
+              href={SIGNUP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="group inline-flex items-center justify-center gap-3 px-8 py-4 bg-white hover:bg-[#f6f0ff] active:scale-[0.98] rounded-xl cursor-pointer shadow-lg hover:shadow-xl transition-all duration-200 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
               aria-label="Get started"
             >
@@ -1014,7 +1054,7 @@ export const CTASection = () => {
                   <path d="M2 7.5h11M8.5 3l4.5 4.5L8.5 12" stroke="#320053" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </span>
-            </button>
+            </a>
           </Reveal>
         </div>
       </section>
@@ -1062,7 +1102,7 @@ function FooterCol({ title, children }: { title: string; children: React.ReactNo
 export const LandingFooter = () => {
   const nav = (page: string) => () => handleAction(page);
 
-  /* ─ inline lucide-style SVG icons (avoids importing lucide into landing) ─ */
+  /* Footer icon set (inline SVGs to avoid importing lucide into landing) */
   const icons = {
     briefcase: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" /></svg>,
     users: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>,
@@ -1192,18 +1232,15 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* ─────────────────────────────────────────────
-   WHAT WE OFFER (Figma Container-Query Design)
-   Set image paths in OFFER_IMAGES to replace placeholders.
-───────────────────────────────────────────── */
+/* Platform offer visuals */
 const resolveOfferImage = (img: any): string =>
   img && typeof img === "object" && "src" in img ? img.src : (img as string) || "";
 
 export const OFFER_IMAGES = {
-  creator: "/what-we-offer/creator.png", // Card 1 (Content Creator)
-  escrow: "/what-we-offer/escrow.png", // Card 2 (escroll)
-  client: "/what-we-offer/client.png", // Card 3 (client)
-  freelancer: "/what-we-offer/freelancer.png", // Card 3 (freelancer - Secondary picture)
+  creator: "/what-we-offer/creator.png",
+  escrow: "/what-we-offer/escrow.png",
+  client: "/what-we-offer/client.png",
+  freelancer: "/what-we-offer/freelancer.png",
 };
 
 type OfferCardType = "creator" | "escrow" | "freelancer";
@@ -2259,24 +2296,22 @@ export const HeroSection = (): JSX.Element => {
           <div className="flex items-center gap-2.5 sm:gap-4 relative flex-[0_0_auto]">
             {/* Desktop Authentication buttons */}
             <div className="hidden md:inline-flex items-center gap-3 sm:gap-4">
-              <button
-                type="button"
-                onClick={() => handleAction("Login")}
-                className="all-unset box-border inline-flex items-start px-4 sm:px-5 py-2.5 relative flex-[0_0_auto] rounded-lg cursor-pointer hover:bg-white/[0.05] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"
+              <a
+                href={LOGIN_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-4 sm:px-5 py-2.5 rounded-lg cursor-pointer hover:bg-white/[0.05] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] font-sans font-semibold text-white text-sm"
               >
-                <span className="relative w-fit mt-[-0.0625rem] font-sans font-semibold text-white text-sm tracking-normal leading-normal">
-                  Login
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleAction("Sign Up")}
-                className="all-unset box-border inline-flex items-start px-4 sm:px-5 py-2.5 relative flex-[0_0_auto] bg-[var(--primary)] rounded-lg shadow-[0_0.25rem_0.75rem_var(--primary-glow)] cursor-pointer hover:bg-[var(--primary-hover)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"
+                Login
+              </a>
+              <a
+                href={SIGNUP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-4 sm:px-5 py-2.5 bg-[var(--primary)] rounded-lg shadow-[0_0.25rem_0.75rem_var(--primary-glow)] cursor-pointer hover:bg-[var(--primary-hover)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] font-sans font-semibold text-white text-sm"
               >
-                <span className="relative w-fit mt-[-0.0625rem] font-sans font-semibold text-white text-sm tracking-normal leading-normal">
-                  Sign Up
-                </span>
-              </button>
+                Sign Up
+              </a>
             </div>
 
             {/* Hamburger Menu Toggle Button on Mobile / Tablet */}
@@ -2346,26 +2381,24 @@ export const HeroSection = (): JSX.Element => {
           </nav>
 
           <div className="flex flex-col gap-3 pt-6 border-t border-white/10 mt-6 pb-8">
-            <button
-              type="button"
-              onClick={() => {
-                handleAction("Login");
-                setIsMobileMenuOpen(false);
-              }}
+            <a
+              href={LOGIN_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setIsMobileMenuOpen(false)}
               className="w-full py-3.5 px-4 rounded-xl border border-white/10 hover:border-white/20 bg-white/[0.04] font-sans font-semibold text-white text-base text-center transition-colors cursor-pointer active:bg-white/[0.08]"
             >
               Login
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                handleAction("Sign Up");
-                setIsMobileMenuOpen(false);
-              }}
-              className="all-unset box-border w-full py-3.5 px-4 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] shadow-[0_0.25rem_1rem_var(--primary-glow)] font-sans font-semibold text-white text-base text-center transition-colors cursor-pointer active:opacity-90"
+            </a>
+            <a
+              href={SIGNUP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="w-full py-3.5 px-4 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] shadow-[0_0.25rem_1rem_var(--primary-glow)] font-sans font-semibold text-white text-base text-center transition-colors cursor-pointer active:opacity-90"
             >
               Sign Up
-            </button>
+            </a>
           </div>
         </div>
       </div>
@@ -2402,10 +2435,11 @@ export const HeroSection = (): JSX.Element => {
               </p>
             </div>
             <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 sm:gap-5 relative flex-[0_0_auto]">
-              <button
-                type="button"
-                onClick={() => handleAction("Get Started")}
-                className="all-unset box-border flex items-center justify-center gap-2 px-6 sm:px-7 py-3.5 bg-[var(--primary)] rounded-lg shadow-[0_0.25rem_1rem_var(--primary-glow)] cursor-pointer hover:bg-[var(--primary-hover)] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] group"
+              <a
+                href={SIGNUP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 px-6 sm:px-7 py-3.5 bg-[var(--primary)] rounded-lg shadow-[0_0.25rem_1rem_var(--primary-glow)] cursor-pointer hover:bg-[var(--primary-hover)] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] group"
               >
                 <span className="relative w-fit font-sans font-semibold text-white text-sm tracking-normal leading-normal">
                   Get started
@@ -2420,7 +2454,7 @@ export const HeroSection = (): JSX.Element => {
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
                 </svg>
-              </button>
+              </a>
               <a
                 href="#how-it-works"
                 className="all-unset box-border flex items-center justify-center gap-2 px-5 sm:px-6 py-3.5 rounded-lg border border-[#8C5CFF]/35 hover:border-[#8C5CFF]/70 bg-[#8C5CFF]/[0.06] hover:bg-[#8C5CFF]/[0.12] text-white/90 hover:text-white shadow-[0_2px_12px_rgba(140,92,255,0.08)] transition-all cursor-pointer text-sm font-semibold font-sans focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] group"
@@ -2656,7 +2690,7 @@ export const HeroSection = (): JSX.Element => {
             </div>
           </Reveal>
 
-          {/* Benefit Cards — 4-card uniform showcase with liquid bottom-up hover fill */}
+          {/* Benefit cards */}
           <div className="w-full">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6 w-full">
               {[
@@ -2666,7 +2700,13 @@ export const HeroSection = (): JSX.Element => {
                   description:
                     "Earn Canton Coin bonuses, platform incentives, and creator rewards simply by publishing content, completing jobs, and building ecosystem reputation.",
                   badgeBg: "bg-[#f5efff]",
-                  icon: "/icons/benefit-earn-rewards.png",
+                  iconColor: "#8c5cff",
+                  icon: (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+                      <path d="M12 2v1M12 21v1M4.2 4.2l.7.7M19.1 19.1l.7.7M2 12h1M21 12h1M4.2 19.8l.7-.7M19.1 4.9l.7-.7" />
+                      <circle cx="12" cy="12" r="4" />
+                    </svg>
+                  ),
                 },
                 {
                   id: "benefit-protected",
@@ -2674,7 +2714,13 @@ export const HeroSection = (): JSX.Element => {
                   description:
                     "Every project is backed by Canton smart contract escrow. Client funds are locked before work starts, protecting both parties with zero risk of unpaid work.",
                   badgeBg: "bg-[#edf5ff]",
-                  icon: "/icons/benefit-always-protected.png",
+                  iconColor: "#2563eb",
+                  icon: (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      <path d="m9 12 2 2 4-4" />
+                    </svg>
+                  ),
                 },
                 {
                   id: "benefit-stable",
@@ -2682,7 +2728,13 @@ export const HeroSection = (): JSX.Element => {
                   description:
                     "Price jobs and quote milestones with peace of mind. Settle in predictable on-chain value without fear of market fluctuations cutting into your profit.",
                   badgeBg: "bg-[#fff8ed]",
-                  icon: "/icons/benefit-stable-earnings.png",
+                  iconColor: "#d97706",
+                  icon: (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+                      <line x1="12" y1="1" x2="12" y2="23" />
+                      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                    </svg>
+                  ),
                 },
                 {
                   id: "benefit-instant",
@@ -2690,26 +2742,28 @@ export const HeroSection = (): JSX.Element => {
                   description:
                     "No 14-day clearance delays or exorbitant international wire fees. Approved funds hit your wallet immediately and can be withdrawn anytime.",
                   badgeBg: "bg-[#f0fdf4]",
-                  icon: "/icons/benefit-instant-payouts.png",
+                  iconColor: "#16a34a",
+                  icon: (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                    </svg>
+                  ),
                 },
               ].map((card, idx) => (
                 <Reveal key={card.id} delay={idx * 75} className="flex w-full">
                   <article className="group relative flex flex-col items-center justify-start py-5 px-4 sm:py-6 sm:px-5 rounded-2xl sm:rounded-3xl bg-[#f9f9fb] border border-black/8 hover:border-[#320053] shadow-[0_4px_16px_rgba(0,0,0,0.03)] hover:shadow-[0_16px_40px_rgba(50,0,83,0.3)] hover:-translate-y-1.5 transition-all duration-300 text-center select-none cursor-pointer overflow-hidden w-full">
-                    {/* Gentle bottom-to-top primary fill on hover */}
+                    {/* Background hover fill */}
                     <div
                       className="absolute inset-0 bg-[#320053] translate-y-[calc(100%+8px)] group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-500 ease-out pointer-events-none rounded-[inherit]"
                       aria-hidden="true"
                     />
 
-                    {/* Centered Circular Icon Image */}
+                    {/* Circular icon */}
                     <div
-                      className={`relative z-10 flex items-center justify-center size-16 sm:size-18 rounded-full ${card.badgeBg} group-hover:bg-white group-hover:shadow-[0_6px_20px_rgba(0,0,0,0.2)] transition-all duration-300 group-hover:scale-105 mb-2 shrink-0 shadow-inner`}
+                      className={`relative z-10 flex items-center justify-center size-14 sm:size-16 rounded-2xl ${card.badgeBg} group-hover:bg-white/10 transition-all duration-300 group-hover:scale-105 mb-3 shrink-0`}
+                      style={{ color: card.iconColor }}
                     >
-                      <img
-                        src={card.icon}
-                        alt={card.title}
-                        className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
-                      />
+                      {card.icon}
                     </div>
 
                     {/* Title */}
@@ -2911,14 +2965,15 @@ export const HeroSection = (): JSX.Element => {
                   <p className="font-outfit font-bold text-[#0b002a] text-2xl tracking-tight">
                     35 <span className="text-lg font-semibold text-[#0b002a]/80">CC /month</span>
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => handleAction("Join Today")}
-                    className="box-border flex h-11 items-center justify-center px-5 py-2.5 w-full bg-[#320053] hover:bg-[#25003d] text-white rounded-lg font-semibold text-sm transition-colors cursor-pointer"
+                  <a
+                    href={SIGNUP_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="box-border flex h-11 items-center justify-center px-5 py-2.5 w-full bg-[#320053] hover:bg-[#25003d] text-white rounded-lg font-semibold text-sm transition-colors cursor-pointer text-center"
                     aria-label="Join today for the reader plan"
                   >
                     Join Today
-                  </button>
+                  </a>
                 </div>
               </article>
             </Reveal>
@@ -2947,14 +3002,15 @@ export const HeroSection = (): JSX.Element => {
                     <p className="font-outfit font-bold text-white text-2xl tracking-tight">
                       300 <span className="text-lg font-semibold text-white/80">CC</span>
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => handleAction("Get Started")}
-                      className="box-border flex h-11 items-center justify-center px-5 py-2.5 w-full bg-white hover:bg-white/90 text-[#121212] rounded-lg font-semibold text-sm transition-colors cursor-pointer"
+                    <a
+                      href={SIGNUP_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="box-border flex h-11 items-center justify-center px-5 py-2.5 w-full bg-white hover:bg-white/90 text-[#121212] rounded-lg font-semibold text-sm transition-colors cursor-pointer text-center"
                       aria-label="Get started with creator staking"
                     >
                       Get Started
-                    </button>
+                    </a>
                   </div>
                 </div>
 
@@ -3325,22 +3381,22 @@ export const HeroSection = (): JSX.Element => {
         </section>
       </div>
 
-      {/* ── Trending Creator Articles Section ── */}
+      {/* Trending creator articles */}
       <TrendingArticlesSection />
 
-      {/* ── Why Choose Canafri? section ── */}
+      {/* Why choose CanaFri section */}
       <WhyCanafriSection />
 
-      {/* ── For Creators (Testimonials) Section ── */}
+      {/* Testimonials */}
       <TestimonialsSection />
 
-      {/* ── FAQ Section ── */}
+      {/* FAQ */}
       <FAQSection />
 
-      {/* ── CTA / Get Started Section ── */}
+      {/* Final call to action */}
       <CTASection />
 
-      {/* ── Landing Footer ── */}
+      {/* Footer */}
       <LandingFooter />
 
       <p className="sr-only" aria-live="polite">

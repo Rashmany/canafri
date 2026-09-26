@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { SIGNUP_URL, LOGIN_URL } from '@/lib/config';
 
-/* ─── useInView hook ───────────────────────────────────────────── */
+/* UseInView hook */
 function useInView(options: IntersectionObserverInit = {}) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -115,12 +116,13 @@ export default function AboutPage() {
   }, [isMobileMenuOpen]);
 
   const handleAction = (action: string) => {
-    window.location.href = action === 'Login' ? '/#login' : '/#signup';
+    const url = action === 'Login' ? LOGIN_URL : SIGNUP_URL;
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   return (
     <main className="flex flex-col min-h-screen w-full bg-[#09090b] text-white relative overflow-x-hidden">
-      {/* ── Fixed Navigation Header ── */}
+      {/* Fixed Navigation Header */}
       <header className="fixed top-0 inset-x-0 z-50 w-full bg-[#09090b]/80 backdrop-blur-xl border-b border-white/[0.08] transition-all duration-300">
         <div className="flex h-20 items-center justify-between px-6 sm:px-10 lg:px-16 relative w-full max-w-[117.25rem] mx-auto">
           <div className="gap-8 lg:gap-12 inline-flex items-center relative flex-[0_0_auto]">
@@ -398,7 +400,7 @@ export default function AboutPage() {
         </div>
       </div>
 
-      {/* ── SECTION 1: HERO ── */}
+      {/* HERO */}
       <section className="relative w-full min-h-[88vh] sm:min-h-[92vh] pt-36 pb-0 sm:pt-44 flex flex-col overflow-hidden [background:radial-gradient(60%_60%_at_50%_35%,rgba(50,0,83,0.55)_0%,rgba(9,9,11,1)_100%)]">
         {/* Ambient Top Glow */}
         <div
@@ -443,7 +445,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* ── SECTION 2: THE PROBLEM VS THE CANAFRI SOLUTION ── */}
+      {/* THE PROBLEM VS THE CANAFRI SOLUTION */}
       <section className="relative w-full py-10 sm:py-12 lg:py-16 bg-[#fdfdfd]">
         <div className="max-w-[117.25rem] mx-auto px-6 sm:px-10 lg:px-16 flex flex-col items-center">
           <Reveal>
@@ -537,7 +539,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* ── SECTION 3: THREE FOUNDATIONAL PILLARS ── */}
+      {/* THREE FOUNDATIONAL PILLARS */}
       <section className="relative w-full py-10 sm:py-12 lg:py-16 overflow-hidden bg-[linear-gradient(180deg,rgba(50,0,83,1)_0%,rgba(0,5,24,1)_100%)]">
         {/* Ambient Glows */}
         <div
@@ -645,7 +647,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* ── SECTION 4: WHY CANTON NETWORK ── */}
+      {/* WHY CANTON NETWORK */}
       <section className="relative w-full py-10 sm:py-12 lg:py-16 bg-[#fdfdfd] border-t border-black/5">
         <div className="max-w-[117.25rem] mx-auto px-6 sm:px-10 lg:px-16 flex flex-col items-center">
           <Reveal>
@@ -724,7 +726,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* ── SECTION 5: FINAL CTA ── */}
+      {/* FINAL CTA */}
       <section className="relative w-full py-10 sm:py-12 lg:py-16 overflow-hidden bg-[linear-gradient(180deg,rgba(50,0,83,1)_0%,rgba(0,5,24,1)_100%)]">
         {/* Ambient Glows */}
         <div
@@ -789,7 +791,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* ── FOOTER (Consistent with landing footer) ── */}
+      {/* FOOTER */}
       <footer className="w-full bg-[#09090b] px-6 sm:px-10 lg:px-16 py-12">
         <div className="max-w-[117.25rem] mx-auto flex flex-col gap-8 w-full">
           <div className="flex flex-col md:flex-row justify-between gap-10 md:gap-4 items-start">

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { SIGNUP_URL, LOGIN_URL } from '@/lib/config';
 
 function useInView(options: IntersectionObserverInit = {}) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -139,7 +140,7 @@ export default function EscrowPage() {
   return (
     <main className="flex flex-col min-h-screen w-full bg-[#09090b] text-white relative overflow-x-hidden">
 
-      {/* ── Navbar ── */}
+      {/* Navbar */}
       <header className="fixed top-0 inset-x-0 z-50 w-full bg-[#09090b]/80 backdrop-blur-xl border-b border-white/[0.08]">
         <div className="flex h-20 items-center justify-between px-6 sm:px-10 lg:px-16 max-w-[117.25rem] mx-auto">
           <div className="inline-flex items-center gap-8 lg:gap-12">
@@ -166,8 +167,8 @@ export default function EscrowPage() {
 
           <div className="flex items-center gap-2.5 sm:gap-4">
             <div className="hidden md:inline-flex items-center gap-3">
-              <Link href="/#login" className="px-5 py-2.5 rounded-lg font-sans font-semibold text-white text-sm hover:bg-white/[0.05] transition-colors">Login</Link>
-              <Link href="/#signup" className="px-5 py-2.5 bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-lg font-sans font-semibold text-white text-sm shadow-[0_0.25rem_0.75rem_var(--primary-glow)] transition-colors">Sign Up</Link>
+              <a href={LOGIN_URL} target="_blank" rel="noopener noreferrer" className="px-5 py-2.5 rounded-lg font-sans font-semibold text-white text-sm hover:bg-white/[0.05] transition-colors">Login</a>
+              <a href={SIGNUP_URL} target="_blank" rel="noopener noreferrer" className="px-5 py-2.5 bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-lg font-sans font-semibold text-white text-sm shadow-[0_0.25rem_0.75rem_var(--primary-glow)] transition-colors">Sign Up</a>
             </div>
             <button
               type="button"
@@ -210,13 +211,13 @@ export default function EscrowPage() {
             </ul>
           </nav>
           <div className="flex flex-col gap-3 pt-6 border-t border-white/[0.08] mt-6">
-            <Link href="/#login" onClick={() => setMobileOpen(false)} className="w-full text-center px-5 py-3 rounded-xl font-semibold text-white text-sm border border-white/10 hover:bg-white/[0.05] transition-colors">Login</Link>
-            <Link href="/#signup" onClick={() => setMobileOpen(false)} className="w-full text-center px-5 py-3 bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-xl font-semibold text-white text-sm shadow-[0_0.25rem_0.75rem_var(--primary-glow)] transition-colors">Sign Up</Link>
+            <a href={LOGIN_URL} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)} className="w-full text-center px-5 py-3 rounded-xl font-semibold text-white text-sm border border-white/10 hover:bg-white/[0.05] transition-colors">Login</a>
+            <a href={SIGNUP_URL} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)} className="w-full text-center px-5 py-3 bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-xl font-semibold text-white text-sm shadow-[0_0.25rem_0.75rem_var(--primary-glow)] transition-colors">Sign Up</a>
           </div>
         </div>
       </div>
 
-      {/* ── Hero ── */}
+      {/* Hero */}
       <section className="relative w-full pt-36 pb-0 sm:pt-44 flex flex-col overflow-hidden">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] rounded-full bg-[#8C5CFF]/10 blur-[120px]" />
@@ -237,9 +238,9 @@ export default function EscrowPage() {
           </Reveal>
           <Reveal delay={225}>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/#signup" className="px-8 py-3.5 bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-xl font-sans font-semibold text-white text-sm shadow-[0_0.25rem_1rem_var(--primary-glow)] hover:shadow-[0_0.35rem_1.5rem_var(--primary-glow)] transition-all duration-300 hover:-translate-y-0.5">
+              <a href={SIGNUP_URL} target="_blank" rel="noopener noreferrer" className="px-8 py-3.5 bg-[var(--primary)] hover:bg-[var(--primary-hover)] rounded-xl font-sans font-semibold text-white text-sm shadow-[0_0.25rem_1rem_var(--primary-glow)] hover:shadow-[0_0.35rem_1.5rem_var(--primary-glow)] transition-all duration-300 hover:-translate-y-0.5">
                 Post a Job with Escrow
-              </Link>
+              </a>
               <Link href="/#freelancers" className="px-8 py-3.5 rounded-xl font-sans font-semibold text-sm text-white/80 hover:text-white border border-[#8C5CFF]/40 hover:border-[#8C5CFF] hover:bg-[#8C5CFF]/5 transition-all duration-300">
                 Browse Marketplace
               </Link>
@@ -272,7 +273,7 @@ export default function EscrowPage() {
         </div>
       </section>
 
-      {/* ── How It Works ── */}
+      {/* How It Works */}
       <section className="py-24 px-6 sm:px-10 lg:px-16 relative">
         <div className="max-w-6xl mx-auto">
           <Reveal className="text-center mb-16 sm:mb-20">
@@ -341,7 +342,7 @@ export default function EscrowPage() {
         </div>
       </section>
 
-      {/* ── Escrow Visual (3-Step Forward Flow) ── */}
+      {/* Escrow Visual */}
       <section className="py-24 px-6 sm:px-10 lg:px-16 relative">
         <div className="max-w-6xl mx-auto">
           <div className="relative rounded-3xl bg-[#0d0d12]/70 backdrop-blur-xl p-8 sm:p-12 lg:p-16 overflow-hidden shadow-[0_20px_50px_rgba(50,0,83,0.25)]">
@@ -430,7 +431,7 @@ export default function EscrowPage() {
         </div>
       </section>
 
-      {/* ── FAQ (Home & Creator exact style) ── */}
+      {/* FAQ */}
       <section className="relative w-full py-10 sm:py-12 lg:py-16 bg-[#f6f6f8] overflow-hidden scroll-mt-20">
         <div className="mx-auto flex w-full max-w-[117.25rem] flex-col items-center gap-8 px-6 sm:px-10 lg:px-16">
           <Reveal className="w-full flex items-center justify-center">
@@ -478,7 +479,7 @@ export default function EscrowPage() {
         </div>
       </section>
 
-      {/* ── CTA Banner (Exact Testimonials Dark Gradient Style) ── */}
+      {/* CTA Banner */}
       <section className="relative flex flex-col items-center justify-center overflow-hidden bg-[linear-gradient(180deg,rgba(50,0,83,1)_0%,rgba(0,5,24,1)_100%)] py-20 sm:py-24 lg:py-28 px-6 sm:px-10 lg:px-16">
         {/* Glow blobs */}
         <div className="absolute left-[200px] top-[-100px] h-[400px] w-[400px] rounded-[200px] bg-[#8080d715] blur-[75px]" aria-hidden="true" />
@@ -504,9 +505,9 @@ export default function EscrowPage() {
               Funds in before work starts. Out only when you approve. That is the whole deal.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/#signup" className="px-8 py-3.5 bg-white hover:bg-[#f6f0ff] active:scale-[0.98] rounded-xl font-sans font-semibold text-[#320053] text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
+              <a href={SIGNUP_URL} target="_blank" rel="noopener noreferrer" className="px-8 py-3.5 bg-white hover:bg-[#f6f0ff] active:scale-[0.98] rounded-xl font-sans font-semibold text-[#320053] text-sm shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
                 Post a Job with Escrow
-              </Link>
+              </a>
               <Link href="/freelancer" className="px-8 py-3.5 rounded-xl font-sans font-semibold text-sm text-white border border-[#8C5CFF] hover:bg-[#8C5CFF]/20 transition-all duration-300 hover:-translate-y-0.5">
                 Find Freelancers →
               </Link>
@@ -515,7 +516,7 @@ export default function EscrowPage() {
         </div>
       </section>
 
-      {/* ── Footer ── */}
+      {/* Footer */}
       <footer className="w-full bg-[#09090b] border-t border-white/[0.06] px-6 sm:px-10 lg:px-16 pt-14 pb-8">
         <div className="max-w-[117.25rem] mx-auto flex flex-col gap-12">
           <div className="flex flex-col md:flex-row justify-between gap-10">
