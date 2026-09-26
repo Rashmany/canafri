@@ -1,0 +1,235 @@
+<USER_REQUEST>
+replace this what we offer section with this new design from figma and use the margin that we used for other paection and mentain the cards,  the images i oute in each cards use the image place holder so that i will simpley replace it                                          import { Component12 } from "./Component12";
+import { Component17 } from "./Component17";
+import { Component19 } from "./Component19";
+import cardFade21 from "./card-fade-2-1.png";
+import cardFade31 from "./card-fade-3-1.png";
+import cardFade41 from "./card-fade4-1.png";
+import image from "./image.png";
+import image1 from "./image.svg";
+import maskGroup from "./mask-group.png";
+import maskGroup2 from "./mask-group-2.png";
+import star2 from "./star-2.svg";
+import vector from "./vector.svg";
+import vector2 from "./vector-2.svg";
+
+type CardType = "creator" | "freelancer" | "escrow";
+
+interface FeatureCard {
+  title: string;
+  description: string;
+  type: CardType;
+}
+
+const featureCards: FeatureCard[] = [
+  {
+    title: "Content Creator",
+    description:
+      "Publish premium content and earn Canton Coin from every reader. While your stake protects the ecosystem. Quality is enforced at the protocol level.",
+    type: "creator",
+  },
+  {
+    title: "Client/Freelancer",
+    description:
+      "Post jobs with CC escrow or apply as a freelancer. Milestone based payments mean you get paid for what you deliver enforced by smart contracts.",
+    type: "freelancer",
+  },
+  {
+    title: "Escrow protection",
+    description:
+      "Every job on CanaFri locks payment in a Canton smart contract before work begins. Funds release only on milestone approval.",
+    type: "escrow",
+  },
+];
+
+const GlowBackground = ({
+  decorativeImage,
+}: {
+  decorativeImage: string;
+}): JSX.Element => {
+  return (
+    <>
+      <div className="absolute top-[177px] left-[50px] h-[293px] w-[226px] rotate-[-90deg]">
+        <div className="absolute top-0 left-px h-[217px] w-[217px] rounded-[108.62px] blur-[21.62px] [background:linear-gradient(to_bottom_right,rgba(157,1,195,1)_0%,rgba(157,1,195,0)_50%)_bottom_right_/_50%_50%_no-repeat,linear-gradient(to_bottom_left,rgba(157,1,195,1)_0%,rgba(157,1,195,0)_50%)_bottom_left_/_50%_50%_no-repeat,linear-gradient(to_top_left,rgba(157,1,195,1)_0%,rgba(157,1,195,0)_50%)_top_left_/_50%_50%_no-repeat,linear-gradient(to_top_right,rgba(157,1,195,1)_0%,rgba(157,1,195,0)_50%)_top_right_/_50%_50%_no-repeat]" />
+        <div className="absolute top-[76px] left-[9px] h-[217px] w-[217px] rounded-[108.62px] blur-[23.75px] mix-blend-overlay [background:linear-gradient(to_bottom_right,rgba(1,149,176,1)_0%,rgba(221,237,241,0)_50%)_bottom_right_/_50%_50%_no-repeat,linear-gradient(to_bottom_left,rgba(1,149,176,1)_0%,rgba(221,237,241,0)_50%)_bottom_left_/_50%_50%_no-repeat,linear-gradient(to_top_left,rgba(1,149,176,1)_0%,rgba(221,237,241,0)_50%)_top_left_/_50%_50%_no-repeat,linear-gradient(to_top_right,rgba(1,149,176,1)_0%,rgba(221,237,241,0)_50%)_top_right_/_50%_50%_no-repeat]" />
+      </div>
+      <img
+        className="absolute top-[136px] left-0 h-[248px] w-[267px] mix-blend-screen"
+        alt=""
+        aria-hidden="true"
+        src={decorativeImage}
+      />
+      <div className="absolute top-[-126px] left-[123px] h-[310px] w-[237px] rotate-[30deg]">
+        <div className="absolute top-0 left-5 h-[217px] w-[217px] rounded-[108.62px] blur-[21.62px] [background:linear-gradient(to_bottom_right,rgba(157,1,195,1)_0%,rgba(157,1,195,0)_50%)_bottom_right_/_50%_50%_no-repeat,linear-gradient(to_bottom_left,rgba(157,1,195,1)_0%,rgba(157,1,195,0)_50%)_bottom_left_/_50%_50%_no-repeat,linear-gradient(to_top_left,rgba(157,1,195,1)_0%,rgba(157,1,195,0)_50%)_top_left_/_50%_50%_no-repeat,linear-gradient(to_top_right,rgba(157,1,195,1)_0%,rgba(157,1,195,0)_50%)_top_right_/_50%_50%_no-repeat]" />
+        <div className="absolute top-[92px] left-px h-[217px] w-[217px] rounded-[108.62px] blur-[23.75px] mix-blend-overlay [background:linear-gradient(to_bottom_right,rgba(1,149,176,1)_0%,rgba(221,237,241,0)_50%)_bottom_right_/_50%_50%_no-repeat,linear-gradient(to_bottom_left,rgba(1,149,176,1)_0%,rgba(221,237,241,0)_50%)_bottom_left_/_50%_50%_no-repeat,linear-gradient(to_top_left,rgba(1,149,176,1)_0%,rgba(221,237,241,0)_50%)_top_left_/_50%_50%_no-repeat,linear-gradient(to_top_right,rgba(1,149,176,1)_0%,rgba(221,237,241,0)_50%)_top_right_/_50%_50%_no-repeat]" />
+      </div>
+    </>
+  );
+};
+
+const CreatorPreview = (): JSX.Element => {
+  return (
+    <>
+      <GlowBackground decorativeImage={maskGroup} />
+      <article
+        aria-label="Example content post"
+        className="absolute top-[113px] left-[53px] flex h-[228px] w-[322px] rotate-[-11.23deg] flex-col items-start justify-between rounded-[8.82px] bg-[#0b0b0b66] p-[14.12px]"
+      >
+        <div className="flex w-full flex-1 items-start gap-[8.82px] self-stretch">
+          <div className="aspect-square h-[30.88px] w-[30.88px] rounded-[15.44px] bg-[#320053]" />
+          <div className="flex flex-1 flex-col items-start gap-[21.17px] self-stretch">
+            <div className="flex h-[124.39px] w-full flex-col items-start gap-[13.23px]">
+              <div className="flex h-[15.88px] w-full items-center justify-between">
+                <div className="inline-flex items-center gap-[7.94px]">
+                  <span className="mt-[-0.88px] whitespace-nowrap text-center text-[11.5px] font-medium leading-[15.9px] tracking-[0] text-[#ffffffcc] [font-family:'Inter-Medium',Helvetica]">
+                    John Trek
+                  </span>
+                  <span className="mt-[-0.38px] whitespace-nowrap text-center text-[9.7px] font-normal leading-[14.1px] tracking-[0] text-[#a0a0a0] [font-family:'Inter-Regular',Helvetica]">
+                    @Johntrek
+                  </span>
+                </div>
+                <time className="mt-[-0.44px] text-[9.7px] font-normal leading-[14.1px] tracking-[0] text-[#a0a0a0] [font-family:'Inter-Regular',Helvetica]">
+                  May 10
+                </time>
+              </div>
+              <p className="mb-[-40.72px] flex w-full flex-1 items-center justify-center gap-[8.82px] py-0 pr-[14.12px] pl-0 text-[12.4px] font-normal leading-[19.4px] tracking-[0] text-[#ffffffcc] [font-family:'Inter-Regular',Helvetica]">
+                is simply dummy text of the printing and typesetting industry.
+                Lorem Ipsum has been the industry&apos;s standard dummy text
+                ever since 1966, when designers at Letraset and James Mosley,
+                the librarian at St Bride Printing Library, took a 1914
+              </p>
+            </div>
+          </div>
+          <div className="relative aspect-square h-[14.12px] w-[14.12px]">
+            <img
+              className="absolute top-[40.14%] left-[19.26%] h-[59.86%] w-[80.74%] rotate-[11.23deg]"
+              alt=""
+              aria-hidden="true"
+              src={vector2}
+            />
+          </div>
+        </div>
+        <div className="mt-[-1.91e-06px] flex h-[14.12px] w-full items-start justify-between">
+          <div className="inline-flex items-center gap-[21.17px]">
+            <div className="relative aspect-square h-[14.12px] w-[14.12px]">
+              <img
+                className="absolute top-0 left-0 h-[99.04%] w-[99.04%] rotate-[11.23deg]"
+                alt=""
+                aria-hidden="true"
+                src={star2}
+              />
+            </div>
+            <Component19 className="!relative !mt-[-1.24px] !mb-[-1.24px] !h-[16.59px] !w-[16.59px] !rotate-[11.23deg] !aspect-square" />
+            <Component17 className="!relative !mt-[-1.24px] !mr-[-1.24px] !mb-[-1.24px] !h-[16.59px] !w-[16.59px] !rotate-[11.23deg] !aspect-square" />
+          </div>
+          <div className="inline-flex items-center gap-[21.17px]">
+            <div className="relative h-[11.13px] w-[10.89px]">
+              <img
+                className="absolute top-[-6.04%] left-[-7.24%] h-[106.04%] w-[107.24%] rotate-[11.23deg]"
+                alt=""
+                aria-hidden="true"
+                src={image1}
+              />
+            </div>
+            <div className="relative aspect-square h-[14.12px] w-[14.12px]">
+              <div className="relative top-px left-px flex h-[18px] w-[17px]">
+                <img
+                  className="w-[17.9px] flex-1 rotate-[11.23deg]"
+                  alt=""
+                  aria-hidden="true"
+                  src={vector}
+                />
+              </div>
+            </div>
+            <Component12 className="!relative !mt-[-1.24px] !mr-[-1.24px] !mb-[-1.24px] !h-[16.59px] !w-[16.59px] !rotate-[11.23deg] !aspect-square" />
+          </div>
+        </div>
+      </article>
+    </>
+  );
+};
+
+const FreelancerPreview = (): JSX.Element => {
+  return (
+    <>
+      <GlowBackground decorativeImage={image} />
+      <img
+        className="absolute top-[46px] left-[61px] h-[338px] w-[314px] aspect-[0.75] object-cover"
+        alt="Subscription confirmation interface"
+        src={cardFade31}
+      />
+    </>
+  );
+};
+
+const EscrowPreview = (): JSX.Element => {
+  return (
+    <>
+      <GlowBackground decorativeImage={maskGroup2} />
+      <img
+        className="absolute top-[34px] left-[54px] h-[222px] w-[197px] aspect-[0.89] object-cover"
+        alt="Escrow payment interface"
+        src={cardFade21}
+      />
+      <img
+        className="absolute top-[239px] left-[231px] h-[109px] w-[183px] aspect-[1.67] object-cover"
+        alt="Escrow activity interface"
+        src={cardFade41}
+      />
+    </>
+  );
+};
+
+const CardPreview = ({ type }: { type: CardType }): JSX.Element => {
+  return (
+    <div className="relative h-96 w-full overflow-hidden rounded-[25px] bg-[#040612]">
+      {type === "creator" && <CreatorPreview />}
+      {type === "freelancer" && <FreelancerPreview />}
+      {type === "escrow" && <EscrowPreview />}
+    </div>
+  );
+};
+
+export const Frame = (): JSX.Element => {
+  return (
+    <section
+      aria-label="CanaFri platform features"
+      className="relative flex items-start justify-between gap-10 px-[120px] py-[100px] max-[1500px]:flex-wrap max-[1500px]:justify-center max-[640px]:px-5 max-[640px]:py-12"
+    >
+      {featureCards.map((card) => (
+        <article
+          key={card.type}
+          className="flex w-[436px] flex-col items-start gap-6 max-[640px]:w-full"
+        >
+          <CardPreview type={card.type} />
+          <div className="flex w-[336px] flex-col items-start gap-3 max-[640px]:w-full">
+            <h2 className="mt-[-1px] w-full text-xl font-bold leading-[normal] tracking-[0] text-[#030303] [font-family:'Outfit-Bold',Helvetica]">
+              {card.title}
+            </h2>
+            <p
+              className={`w-full text-sm font-normal leading-[22px] tracking-[0] [font-family:'Inter-Regular',Helvetica] ${
+                card.type === "creator" ? "text-[#5d5d7f]" : "text-[#8f9bb3]"
+              }`}
+            >
+              {card.description}
+            </p>
+          </div>
+        </article>
+      ))}
+    </section>
+  );
+};
+
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-21T01:21:12+01:00.
+
+The user's current state is as follows:
+Active Document: c:\Users\Hi New User\canafri\apps\landing\app\page.tsx (LANGUAGE_TSX)
+Cursor is on line: 2447
+Other open documents:
+- c:\Users\Hi New User\canafri\apps\landing\app\page.tsx (LANGUAGE_TSX)
+- c:\Users\Hi New User\canafri\apps\web\components\pages\find-seller-page.tsx (LANGUAGE_TSX)
+Running terminal commands:
+- npm run dev (in c:\Users\Hi New User\canafri\apps\landing, running for 60h12m25s)
+</ADDITIONAL_METADATA>

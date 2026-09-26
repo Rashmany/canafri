@@ -689,17 +689,27 @@ export async function userRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /users/sellers - Public endpoint to retrieve all registered sellers
-  fastify.get('/sellers', async (_request: FastifyRequest, reply: FastifyReply) => {
+  // GET /users/sellers - Public endpoint to retrieve registered sellers with pagination
+  fastify.get('/sellers', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const sellers = await prisma.user.findMany({
-        where: {
-          OR: [
-            { isSeller: true },
-            { sellerApplied: true },
-            { sellerApproved: true },
-          ],
-        },
+      const { limit: limitQuery, cursor } = request.query as { limit?: string; cursor?: string };
+      const limit = Math.min(parseInt(limitQuery || '20', 10), 50);
+
+      const whereClause: any = {
+        OR: [
+          { isSeller: true },
+          { sellerApplied: true },
+          { sellerApproved: true },
+        ],
+      };
+
+      if (cursor) {
+        whereClause.id = { lt: cursor };
+      }
+
+      const rawSellers = await prisma.user.findMany({
+        where: whereClause,
+        take: limit + 1,
         select: {
           id: true,
           username: true,
@@ -732,6 +742,10 @@ export async function userRoutes(fastify: FastifyInstance) {
         },
         orderBy: { createdAt: 'desc' },
       });
+
+      const hasMore = rawSellers.length > limit;
+      const sellers = hasMore ? rawSellers.slice(0, limit) : rawSellers;
+      const nextCursor = hasMore && sellers.length > 0 ? sellers[sellers.length - 1].id : null;
 
       const apps = await prisma.notification.findMany({
         where: { type: 'SELLER_APPLICATION' },
@@ -807,7 +821,7 @@ export async function userRoutes(fastify: FastifyInstance) {
         };
       });
 
-      return reply.send({ success: true, sellers: parsedSellers });
+      return reply.send({ success: true, sellers: parsedSellers, nextCursor, hasMore });
     } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }

@@ -62,11 +62,23 @@ async function getBuyerRatings(clientIds: string[]): Promise<Record<string, { av
 }
 
 export async function jobRoutes(fastify: FastifyInstance) {
-  // GET /jobs - List open jobs
+  // GET /jobs - List open jobs with pagination support
   fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const jobs = await prisma.job.findMany({
-        where: { status: 'OPEN' },
+      const { limit: limitQuery, cursor, category } = request.query as { limit?: string; cursor?: string; category?: string };
+      const limit = Math.min(parseInt(limitQuery || '20', 10), 50);
+
+      const whereClause: any = { status: 'OPEN' };
+      if (category && category !== 'All') {
+        whereClause.category = category;
+      }
+      if (cursor) {
+        whereClause.id = { lt: cursor };
+      }
+
+      const rawJobs = await prisma.job.findMany({
+        where: whereClause,
+        take: limit + 1,
         include: {
           client: {
             select: { id: true, username: true, displayName: true, trustScore: true, avatarUrl: true, country: true, createdAt: true },
@@ -75,6 +87,11 @@ export async function jobRoutes(fastify: FastifyInstance) {
         },
         orderBy: { createdAt: 'desc' },
       });
+
+      const hasMore = rawJobs.length > limit;
+      const jobs = hasMore ? rawJobs.slice(0, limit) : rawJobs;
+      const nextCursor = hasMore && jobs.length > 0 ? jobs[jobs.length - 1].id : null;
+
       // Attach real buyer ratings
       const clientIds = [...new Set(jobs.map(j => j.clientId))];
       const ratings = await getBuyerRatings(clientIds);
@@ -83,7 +100,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
         buyerRating: ratings[j.clientId]?.avg ?? 0,
         buyerReviewsCount: ratings[j.clientId]?.count ?? 0,
       }));
-      return reply.send({ success: true, jobs: jobsWithRating });
+
+      return reply.send({ success: true, jobs: jobsWithRating, nextCursor, hasMore });
     } catch (error: any) {
       return reply.status(500).send({ error: 'Internal Server Error', message: error.message });
     }
