@@ -2,9 +2,10 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { SIGNUP_URL, LOGIN_URL } from '@/lib/config';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 
-// ─── Table of contents ────────────────────────────────────────────────────────
+// Table of contents
 
 const TOC_ITEMS = [
   { id: 'section-1',  label: 'Agreement & Acceptance' },
@@ -30,7 +31,7 @@ const navigationItems = [
   { label: 'About', href: '/about' },
 ];
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// Sub-components
 
 function SectionHeading({ id, number, children }: { id: string; number: string; children: React.ReactNode }) {
   return (
@@ -183,7 +184,7 @@ function FooterNavLink({ icon, label, onClick }: { icon: React.ReactNode; label:
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// Main Page
 
 export default function TermsPage() {
   const [activeSection, setActiveSection] = useState('section-1');
@@ -208,7 +209,7 @@ export default function TermsPage() {
 
   return (
     <main className="min-h-screen bg-[#fdfdfd] text-[#0f0a1e] flex flex-col">
-      {/* ── Fixed Navbar ── */}
+      {/* Fixed Navbar */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between w-full h-20 px-6 sm:px-10 lg:px-16 bg-[#09090b]/85 backdrop-blur-md border-b border-white/[0.08] transition-colors">
         <div className="flex items-center justify-between w-full max-w-[117.25rem] mx-auto">
           {/* Logo & Desktop Nav */}
@@ -251,18 +252,22 @@ export default function TermsPage() {
           {/* Right Header: Actions */}
           <div className="flex items-center gap-2.5 sm:gap-4 relative flex-[0_0_auto]">
             <div className="hidden md:inline-flex items-center gap-3 sm:gap-4">
-              <Link
-                href="/#what-we-offer"
+              <a
+                href={LOGIN_URL}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="inline-flex items-center px-4 sm:px-5 py-2.5 rounded-lg font-sans font-semibold text-white text-sm hover:bg-white/[0.05] transition-colors"
               >
                 Login
-              </Link>
-              <Link
-                href="/#what-we-offer"
+              </a>
+              <a
+                href={SIGNUP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="inline-flex items-center px-4 sm:px-5 py-2.5 bg-[var(--primary)] rounded-lg font-sans font-semibold text-white text-sm shadow-[0_0.25rem_0.75rem_var(--primary-glow)] hover:bg-[var(--primary-hover)] transition-colors"
               >
                 Sign Up
-              </Link>
+              </a>
             </div>
 
             {/* Mobile Hamburger Toggle */}
@@ -332,7 +337,7 @@ export default function TermsPage() {
         </div>
       </div>
 
-      {/* ── Top Hero Banner ── */}
+      {/* Top Hero Banner */}
       <section className="relative w-full pt-32 pb-14 sm:pt-36 sm:pb-16 bg-[linear-gradient(180deg,rgba(50,0,83,1)_0%,rgba(9,9,11,1)_100%)] overflow-hidden">
         <div className="absolute left-[200px] top-[-80px] h-[350px] w-[350px] rounded-full bg-[#8080d715] blur-[80px] pointer-events-none" />
         <div className="relative z-10 max-w-[117.25rem] mx-auto px-6 sm:px-10 lg:px-16 flex flex-col items-center text-center">
@@ -351,7 +356,7 @@ export default function TermsPage() {
         </div>
       </section>
 
-      {/* ── Main Layout ── */}
+      {/* Main Layout */}
       <div className="flex-1 w-full max-w-[117.25rem] mx-auto px-6 sm:px-10 lg:px-16 py-10 sm:py-12 lg:py-16">
         <div className="flex flex-col lg:flex-row gap-10 lg:gap-16">
           {/* Sidebar TOC (Desktop) */}
@@ -612,7 +617,7 @@ export default function TermsPage() {
         </div>
       </div>
 
-      {/* ── Footer ── */}
+      {/* Footer */}
       <footer className="w-full bg-[#09090b] px-6 sm:px-10 lg:px-16 py-12 border-t border-white/10 mt-auto">
         <div className="max-w-[117.25rem] mx-auto flex flex-col gap-8 w-full">
           <div className="flex flex-col md:flex-row justify-between gap-10 md:gap-4 items-start">

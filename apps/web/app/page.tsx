@@ -306,12 +306,17 @@ export default function Home() {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
 
-      const saved = localStorage.getItem('canafri_active_page') || 'MobileSplash';
+      const requestedPage = urlParams.get('page');
+      const isValidGuestPage = requestedPage && GUEST_PAGES.includes(requestedPage);
+
+      const saved = (isValidGuestPage ? requestedPage : null) || localStorage.getItem('canafri_active_page') || 'MobileSplash';
       const token = localStorage.getItem('canafri_access_token');
       const isSavedGuest = GUEST_PAGES.includes(saved);
 
-      if (!token && isSavedGuest) {
-        setActivePage(saved);
+      if (!token && (isValidGuestPage || isSavedGuest)) {
+        const pageToSet = isValidGuestPage ? requestedPage : saved;
+        setActivePage(pageToSet);
+        localStorage.setItem('canafri_active_page', pageToSet);
         setIsInitialized(true);
         return;
       }
